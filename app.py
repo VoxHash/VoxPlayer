@@ -13,6 +13,7 @@ import webbrowser
 import json
 import re
 import time
+import uuid
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
@@ -73,6 +74,12 @@ class TorrentStreamer(QThread):
         self.temp_dir = None
         self.is_running = False
         self.qb_client = None
+        self.torrent_hash = None
+        self.stream_file_path = None
+        self.stream_file_index = None
+        self.stream_file_size = 0
+        self._file_ready_emitted = False
+        self.stream_category = f"voxplayer_stream_{uuid.uuid4().hex[:10]}"
         
     def run(self):
         """Start torrent streaming"""
@@ -115,7 +122,8 @@ class TorrentStreamer(QThread):
 
             # Connect to qBittorrent Web UI and verify availability.
             self.qb_client = Client(**client_kwargs)
-            version = self.qb_client.app.version()
+            app_version_attr = self.qb_client.app.version
+            version = app_version_attr() if callable(app_version_attr) else app_version_attr
             if not version:
                 raise RuntimeError("qBittorrent is not running. Please start qBittorrent first.")
             self.progress_updated.emit(10, f"Connected to qBittorrent v{version}")
@@ -136,11 +144,25 @@ class TorrentStreamer(QThread):
             if not self.qb_client:
                 raise RuntimeError("qBittorrent client is not initialized.")
             self.progress_updated.emit(20, "Adding magnet link...")
-            
-            # Add magnet link to qBittorrent
-            torrent_info = self.qb_client.torrents_add(urls=self.magnet_link, save_path=self.temp_dir)
-            
-            if torrent_info == "Ok.":
+
+            add_kwargs = {
+                "urls": self.magnet_link,
+                "save_path": self.temp_dir,
+                "category": self.stream_category,
+                "is_paused": False,
+                "use_auto_torrent_management": False,
+                "is_sequential_download": True,
+                "is_first_last_piece_prio": True,
+            }
+            try:
+                torrent_info = self.qb_client.torrents_add(**add_kwargs)
+            except TypeError:
+                # Older qBittorrent Web API versions do not support these add-time flags.
+                add_kwargs.pop("is_sequential_download", None)
+                add_kwargs.pop("is_first_last_piece_prio", None)
+                torrent_info = self.qb_client.torrents_add(**add_kwargs)
+
+            if isinstance(torrent_info, str) and torrent_info.startswith("Ok"):
                 self.progress_updated.emit(30, "Magnet link added successfully")
                 self._monitor_torrent()
             else:
@@ -160,10 +182,23 @@ class TorrentStreamer(QThread):
             with open(self.torrent_file, 'rb') as f:
                 torrent_data = f.read()
             
-            # Add torrent file to qBittorrent
-            torrent_info = self.qb_client.torrents_add(torrent_files=torrent_data, save_path=self.temp_dir)
-            
-            if torrent_info == "Ok.":
+            add_kwargs = {
+                "torrent_files": torrent_data,
+                "save_path": self.temp_dir,
+                "category": self.stream_category,
+                "is_paused": False,
+                "use_auto_torrent_management": False,
+                "is_sequential_download": True,
+                "is_first_last_piece_prio": True,
+            }
+            try:
+                torrent_info = self.qb_client.torrents_add(**add_kwargs)
+            except TypeError:
+                add_kwargs.pop("is_sequential_download", None)
+                add_kwargs.pop("is_first_last_piece_prio", None)
+                torrent_info = self.qb_client.torrents_add(**add_kwargs)
+
+            if isinstance(torrent_info, str) and torrent_info.startswith("Ok"):
                 self.progress_updated.emit(30, "Torrent file added successfully")
                 self._monitor_torrent()
             else:
@@ -173,73 +208,251 @@ class TorrentStreamer(QThread):
             self.error_occurred.emit(f"Error adding torrent file: {str(e)}")
     
     def _monitor_torrent(self):
-        """Monitor torrent progress"""
+        """Monitor torrent progress and emit media file once buffer is ready."""
         try:
-            # Get torrent hash from magnet link or file
-            torrents = self.qb_client.torrents_info()
-            if not torrents:
-                self.error_occurred.emit("No torrents found")
+            self.torrent_hash = self._wait_for_torrent_hash()
+            if not self.torrent_hash:
+                self.error_occurred.emit("Unable to locate added torrent in qBittorrent.")
                 return
-                
-            torrent = torrents[0]  # Get first torrent
-            torrent_hash = torrent.hash
-            
-            self.progress_updated.emit(40, f"Monitoring torrent: {torrent.name}")
-            
-            # Monitor progress
+
+            self._configure_streaming_mode()
+
             while self.is_running:
-                torrent_info = self.qb_client.torrents_info(torrent_hashes=torrent_hash)[0]
-                
-                progress = int(torrent_info.progress * 100)
-                self.progress_updated.emit(40 + progress // 2, f"Downloading: {progress}%")
-                
-                if torrent_info.state == "uploading" or torrent_info.state == "stalledUP":
-                    # Torrent completed, find media files
-                    self._find_media_files()
+                torrent_items = self.qb_client.torrents_info(torrent_hashes=self.torrent_hash)
+                if not torrent_items:
+                    self.error_occurred.emit("Torrent disappeared from qBittorrent.")
                     break
-                elif torrent_info.state == "error":
-                    self.error_occurred.emit(f"Torrent error: {torrent_info.state}")
+                torrent_info = torrent_items[0]
+
+                progress = int(float(getattr(torrent_info, "progress", 0.0)) * 100)
+                state = str(getattr(torrent_info, "state", "unknown"))
+                dlspeed = int(getattr(torrent_info, "dlspeed", 0) or 0)
+                speed_mbps = dlspeed / (1024 * 1024)
+                self.progress_updated.emit(
+                    40 + progress // 2,
+                    f"{state} | {progress}% | {speed_mbps:.2f} MiB/s",
+                )
+
+                if not self._file_ready_emitted:
+                    ready, downloaded, required = self._is_buffer_ready()
+                    if ready and self.stream_file_path:
+                        self._file_ready_emitted = True
+                        self.progress_updated.emit(
+                            90,
+                            f"Buffer ready ({downloaded // (1024 * 1024)} / {required // (1024 * 1024)} MiB), starting playback",
+                        )
+                        self.file_ready.emit(self.stream_file_path)
+                    elif required > 0:
+                        self.progress_updated.emit(
+                            55,
+                            f"Buffering {downloaded // (1024 * 1024)} / {required // (1024 * 1024)} MiB",
+                        )
+                        if dlspeed <= 128 * 1024:
+                            self.progress_updated.emit(
+                                56,
+                                "Low download speed detected, playback may stutter",
+                            )
+
+                if state in {"error", "missingFiles"}:
+                    self.error_occurred.emit(f"Torrent error: {state}")
                     break
-                    
-                time.sleep(2)
-                
+
+                time.sleep(1.5)
+
         except Exception as e:
             self.error_occurred.emit(f"Error monitoring torrent: {str(e)}")
-    
-    def _find_media_files(self):
-        """Find media files in downloaded torrent"""
+
+    def _wait_for_torrent_hash(self, timeout_seconds: int = 60) -> Optional[str]:
+        """Wait until qBittorrent registers the newly added torrent."""
+        deadline = time.time() + timeout_seconds
+        while self.is_running and time.time() < deadline:
+            try:
+                torrents = self.qb_client.torrents_info(category=self.stream_category)
+            except Exception:
+                torrents = []
+
+            if torrents:
+                torrents = sorted(
+                    torrents,
+                    key=lambda t: int(getattr(t, "added_on", 0) or 0),
+                    reverse=True,
+                )
+                selected = torrents[0]
+                self.progress_updated.emit(35, f"Metadata acquired: {selected.name}")
+                return selected.hash
+
+            self.progress_updated.emit(34, "Waiting for metadata and peers...")
+            time.sleep(1.0)
+        return None
+
+    def _configure_streaming_mode(self):
+        """Enable sequential streaming mode and pick one playable media file."""
+        self._set_sequential_download()
+        self._set_first_last_piece_priority()
+
+        stream_file = self._pick_stream_file()
+        if not stream_file:
+            raise RuntimeError("No supported media file found in torrent contents.")
+
+        file_name = str(getattr(stream_file, "name", ""))
+        file_index = self._file_index(stream_file)
+        file_size = int(getattr(stream_file, "size", 0) or 0)
+        if file_index is None:
+            raise RuntimeError("Unable to identify media file index for streaming priority.")
+
+        self.stream_file_index = file_index
+        self.stream_file_size = file_size
+        self.stream_file_path = os.path.join(self.temp_dir, file_name)
+
+        self._prioritize_selected_file(file_index)
+        self.progress_updated.emit(
+            45,
+            f"Sequential mode enabled for {os.path.basename(file_name)}",
+        )
+
+    def _set_sequential_download(self):
+        """Attempt to force sequential piece ordering."""
         try:
-            self.progress_updated.emit(90, "Scanning for media files...")
-            
-            media_extensions = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mp3', '.wav', '.flac', '.aac']
-            media_files = []
-            
-            for root, dirs, files in os.walk(self.temp_dir):
-                for file in files:
-                    if any(file.lower().endswith(ext) for ext in media_extensions):
-                        media_files.append(os.path.join(root, file))
-            
-            if media_files:
-                # Play the first media file found
-                media_file = media_files[0]
-                self.progress_updated.emit(100, f"Found media file: {os.path.basename(media_file)}")
-                self.file_ready.emit(media_file)
+            self.qb_client.torrents_set_sequential_download(
+                torrent_hashes=self.torrent_hash, value=True
+            )
+            return
+        except Exception:
+            pass
+        try:
+            self.qb_client.torrents_toggle_sequential_download(
+                torrent_hashes=self.torrent_hash
+            )
+        except Exception:
+            pass
+
+    def _set_first_last_piece_priority(self):
+        """Boost first/last piece priority to speed container header access."""
+        try:
+            self.qb_client.torrents_set_first_last_piece_priority(
+                torrent_hashes=self.torrent_hash, value=True
+            )
+            return
+        except Exception:
+            pass
+        try:
+            self.qb_client.torrents_toggle_first_last_piece_priority(
+                torrent_hashes=self.torrent_hash
+            )
+        except Exception:
+            pass
+
+    def _torrent_files(self) -> List[Any]:
+        """Return file entries for the active torrent."""
+        try:
+            return self.qb_client.torrents_files(torrent_hash=self.torrent_hash)
+        except Exception:
+            return self.qb_client.torrents_files(torrent_hashes=self.torrent_hash)
+
+    def _file_index(self, file_item: Any) -> Optional[int]:
+        idx = getattr(file_item, "index", None)
+        if idx is None:
+            idx = getattr(file_item, "id", None)
+        return int(idx) if idx is not None else None
+
+    def _pick_stream_file(self) -> Optional[Any]:
+        """Select best candidate for immediate playback (prefer MP4, then largest)."""
+        files = self._torrent_files()
+        if not files:
+            return None
+
+        media_rank = {
+            ".mp4": 0,
+            ".webm": 1,
+            ".mov": 2,
+            ".m4v": 3,
+            ".avi": 4,
+            ".mkv": 5,
+            ".wmv": 6,
+            ".flv": 7,
+            ".mp3": 8,
+            ".m4a": 9,
+            ".aac": 10,
+            ".flac": 11,
+            ".wav": 12,
+            ".ogg": 13,
+        }
+
+        candidates = []
+        for item in files:
+            name = str(getattr(item, "name", "")).lower()
+            _, ext = os.path.splitext(name)
+            if ext in media_rank:
+                size = int(getattr(item, "size", 0) or 0)
+                candidates.append((media_rank[ext], -size, item))
+
+        if not candidates:
+            return None
+        candidates.sort(key=lambda entry: (entry[0], entry[1]))
+        return candidates[0][2]
+
+    def _prioritize_selected_file(self, selected_index: int):
+        """Download selected media file first to reduce startup delay."""
+        file_items = self._torrent_files()
+        selected_ids = []
+        other_ids = []
+        for item in file_items:
+            idx = self._file_index(item)
+            if idx is None:
+                continue
+            if idx == selected_index:
+                selected_ids.append(idx)
             else:
-                self.error_occurred.emit("No media files found in torrent")
-                
-        except Exception as e:
-            self.error_occurred.emit(f"Error finding media files: {str(e)}")
+                other_ids.append(idx)
+
+        if selected_ids:
+            try:
+                self.qb_client.torrents_file_priority(
+                    torrent_hash=self.torrent_hash, file_ids=selected_ids, priority=7
+                )
+            except Exception:
+                pass
+        if other_ids:
+            try:
+                self.qb_client.torrents_file_priority(
+                    torrent_hash=self.torrent_hash, file_ids=other_ids, priority=0
+                )
+            except Exception:
+                pass
+
+    def _buffer_target_bytes(self) -> int:
+        """Compute startup buffer based on file size/container."""
+        if self.stream_file_size <= 0 or not self.stream_file_path:
+            return 0
+        _, ext = os.path.splitext(self.stream_file_path.lower())
+        base = 64 * 1024 * 1024 if ext == ".mkv" else 32 * 1024 * 1024
+        pct_target = int(self.stream_file_size * 0.02)
+        return min(max(base, pct_target), 256 * 1024 * 1024)
+
+    def _is_buffer_ready(self):
+        """Return whether selected file has enough sequentially downloaded data."""
+        if self.stream_file_index is None:
+            return False, 0, 0
+        required = self._buffer_target_bytes()
+        for item in self._torrent_files():
+            idx = self._file_index(item)
+            if idx == self.stream_file_index:
+                size = int(getattr(item, "size", 0) or 0)
+                progress = float(getattr(item, "progress", 0.0) or 0.0)
+                downloaded = int(size * progress)
+                return downloaded >= required, downloaded, required
+        return False, 0, required
     
     def stop(self):
         """Stop torrent streaming"""
         self.is_running = False
         if self.qb_client:
             try:
-                # Remove torrent from qBittorrent
-                torrents = self.qb_client.torrents_info()
-                if torrents:
-                    self.qb_client.torrents_delete(torrent_hashes=torrents[0].hash, delete_files=True)
-            except:
+                if self.torrent_hash:
+                    self.qb_client.torrents_delete(
+                        torrent_hashes=self.torrent_hash, delete_files=True
+                    )
+            except Exception:
                 pass
         if self.temp_dir and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir, ignore_errors=True)
@@ -1235,7 +1448,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.volume_amplification = 1.0
         self.base_volume = 1.0
         
-        # Set initial volume to 100%
+        # Initialize backend to neutral gain, then apply persisted user gain.
         self.audio_output.setVolume(1.0)
         self.media_player.setVideoOutput(self.video_widget)
         
@@ -1246,7 +1459,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.media_player.errorOccurred.connect(self.media_error)
         
         # Set initial volume
-        self.audio_output.setVolume(self.app_state.volume / 100.0)
+        self._apply_output_gain_from_state()
         self.controls.volume_slider.setValue(self.app_state.volume)
     
     def setup_shortcuts(self):
@@ -1395,14 +1608,14 @@ class VoxPlayerMainWindow(QMainWindow):
                     # Just recreate audio output to use default device
                     self.audio_output = QAudioOutput()
                     self.media_player.setAudioOutput(self.audio_output)
-                    self.audio_output.setVolume(self.app_state.volume / 100.0)
+                    self._apply_output_gain_from_state()
                     self.status_bar.showMessage("Audio device: Default (Auto-adapt)")
             else:
                 # Manual mode - for now just use default device
                 if hasattr(self, 'audio_output'):
                     self.audio_output = QAudioOutput()
                     self.media_player.setAudioOutput(self.audio_output)
-                    self.audio_output.setVolume(self.app_state.volume / 100.0)
+                    self._apply_output_gain_from_state()
                     self.status_bar.showMessage("Audio device: Manual selection")
                 
         except Exception as e:
@@ -1748,7 +1961,7 @@ For more information, visit the project repository.
                     # Recreate audio output to use default device
                     self.audio_output = QAudioOutput()
                     self.media_player.setAudioOutput(self.audio_output)
-                    self.audio_output.setVolume(self.app_state.volume / 100.0)
+                    self._apply_output_gain_from_state()
                     
                     # Update status bar
                     self.status_bar.showMessage("Audio device updated")
@@ -2145,35 +2358,32 @@ For more information, visit the project repository.
         """Toggle mute"""
         self.audio_output.setMuted(not self.audio_output.isMuted())
         self.controls.btn_mute.setText("🔇" if self.audio_output.isMuted() else "🔊")
+
+    def _apply_output_gain_from_state(self):
+        """Apply persisted 0..200 user volume as linear 0.0..2.0 software gain."""
+        gain = max(0.0, min(2.0, float(self.app_state.volume) / 100.0))
+        self.audio_output.setVolume(gain)
     
     def set_volume(self, volume):
-        """Set volume (0-200) with true amplification"""
-        # Clamp volume to 0-200 range
-        volume = max(0, min(200, volume))
-        
-        # Store the display volume
+        """Set volume (0-200) using linear software preamp gain."""
+        # User-facing 0..200 slider maps to 0.0..2.0 linear gain.
+        volume = max(0, min(200, int(volume)))
+        gain = max(0.0, min(2.0, volume / 100.0))
+
+        # Persist logical volume so keyboard/slider adjustments stay in sync.
         self.app_state.volume = volume
-        
-        if volume <= 100:
-            # Normal volume range (0-100%)
-            qt_volume = volume / 100.0
-            self.volume_amplification = 1.0
-            self.base_volume = qt_volume
-        else:
-            # Keep user-selected amplification factor and drive backend at max.
-            self.base_volume = 1.0
-            self.volume_amplification = volume / 100.0
-            qt_volume = 1.0
-        
-        # Set the actual volume
-        self.audio_output.setVolume(qt_volume)
-        
-        # Update volume label
+        self.base_volume = min(1.0, gain)
+        self.volume_amplification = gain
+
+        # Apply software gain directly to audio backend.
+        self._apply_output_gain_from_state()
+        self.controls.volume_label.setText(f"{volume}%")
+
         if volume > 100:
-            self.controls.volume_label.setText(f"{volume}%")
-            self.status_bar.showMessage(f"Volume: {volume}% (Amplified)", 2000)
-        else:
-            self.controls.volume_label.setText(f"{volume}%")
+            self.status_bar.showMessage(
+                f"Volume: {volume}% (Digital preamp, clipping/distortion may occur)",
+                2500,
+            )
     
     def adjust_volume(self, delta):
         """Adjust volume by delta"""

@@ -13,7 +13,7 @@ def main():
     print("🎬 Starting VoxPlayer...")
     
     # Set environment variables to suppress console output
-    os.environ['QT_LOGGING_RULES'] = 'qt.multimedia.ffmpeg.debug=false'
+    os.environ['QT_LOGGING_RULES'] = 'qt.multimedia.ffmpeg.debug=false;qt.core.qfuture.continuations=false'
     
     try:
         # Import and run the main application

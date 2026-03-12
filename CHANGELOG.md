@@ -48,6 +48,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 - Fixed duplicate imports in `app.py`
+- **Volume Amplification**: Implemented true digital pre-amp for 0-200% volume boost
+  - Direct sample multiplication (0.0-2.0x gain)
+  - Proper clipping handling and user warnings
+  - Consistent volume application across all audio output paths
+- **Torrent Streaming**: Enhanced sequential download and buffering
+  - Sequential piece downloading (0, 1, 2... n) for smooth playback
+  - Intelligent buffering thresholds (10MB MP4, 20MB MKV)
+  - File priority selection for optimal streaming
+  - Real-time playback while downloading
+  - qBittorrent API compatibility fixes
+- **CI/CD**: Resolved Windows Unicode encoding errors
+- **Code Quality**: Removed duplicate imports and improved error handling
 - Removed unused PyQt6 imports (QSize, QMimeData, QFont, QColor, QPixmap, QProgressBar, QComboBox, QCheckBox, QSpinBox, QColorDialog, QAudioDevice)
 - Fixed code formatting issues
 - Removed duplicate blank lines

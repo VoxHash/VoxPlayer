@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voxplayer"
+version = "1.0.1"
+description = "A modern multimedia player built with PyQt6"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "VoxHash", email = "voxhash@example.com"}
+]
+maintainers = [
+    {name = "VoxHash", email = "voxhash@example.com"}
+]
+keywords = [
+    "media player",
+    "video player", 
+    "audio player",
+    "PyQt6",
+    "multimedia",
+    "playlist",
+    "torrent streaming"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Multimedia :: Video :: Display",
+    "Topic :: Multimedia :: Sound/Audio :: Players",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "PyQt6>=6.0.0",
+    "requests>=2.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0.0",
+    "black>=21.0.0",
+    "flake8>=3.8.0",
+    "mypy>=0.800",
+]
+torrent = [
+    "qbittorrent-api>=0.4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/voxhash/voxplayer"
+Documentation = "https://github.com/voxhash/voxplayer#readme"
+Repository = "https://github.com/voxhash/voxplayer.git"
+"Bug Tracker" = "https://github.com/voxhash/voxplayer/issues"
+
+[project.scripts]
+voxplayer = "voxplayer.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["voxplayer*"]
+
+[tool.setuptools.package-data]
+voxplayer = ["*.ico", "*.png", "*.txt", "logo.png"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

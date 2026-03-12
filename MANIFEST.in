@@ -1,0 +1,14 @@
+include README.md
+include LICENSE
+include requirements.txt
+include version_info.txt
+include icon.ico
+include logo.png
+include *.md
+include *.txt
+include *.ico
+include *.png
+recursive-include voxplayer *.py
+recursive-include voxplayer *.txt
+recursive-include voxplayer *.ico
+recursive-include voxplayer *.png

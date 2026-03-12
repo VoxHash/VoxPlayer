@@ -112,28 +112,37 @@ class TorrentStreamer(QThread):
         """Initialize qBittorrent client"""
         try:
             from qbittorrentapi import Client
-            # Try to connect to qBittorrent Web UI (default: localhost:8080)
-            self.qb_client = Client(host='localhost:8080')
-            
-            # Check if qBittorrent is running
-            try:
-                version = self.qb_client.app.version()
-                if not version:
-                    raise Exception("qBittorrent is not running. Please start qBittorrent first.")
-                self.progress_updated.emit(10, f"Connected to qBittorrent v{version}")
-            except Exception as e:
-                # If we can't get version, try a different approach
-                self.qb_client.torrents_info()
-                self.progress_updated.emit(10, "Connected to qBittorrent")
-                
-        except ImportError:
-            self.error_occurred.emit("qBittorrent API not available. Please install: pip install qbittorrent-api")
-        except Exception as e:
-            self.error_occurred.emit(f"Failed to connect to qBittorrent: {str(e)}. Please ensure qBittorrent is running and Web UI is enabled.")
+            qb_host = os.getenv("QB_HOST", "localhost:8080")
+            qb_username = os.getenv("QB_USERNAME", "")
+            qb_password = os.getenv("QB_PASSWORD", "")
+
+            client_kwargs = {"host": qb_host}
+            if qb_username and qb_password:
+                client_kwargs["username"] = qb_username
+                client_kwargs["password"] = qb_password
+
+            # Connect to qBittorrent Web UI and verify availability.
+            self.qb_client = Client(**client_kwargs)
+            version = self.qb_client.app.version()
+            if not version:
+                raise RuntimeError("qBittorrent is not running. Please start qBittorrent first.")
+            self.progress_updated.emit(10, f"Connected to qBittorrent v{version}")
+
+        except ImportError as exc:
+            raise RuntimeError(
+                "qBittorrent API not available. Please install: pip install qbittorrent-api"
+            ) from exc
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to connect to qBittorrent at '{os.getenv('QB_HOST', 'localhost:8080')}'. "
+                "Please ensure qBittorrent is running, Web UI is enabled, and QB_USERNAME/QB_PASSWORD are set if auth is required."
+            ) from exc
     
     def _add_magnet_link(self):
         """Add magnet link to qBittorrent"""
         try:
+            if not self.qb_client:
+                raise RuntimeError("qBittorrent client is not initialized.")
             self.progress_updated.emit(20, "Adding magnet link...")
             
             # Add magnet link to qBittorrent
@@ -151,6 +160,8 @@ class TorrentStreamer(QThread):
     def _add_torrent_file(self):
         """Add torrent file to qBittorrent"""
         try:
+            if not self.qb_client:
+                raise RuntimeError("qBittorrent client is not initialized.")
             self.progress_updated.emit(20, "Adding torrent file...")
             
             # Read torrent file
@@ -255,12 +266,19 @@ class UpdateChecker(QThread):
     def run(self):
         """Check for updates"""
         try:
-            response = requests.get(self.github_api, timeout=10)
+            response = requests.get(
+                self.github_api,
+                timeout=10,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "VoxPlayer-UpdateChecker",
+                },
+            )
             if response.status_code == 200:
                 release_data = response.json()
                 latest_version = release_data.get("tag_name", "").lstrip("v")
-                
-                if self._is_newer_version(latest_version, self.current_version):
+
+                if latest_version and self._is_newer_version(latest_version, self.current_version):
                     update_info = {
                         "version": latest_version,
                         "download_url": release_data.get("html_url", ""),
@@ -2228,13 +2246,10 @@ For more information, visit the project repository.
             self.volume_amplification = 1.0
             self.base_volume = qt_volume
         else:
-            # Amplified range (100-200%) - implement true amplification
-            self.base_volume = 1.0  # Set Qt volume to maximum
-            self.volume_amplification = volume / 100.0  # Store amplification factor
-            
-            # Apply amplification by adjusting the base volume
-            # This creates a true amplification effect
-            qt_volume = min(1.0, self.base_volume * (self.volume_amplification ** 0.5))
+            # Keep user-selected amplification factor and drive backend at max.
+            self.base_volume = 1.0
+            self.volume_amplification = volume / 100.0
+            qt_volume = 1.0
         
         # Set the actual volume
         self.audio_output.setVolume(qt_volume)
@@ -2248,7 +2263,8 @@ For more information, visit the project repository.
     
     def adjust_volume(self, delta):
         """Adjust volume by delta"""
-        current_volume = self.audio_output.volume() * 100
+        # Use the logical app volume so 101-200% amplification is preserved.
+        current_volume = int(self.app_state.volume)
         new_volume = max(0, min(200, current_volume + delta))
         self.controls.volume_slider.setValue(int(new_volume))
         self.set_volume(int(new_volume))
@@ -2487,7 +2503,7 @@ Position: {self.media_player.position() // 1000}s
                          "VoxPlayer - Modern Multimedia Player\n\n"
                          "Built with PyQt6\n"
                          "Supports most video and audio formats\n\n"
-                         "Version 1.0.0")
+                         f"Version {self.current_version}")
     
     def closeEvent(self, event):
         """Handle application close"""

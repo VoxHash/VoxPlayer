@@ -7,6 +7,10 @@ Simple test to verify VoxPlayer functionality
 import sys
 import os
 
+# Set headless mode for CI environments
+if 'QT_QPA_PLATFORM' not in os.environ:
+    os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
 def test_imports():
     """Test that all required modules can be imported"""
     print("🧪 Testing imports...")
@@ -53,7 +57,12 @@ def test_app_creation():
     print("🧪 Testing app creation...")
     
     try:
-        from app import VoxPlayerMainWindow
+        # Try importing from voxplayer package first, then fallback to app.py
+        try:
+            from voxplayer.app import VoxPlayerMainWindow
+        except ImportError:
+            from app import VoxPlayerMainWindow
+        
         from PyQt6.QtWidgets import QApplication
         print("✅ VoxPlayerMainWindow class imported successfully")
         
@@ -78,6 +87,8 @@ def test_app_creation():
         
     except Exception as e:
         print(f"❌ App creation failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def test_torrent_classes():
@@ -85,7 +96,12 @@ def test_torrent_classes():
     print("🧪 Testing torrent classes...")
     
     try:
-        from app import TorrentStreamer, UpdateChecker
+        # Try importing from voxplayer package first, then fallback to app.py
+        try:
+            from voxplayer.app import TorrentStreamer, UpdateChecker
+        except ImportError:
+            from app import TorrentStreamer, UpdateChecker
+        
         print("✅ TorrentStreamer class imported successfully")
         print("✅ UpdateChecker class imported successfully")
         
@@ -101,6 +117,8 @@ def test_torrent_classes():
         
     except Exception as e:
         print(f"❌ Torrent classes test failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def main():

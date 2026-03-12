@@ -7,31 +7,23 @@ Clean implementation without signal issues
 import sys
 import os
 import tempfile
-import threading
-import hashlib
-import urllib.parse
-import subprocess
 import shutil
 import requests
 import webbrowser
+import json
+import re
+import time
+from dataclasses import dataclass
+from typing import List, Optional, Dict, Any
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QPushButton, QSlider, QLabel, 
                             QFileDialog, QDockWidget, QListWidget, QListWidgetItem,
                             QMenuBar, QMenu, QStatusBar, QMessageBox, QInputDialog,
-                            QProgressBar, QComboBox, QCheckBox, QSpinBox, QColorDialog,
                             QLineEdit)
-from PyQt6.QtCore import Qt, QTimer, QSettings, QSize, QUrl, QMimeData, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QAudioDevice
-from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QFont, QColor, QPixmap, QIcon
-import json
-import re
-from dataclasses import dataclass, asdict
-from typing import List, Optional, Dict, Any
-import tempfile
-import time
-import os
-import shutil
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QIcon, QPixmap
 
 # Data classes for state management
 @dataclass

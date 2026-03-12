@@ -87,8 +87,9 @@ jobs:
     - name: Test imports
       env:
         QT_QPA_PLATFORM: offscreen
+        PYTHONIOENCODING: utf-8
       run: |
-        python -c "import sys; sys.path.insert(0, '.'); import os; os.environ['QT_QPA_PLATFORM'] = 'offscreen'; from app import VoxPlayerMainWindow, main; print('✓ Imports successful')" || python -c "import sys; sys.path.insert(0, '.'); import os; os.environ['QT_QPA_PLATFORM'] = 'offscreen'; from voxplayer.app import VoxPlayerMainWindow, main; print('✓ Imports successful')"
+        python -c "import sys; sys.path.insert(0, '.'); import os; os.environ['QT_QPA_PLATFORM'] = 'offscreen'; from app import VoxPlayerMainWindow, main; print('[OK] Imports successful')" || python -c "import sys; sys.path.insert(0, '.'); import os; os.environ['QT_QPA_PLATFORM'] = 'offscreen'; from voxplayer.app import VoxPlayerMainWindow, main; print('[OK] Imports successful')"
     
     - name: Syntax check
       run: |

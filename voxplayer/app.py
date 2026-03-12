@@ -2506,7 +2506,6 @@ Position: {self.media_player.position() // 1000}s
 
 def main():
     # Suppress verbose console output
-    import os
     os.environ['QT_LOGGING_RULES'] = 'qt.multimedia.ffmpeg.debug=false'
     
     app = QApplication(sys.argv)

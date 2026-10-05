@@ -115,17 +115,34 @@ class TorrentStreamer(QThread):
             qb_username = os.getenv("QB_USERNAME", "")
             qb_password = os.getenv("QB_PASSWORD", "")
 
+            host_only = qb_host.split(":")[0].strip().lower().strip("[]")
+            is_loopback = host_only in {"localhost", "127.0.0.1", "::1"}
+
+            def _connect(**client_kwargs):
+                client = Client(**client_kwargs)
+                app_version_attr = client.app.version
+                version = app_version_attr() if callable(app_version_attr) else app_version_attr
+                if not version:
+                    raise RuntimeError("qBittorrent is not running. Please start qBittorrent first.")
+                return client, str(version).lstrip("vV")
+
+            # Prefer unauthenticated access on loopback when Web UI localhost bypass is enabled.
+            # Sending a wrong password still counts as a failed login and can ban 127.0.0.1.
+            if is_loopback:
+                try:
+                    self.qb_client, version = _connect(host=qb_host)
+                    self.progress_updated.emit(10, f"Connected to qBittorrent v{version}")
+                    return
+                except Exception:
+                    if not (qb_username and qb_password):
+                        raise
+
             client_kwargs = {"host": qb_host}
             if qb_username and qb_password:
                 client_kwargs["username"] = qb_username
                 client_kwargs["password"] = qb_password
 
-            # Connect to qBittorrent Web UI and verify availability.
-            self.qb_client = Client(**client_kwargs)
-            app_version_attr = self.qb_client.app.version
-            version = app_version_attr() if callable(app_version_attr) else app_version_attr
-            if not version:
-                raise RuntimeError("qBittorrent is not running. Please start qBittorrent first.")
+            self.qb_client, version = _connect(**client_kwargs)
             self.progress_updated.emit(10, f"Connected to qBittorrent v{version}")
 
         except ImportError as exc:
@@ -162,7 +179,7 @@ class TorrentStreamer(QThread):
                 add_kwargs.pop("is_first_last_piece_prio", None)
                 torrent_info = self.qb_client.torrents_add(**add_kwargs)
 
-            if isinstance(torrent_info, str) and torrent_info.startswith("Ok"):
+            if self._torrent_add_succeeded(torrent_info):
                 self.progress_updated.emit(30, "Magnet link added successfully")
                 self._monitor_torrent()
             else:
@@ -198,7 +215,7 @@ class TorrentStreamer(QThread):
                 add_kwargs.pop("is_first_last_piece_prio", None)
                 torrent_info = self.qb_client.torrents_add(**add_kwargs)
 
-            if isinstance(torrent_info, str) and torrent_info.startswith("Ok"):
+            if self._torrent_add_succeeded(torrent_info):
                 self.progress_updated.emit(30, "Torrent file added successfully")
                 self._monitor_torrent()
             else:
@@ -206,6 +223,19 @@ class TorrentStreamer(QThread):
 
         except Exception as e:
             self.error_occurred.emit(f"Error adding torrent file: {str(e)}")
+
+    def _torrent_add_succeeded(self, torrent_info) -> bool:
+        """True when torrents_add reports success across qbittorrent-api versions."""
+        if isinstance(torrent_info, str):
+            return torrent_info.lower().startswith("ok")
+        success_count = getattr(torrent_info, "success_count", None)
+        if success_count is not None:
+            return int(success_count) > 0
+        added_ids = getattr(torrent_info, "added_torrent_ids", None)
+        if added_ids is not None:
+            return len(added_ids) > 0
+        # Legacy clients may return None on success.
+        return torrent_info is None
 
     def _monitor_torrent(self):
         """Monitor torrent progress and emit media file once buffer is ready."""

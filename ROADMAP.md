@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (v1.0.2). Goals are scoped to what the current PyQt6 + qBittorrent architecture can realistically deliver.
+Status as of October 2026 (v1.0.3). Goals are scoped to what the current PyQt6 + qBittorrent architecture can realistically deliver.
 
 ## Now (Q4 2026)
 

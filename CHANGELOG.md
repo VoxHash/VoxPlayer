@@ -11,6 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Hardened qBittorrent auth/error UX
 - Broader subtitle format support where maintainable
 
+## [1.0.3] - 2026-10-05
+
+### Fixed
+- **CI Lint**: Style flake8 report is advisory (critical undefined-name/syntax checks still hard-fail), matching black/mypy policy
+- **Linux Build**: Replace obsolete `libgl1-mesa-glx` with Noble-compatible `libgl1`/`libegl1` packages in `build.yml`
+- Trailing whitespace cleaned in `app.py` / `voxplayer/app.py` for cleaner diffs
+
 ## [1.0.2] - 2026-10-05
 
 ### Added

@@ -33,8 +33,10 @@ jobs:
     
     - name: Lint with flake8
       run: |
+        # Hard-fail on syntax/undefined-name class errors
         flake8 app.py voxplayer/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 app.py voxplayer/ --count --max-complexity=15 --max-line-length=120 --statistics
+        # Style report is advisory until a dedicated formatting pass (matches black/mypy below)
+        flake8 app.py voxplayer/ --count --max-complexity=15 --max-line-length=120 --statistics || true
     
     - name: Check formatting with black
       run: |

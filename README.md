@@ -1,6 +1,6 @@
 # VoxPlayer
 
-[![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)](https://github.com/VoxHash/VoxPlayer)
+[![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)](https://github.com/VoxHash/VoxPlayer)
 [![License](https://img.shields.io/github/license/VoxHash/VoxPlayer)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://python.org/)
 [![PyQt6](https://img.shields.io/badge/pyqt6-6.0+-blue.svg)](https://pypi.org/project/PyQt6/)

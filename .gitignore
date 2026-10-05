@@ -416,6 +416,10 @@ public
 *.sln
 *.sw?
 
+# Workstation dump / local scratch copies (do not commit)
+*_from-workstation-*
+*_from-workstation-*.*
+
 # VoxPlayer specific
 *.voxplayer
 *.vpl

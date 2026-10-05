@@ -7,11 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Enhanced format support (HEVC, AV1, Opus)
-- Audio equalizer with presets
 - Playlist shuffle and repeat modes
-- Plugin system architecture
-- Cloud storage integration
+- Hardened qBittorrent auth/error UX
+- Broader subtitle format support where maintainable
+
+## [1.0.2] - 2026-10-05
+
+### Added
+- Complete documentation kit under `docs/` (getting started, install, configuration, usage, CLI, API, architecture, troubleshooting, FAQ, examples)
+- GitHub issue templates (bug, feature, docs) and pull request template
+
+### Changed
+- README and ROADMAP aligned with current product state (October 2026)
+- Contact metadata standardized to `contact@voxhash.dev` / VoxHash Technologies
+- `.gitignore` expanded for workstation scratch copies and common local junk
+
+### Removed
+- `DEVELOPMENT_GOALS.md` (superseded by `ROADMAP.md` and the docs kit)
+
+### Fixed
+- Support/docs links that pointed at a missing `docs/` tree
 
 ## [1.0.1] - 2026-03-12
 

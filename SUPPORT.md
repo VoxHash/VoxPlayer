@@ -2,7 +2,7 @@
 
 ## Getting Help
 
-- **Open an issue**: Use the appropriate template on [GitHub Issues](https://github.com/voxhash/voxplayer/issues)
+- **Open an issue**: Use the appropriate template on [GitHub Issues](https://github.com/VoxHash/VoxPlayer/issues)
 - **Check documentation**: See [README.md](README.md) and [docs/](docs/) for guides
 - **FAQ**: Check [docs/faq.md](docs/faq.md) for common questions
 - **Contact**: Email contact@voxhash.dev

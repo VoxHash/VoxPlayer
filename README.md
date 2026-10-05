@@ -1,189 +1,176 @@
 # VoxPlayer
 
-[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](https://github.com/voxhash/voxplayer)
-[![License](https://img.shields.io/github/license/voxhash/voxplayer)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)](https://github.com/VoxHash/VoxPlayer)
+[![License](https://img.shields.io/github/license/VoxHash/VoxPlayer)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://python.org/)
-[![PyQt6](https://img.shields.io/badge/pyqt6-6.0+-blue.svg)](https://pypi.org/project/PyQt6/)]
+[![PyQt6](https://img.shields.io/badge/pyqt6-6.0+-blue.svg)](https://pypi.org/project/PyQt6/)
 
 > A modern, ultra-compact media player for Windows, macOS, and Linux with professional file association support. Built with PyQt6 and designed for simplicity and performance.
 
-## ✨ Features
+Maintained by **VoxHash Technologies** · contact@voxhash.dev
+
+## Features
 
 - **Universal Format Support**: MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MP3, FLAC, WAV, OGG, M4A, AAC, WMA
 - **Ultra-Compact Design**: Minimalist interface with maximum functionality
 - **True Volume Amplification**: Up to 200% volume boost for quiet media
 - **Professional File Associations**: Double-click any media file to open with VoxPlayer
 - **Advanced Playlist Management**: Smart playlist behavior with search, filtering, and import/export
-- **Torrent Streaming**: qBittorrent integration for streaming media
+- **Torrent Streaming**: qBittorrent Web UI integration for streaming media
 - **Auto-Update System**: GitHub-based update checking
 - **Cross-Platform**: Windows, macOS, and Linux support
 
-## 🧭 Table of Contents
+## Table of Contents
 
-- [Quick Start](#-quick-start)
-- [Installation](#-installation)
-- [Usage](#-usage)
-- [Configuration](#-configuration)
-- [Examples](#-examples)
-- [Roadmap](#-roadmap)
-- [Contributing](#-contributing)
-- [License](#-license)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# 1) Install dependencies
+git clone https://github.com/VoxHash/VoxPlayer.git
+cd VoxPlayer
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-
-# 2) Run VoxPlayer
-python app.py
-
-# Or with a file
+python test.py
 python app.py "path/to/video.mp4"
 ```
 
-## 💿 Installation
+## Installation
 
 ### Method 1: Download Executable (Recommended)
 
 **Windows:**
-1. Download `VoxPlayer.exe` from [Releases](https://github.com/voxhash/voxplayer/releases)
+1. Download `VoxPlayer.exe` from [Releases](https://github.com/VoxHash/VoxPlayer/releases)
 2. Run `VoxPlayer.exe` to start
 3. Run `register_file_associations.bat` as Administrator for file associations
 
-**macOS:**
-1. Download `VoxPlayer-1.0.0-macOS.dmg` from [Releases](https://github.com/voxhash/voxplayer/releases)
-2. Install by dragging VoxPlayer.app to Applications
-3. Launch from Applications folder
+**macOS / Linux:** download the matching asset from [Releases](https://github.com/VoxHash/VoxPlayer/releases) when published for your platform.
 
-**Linux:**
-- **Debian/Ubuntu**: `sudo dpkg -i voxplayer_1.0.0_amd64.deb`
-- **Fedora/CentOS/RHEL**: `sudo dnf install voxplayer-1.0.0-1.x86_64.rpm`
-- **Arch Linux**: `sudo pacman -U voxplayer-1.0.0-1-x86_64.pkg.tar.zst`
-
-### Method 2: Python Installation
+### Method 2: Python (source)
 
 ```bash
-git clone https://github.com/voxhash/voxplayer.git
-cd voxplayer
+git clone https://github.com/VoxHash/VoxPlayer.git
+cd VoxPlayer
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
 ```
 
-### Method 3: Source Distribution
+Torrent extras:
 
 ```bash
-pip install VoxPlayer-1.0.0.tar.gz
+pip install -e ".[torrent]"
+```
+
+### Method 3: Built wheel
+
+```bash
+pip install build
+python -m build
+pip install dist/voxplayer-*.whl
 voxplayer
 ```
 
-## 🛠 Usage
+### System dependencies
 
-### Opening Media Files
+| Dependency | Required? | Notes |
+|------------|-----------|-------|
+| Python 3.8+ (3.10–3.12 recommended) | Yes | Runtime |
+| PyQt6 | Yes | Installed via `requirements.txt` |
+| FFmpeg (Qt backend / system) | Recommended | Playback codecs; `ffmpeg` CLI useful for debugging |
+| qBittorrent Web UI | Optional | Torrent streaming only |
+| VLC | Optional | Useful to compare problem files |
 
-- **Double-Click**: Set up file associations, then double-click any media file
-- **Command Line**: `python app.py "path/to/video.mp4"`
-- **Drag & Drop**: Drag files/folders onto VoxPlayer window
+## Usage
 
-### Playlist Management
+### Opening media
 
-- **Add Files**: File → Open File(s) or Open Folder, or drag & drop
-- **Search**: Type in search box to filter playlist
-- **Remove Items**: Click X button next to any item
-- **Import/Export**: File → Import/Export Playlist (M3U, PLS, XSPF)
+- **Double-click** after file associations are registered
+- **Command line:** `python app.py "path/to/video.mp4"`
+- **Drag & drop** files or folders onto the window
 
-### Keyboard Shortcuts
+### Playlist
+
+- Add via File menu or drag & drop
+- Search/filter in the playlist dock
+- Import/export M3U, PLS, XSPF
+
+### Keyboard shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | `Space` | Play/Pause |
-| `Left/Right` | Seek backward/forward |
-| `Up/Down` | Volume up/down |
+| `Left`/`Right` | Seek |
+| `Up`/`Down` | Volume |
 | `M` | Mute/Unmute |
-| `F11` | Toggle fullscreen |
+| `F11` | Fullscreen |
 | `Ctrl+O` | Open file(s) |
 | `Ctrl+L` | Toggle playlist |
 | `Ctrl+Q` | Quit |
 
-## ⚙️ Configuration
-
-### Settings Menu
-
-Access via **File → Settings** or `Ctrl+,`:
+## Configuration
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Audio Output | Default or Manual device selection | Default |
-| Volume | Master volume level | 50% |
-| Theme | Dark theme (default) | Dark |
-| Auto-Update | Enable/disable update checking | Enabled |
-| Update Channel | Stable or Beta updates | Stable |
+| Audio Output | Default or manual device | Default |
+| Volume | Master volume | 50% |
+| Theme | UI theme | Dark |
+| Auto-Update | GitHub update checks | Enabled |
+| Update Channel | Stable or Beta | Stable |
 
-### File Associations
+### Environment variables (torrent streaming)
 
-- **Register**: `register_file_associations.bat` (run as Administrator)
-- **Unregister**: `unregister_file_associations.bat`
-- **Test**: `test_file_associations.bat`
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `QB_HOST` | `localhost:8080` | qBittorrent Web UI host:port |
+| `QB_USERNAME` | empty | Web UI username |
+| `QB_PASSWORD` | empty | Web UI password (never commit) |
+| `QT_QPA_PLATFORM` | unset | Use `offscreen` for headless tests |
 
-## 📚 Examples
+See [docs/configuration.md](docs/configuration.md) for details.
 
-### Basic Usage
+## Documentation
+
+- [docs/index.md](docs/index.md) — documentation home
+- [docs/quick-start.md](docs/quick-start.md)
+- [docs/installation.md](docs/installation.md)
+- [docs/usage.md](docs/usage.md)
+- [docs/troubleshooting.md](docs/troubleshooting.md)
+- [CHANGELOG.md](CHANGELOG.md)
+- [ROADMAP.md](ROADMAP.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [SECURITY.md](SECURITY.md)
+- [SUPPORT.md](SUPPORT.md)
+
+## Roadmap
+
+Planned milestones live in [ROADMAP.md](ROADMAP.md).
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and use the PR template. Run:
 
 ```bash
-# Play a video file
-python app.py "movie.mp4"
-
-# Play an audio file
-python app.py "song.mp3"
+QT_QPA_PLATFORM=offscreen python test.py
 ```
 
-### Advanced Usage
+## Security
 
-- Drag multiple files/folders to create a playlist
-- Use search to filter large playlists
-- Export playlists for backup or sharing
-- Use keyboard shortcuts for efficient control
+Report vulnerabilities via [SECURITY.md](SECURITY.md) or email contact@voxhash.dev.
 
-## 🗺 Roadmap
+## License
 
-Planned milestones live in [ROADMAP.md](ROADMAP.md). For changes, see [CHANGELOG.md](CHANGELOG.md).
-
-**Upcoming Features:**
-- Enhanced format support (HEVC, AV1, Opus)
-- Audio equalizer with presets
-- Playlist shuffle and repeat modes
-- Plugin system architecture
-- Cloud storage integration
-
-## 🤝 Contributing
-
-We welcome PRs! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and follow the PR template.
-
-## 🔒 Security
-
-Please report vulnerabilities via [SECURITY.md](SECURITY.md).
-
-## 📄 License
-
-This project is licensed under the terms in [LICENSE](LICENSE).
-
-## 📚 Documentation
-
-- **[Changelog](CHANGELOG.md)** - Version history
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
-- **[Roadmap](ROADMAP.md)** - Development roadmap
-- **[Development Goals](DEVELOPMENT_GOALS.md)** - Technical goals
-- **[Support](SUPPORT.md)** - Getting help
-
-## 🎉 Acknowledgments
-
-- **PyQt6** - Cross-platform GUI framework
-- **FFmpeg** - Media processing backend
-- **qBittorrent** - Torrent streaming integration
-- **Community** - Feedback and contributions
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Made with ❤️ by VoxHash**
-
-*VoxPlayer - Professional media playback made simple!* 🎬✨
+Made by VoxHash Technologies

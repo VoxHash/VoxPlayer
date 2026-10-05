@@ -10,15 +10,18 @@ Please read and follow our [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ```bash
 # Clone
-git clone https://github.com/voxhash/voxplayer.git
-cd voxplayer
+git clone https://github.com/VoxHash/VoxPlayer.git
+cd VoxPlayer
 
 # Install deps
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 # Run tests
-python test.py
+QT_QPA_PLATFORM=offscreen python test.py
 ```
+
 
 ## Branching & Commit Style
 

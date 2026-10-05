@@ -1,68 +1,48 @@
 # Roadmap — VoxPlayer
 
-## Q1 2026
+Status as of October 2026 (v1.0.2). Goals are scoped to what the current PyQt6 + qBittorrent architecture can realistically deliver.
 
-### Enhanced Features
-- Additional format support (HEVC, AV1, Opus)
-- Audio equalizer with presets
-- Playlist shuffle and repeat modes
-- Theme system improvements
+## Now (Q4 2026)
 
-### Technical Improvements
-- Comprehensive testing suite
-- Code coverage reporting
-- Performance optimizations
-- Type hints throughout
+### Stability & packaging
+- Keep CI green across Ubuntu, Windows, and macOS for Python 3.10–3.12
+- Publish consistent release assets when build workflows produce them
+- Harden qBittorrent auth/error messaging (banned IP, wrong credentials)
 
-## Q2 2026
+### Player fundamentals
+- Playlist shuffle / repeat
+- Clearer unsupported-format and missing-file messaging in the UI
+- Keep volume amplification and resume positions reliable
 
-### Advanced Features
-- Plugin system architecture
-- Cloud storage integration (Google Drive, OneDrive, Dropbox)
-- Advanced streaming features
-- Media processing tools
+### Documentation & contributor UX
+- Keep the docs kit accurate against real install/run paths
+- Expand automated tests beyond smoke imports when feasible in headless CI
 
-### Platform Expansion
-- Enhanced cross-platform support
-- Platform-specific optimizations
+## Next (H1 2027)
 
-## Q3 2026
+### Playback quality
+- Broader codec coverage where Qt Multimedia / FFmpeg allows (HEVC, AV1, Opus as available)
+- Subtitle format expansion (ASS/SSA/VTT) if maintainable without a second engine
+- Optional light/dark theme polish and accessibility contrast pass
 
-### Mobile Development
-- Mobile companion app (iOS and Android)
-- Remote control functionality
-- Media library sync
-- Offline playback
+### Torrent streaming
+- Safer defaults for sequential download and buffer thresholds
+- Better multi-file torrent file picker UX
+- Documented first-run Web UI setup wizard copy (no embedded secrets)
 
-### Advanced UI
-- Customizable interface layout
-- Advanced settings panel
-- Quick access toolbar
+## Later (H2 2027+)
 
-## Q4 2026
+### Extensibility
+- Small plugin hooks only if they stay optional and do not bloat the core player
+- Media library / recent-files improvements
 
-### Professional Features
-- Enterprise features
-- Advanced analytics
-- Professional tools
-- Developer SDK
+### Stretch (not committed)
+- Mobile companion / remote control
+- Cloud storage browsers
+- Marketplace-style plugin distribution
 
-### Ecosystem
-- Plugin marketplace
-- Community features
-- Developer resources
-
-## Future
-
-### Ideas & Stretch Goals
-- Web3 integration
-- Decentralized media storage
-- NFT media support
-- IPFS integration
-- Decentralized streaming platform
+Out of scope for the foreseeable roadmap: Web3, NFT, or “AI-powered” playback claims.
 
 ---
 
-**Made with ❤️ by VoxHash**
-
-*VoxPlayer is ready for the journey ahead!* 🎬✨
+VoxHash Technologies · contact@voxhash.dev

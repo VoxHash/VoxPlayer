@@ -2720,7 +2720,7 @@ def main():
     
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.0.1")
+    app.setApplicationVersion("1.0.2")
     
     # Set application properties
     app.setOrganizationName("VoxHash")

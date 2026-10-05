@@ -18,17 +18,17 @@ def read_requirements():
 
 setup(
     name="voxplayer",
-    version="1.0.1",
-    author="VoxHash",
-    author_email="voxhash@example.com",
+    version="1.0.2",
+    author="VoxHash Technologies",
+    author_email="contact@voxhash.dev",
     description="A modern multimedia player built with PyQt6",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
-    url="https://github.com/voxhash/voxplayer",
+    url="https://github.com/VoxHash/VoxPlayer",
     project_urls={
-        "Bug Reports": "https://github.com/voxhash/voxplayer/issues",
-        "Source": "https://github.com/voxhash/voxplayer",
-        "Documentation": "https://github.com/voxhash/voxplayer#readme",
+        "Bug Reports": "https://github.com/VoxHash/VoxPlayer/issues",
+        "Source": "https://github.com/VoxHash/VoxPlayer",
+        "Documentation": "https://github.com/VoxHash/VoxPlayer#readme",
     },
     packages=find_packages(),
     classifiers=[

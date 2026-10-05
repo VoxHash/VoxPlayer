@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxplayer"
-version = "1.0.1"
+version = "1.0.2"
 description = "A modern multimedia player built with PyQt6"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "VoxHash", email = "voxhash@example.com"}
+    {name = "VoxHash Technologies", email = "contact@voxhash.dev"}
 ]
 maintainers = [
-    {name = "VoxHash", email = "voxhash@example.com"}
+    {name = "VoxHash Technologies", email = "contact@voxhash.dev"}
 ]
 keywords = [
     "media player",
@@ -57,10 +57,10 @@ torrent = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/voxhash/voxplayer"
-Documentation = "https://github.com/voxhash/voxplayer#readme"
-Repository = "https://github.com/voxhash/voxplayer.git"
-"Bug Tracker" = "https://github.com/voxhash/voxplayer/issues"
+Homepage = "https://github.com/VoxHash/VoxPlayer"
+Documentation = "https://github.com/VoxHash/VoxPlayer#readme"
+Repository = "https://github.com/VoxHash/VoxPlayer.git"
+"Bug Tracker" = "https://github.com/VoxHash/VoxPlayer/issues"
 
 [project.scripts]
 voxplayer = "voxplayer.app:main"

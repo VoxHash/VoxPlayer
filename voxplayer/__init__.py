@@ -15,12 +15,12 @@ A professional media player with advanced features including:
 
 Author: VoxHash
 License: MIT
-Version: 1.0.1
+Version: 1.0.2
 """
 
-__version__ = "1.0.1"
-__author__ = "VoxHash"
-__email__ = "voxhash@example.com"
+__version__ = "1.0.2"
+__author__ = "VoxHash Technologies"
+__email__ = "contact@voxhash.dev"
 __license__ = "MIT"
 __description__ = "A modern multimedia player built with PyQt6"
 

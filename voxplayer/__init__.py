@@ -15,10 +15,10 @@ A professional media player with advanced features including:
 
 Author: VoxHash
 License: MIT
-Version: 1.0.3
+Version: 1.0.4
 """
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

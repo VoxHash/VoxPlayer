@@ -8,8 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Playlist shuffle and repeat modes
-- Hardened qBittorrent auth/error UX
+- Clearer qBittorrent auth/error messaging in the UI
 - Broader subtitle format support where maintainable
+
+## [1.0.4] - 2026-10-05
+
+### Fixed
+- **qBittorrent localhost**: Prefer unauthenticated loopback connects so a wrong `QB_PASSWORD` no longer triggers WebUI IP bans on `127.0.0.1`
+- **Torrent add**: Treat newer `TorrentsAddedMetadata` WebAPI success responses as a successful add
 
 ## [1.0.3] - 2026-10-05
 

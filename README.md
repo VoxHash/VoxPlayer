@@ -1,6 +1,7 @@
 # VoxPlayer
 
-[![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)](https://github.com/VoxHash/VoxPlayer)
+[![PyPI](https://img.shields.io/pypi/v/voxplayer.svg)](https://pypi.org/project/voxplayer/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/voxplayer.svg)](https://pypi.org/project/voxplayer/)
 [![License](https://img.shields.io/github/license/VoxHash/VoxPlayer)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://python.org/)
 [![PyQt6](https://img.shields.io/badge/pyqt6-6.0+-blue.svg)](https://pypi.org/project/PyQt6/)
@@ -8,6 +9,11 @@
 > A modern, ultra-compact media player for Windows, macOS, and Linux with professional file association support. Built with PyQt6 and designed for simplicity and performance.
 
 Maintained by **VoxHash Technologies** · contact@voxhash.dev
+
+```bash
+pip install voxplayer
+voxplayer
+```
 
 ## Features
 
@@ -34,6 +40,45 @@ Maintained by **VoxHash Technologies** · contact@voxhash.dev
 ## Quick Start
 
 ```bash
+pip install voxplayer
+voxplayer "path/to/video.mp4"
+```
+
+Optional torrent streaming extras:
+
+```bash
+pip install "voxplayer[torrent]"
+```
+
+## Installation
+
+### Method 1: PyPI (recommended)
+
+```bash
+pip install voxplayer
+voxplayer
+```
+
+With torrent support:
+
+```bash
+pip install "voxplayer[torrent]"
+```
+
+Package page: [https://pypi.org/project/voxplayer/](https://pypi.org/project/voxplayer/)
+
+### Method 2: Download Executable
+
+**Windows:**
+1. Download `VoxPlayer.exe` from [Releases](https://github.com/VoxHash/VoxPlayer/releases)
+2. Run `VoxPlayer.exe` to start
+3. Run `register_file_associations.bat` as Administrator for file associations
+
+**macOS / Linux:** download the matching asset from [Releases](https://github.com/VoxHash/VoxPlayer/releases) when published for your platform.
+
+### Method 3: Python (source)
+
+```bash
 git clone https://github.com/VoxHash/VoxPlayer.git
 cd VoxPlayer
 python3 -m venv .venv
@@ -43,35 +88,13 @@ python test.py
 python app.py "path/to/video.mp4"
 ```
 
-## Installation
-
-### Method 1: Download Executable (Recommended)
-
-**Windows:**
-1. Download `VoxPlayer.exe` from [Releases](https://github.com/VoxHash/VoxPlayer/releases)
-2. Run `VoxPlayer.exe` to start
-3. Run `register_file_associations.bat` as Administrator for file associations
-
-**macOS / Linux:** download the matching asset from [Releases](https://github.com/VoxHash/VoxPlayer/releases) when published for your platform.
-
-### Method 2: Python (source)
-
-```bash
-git clone https://github.com/VoxHash/VoxPlayer.git
-cd VoxPlayer
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python app.py
-```
-
-Torrent extras:
+Torrent extras from a clone:
 
 ```bash
 pip install -e ".[torrent]"
 ```
 
-### Method 3: Built wheel
+### Method 4: Built wheel (from source)
 
 ```bash
 pip install build

@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [1.0.4] - 2026-10-05
 
+### Added
+- **PyPI**: Published `voxplayer` 1.0.4 to [PyPI](https://pypi.org/project/voxplayer/) (`pip install voxplayer`)
+- README PyPI badges and install path at the top of the project page
+
 ### Fixed
 - **qBittorrent localhost**: Prefer unauthenticated loopback connects so a wrong `QB_PASSWORD` no longer triggers WebUI IP bans on `127.0.0.1`
 - **Torrent add**: Treat newer `TorrentsAddedMetadata` WebAPI success responses as a successful add

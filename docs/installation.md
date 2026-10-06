@@ -1,5 +1,20 @@
 # Installation
 
+## Method 1: PyPI (recommended)
+
+```bash
+pip install voxplayer
+voxplayer
+```
+
+Optional torrent streaming extras:
+
+```bash
+pip install "voxplayer[torrent]"
+```
+
+Package: [https://pypi.org/project/voxplayer/](https://pypi.org/project/voxplayer/)
+
 ## System dependencies
 
 | Dependency | Required? | Purpose |
@@ -8,11 +23,11 @@
 | PyQt6 / Qt Multimedia + FFmpeg backend | Yes (via pip) | UI and playback |
 | `ffmpeg` | Recommended | Media inspection / platform codec support |
 | qBittorrent + Web UI | Optional | Torrent streaming |
-| `qbittorrent-api` | Optional | Python client for Web UI (`pip install qbittorrent-api` or `pip install .[torrent]`) |
+| `qbittorrent-api` | Optional | Python client for Web UI (`pip install "voxplayer[torrent]"`) |
 
 On Debian/Ubuntu CI images, PyQt6 also needs OpenGL/EGL/XKB packages (see `.github/workflows/ci.yml`).
 
-## Method 1: From source (development)
+## Method 2: From source (development)
 
 ```bash
 git clone https://github.com/VoxHash/VoxPlayer.git
@@ -29,11 +44,11 @@ Install torrent extras:
 pip install -e ".[torrent]"
 ```
 
-## Method 2: GitHub Releases
+## Method 3: GitHub Releases
 
 Download platform binaries from [Releases](https://github.com/VoxHash/VoxPlayer/releases) when published for your OS.
 
-## Method 3: Python package build
+## Method 4: Python package build
 
 ```bash
 pip install build

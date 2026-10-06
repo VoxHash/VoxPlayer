@@ -1,6 +1,13 @@
 # Quick Start
 
-End-to-end path validated on Linux with a fresh virtualenv.
+Install from PyPI:
+
+```bash
+pip install voxplayer
+voxplayer "/path/to/video.mp4"
+```
+
+Or from a source clone (validated on Linux with a fresh virtualenv):
 
 ```bash
 git clone https://github.com/VoxHash/VoxPlayer.git

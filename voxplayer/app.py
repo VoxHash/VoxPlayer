@@ -957,7 +957,7 @@ class VoxPlayerMainWindow(QMainWindow):
         # Torrent and update functionality
         self.torrent_streamer = None
         self.update_checker = None
-        self.current_version = "1.3.1"
+        self.current_version = "1.3.2"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
@@ -1684,7 +1684,8 @@ class VoxPlayerMainWindow(QMainWindow):
         self.engine.error_occurred.connect(lambda msg: self.media_error(None, msg))
         self.engine.backend_ready.connect(self._on_backend_ready)
 
-        vol = max(0, min(200, int(self.app_state.volume or 100)))
+        # 0% is valid — do not use `volume or 100` (truthiness snaps 0 → 100).
+        vol = max(0, min(200, int(self.app_state.volume)))
         self.app_state.volume = vol
         self.controls.volume_slider.blockSignals(True)
         self.controls.volume_slider.setValue(vol)
@@ -1703,13 +1704,22 @@ class VoxPlayerMainWindow(QMainWindow):
         if hasattr(self, "status_bar"):
             self.status_bar.showMessage(f"Playback engine: {label}", 4000)
 
+    def _reassert_engine_volume(self):
+        """Re-push the engine's last logical volume after libmpv opens a stream.
+
+        Uses engine state (not a stale app_state snapshot) so a volume set to 0%
+        during the play-start window is not overwritten back to 100%.
+        """
+        if hasattr(self, "engine") and self.engine is not None:
+            self.engine.set_volume_percent(int(self.engine.volume_percent()))
+
     def _engine_state_changed(self, state: str):
         if state == "playing":
             self.controls.btn_play.setText("⏸")
             if self._preview_timer and not self._preview_timer.isActive():
                 self._preview_timer.start()
             # Re-apply volume after stream opens (libmpv property timing)
-            QTimer.singleShot(200, self._apply_output_gain_from_state)
+            QTimer.singleShot(200, self._reassert_engine_volume)
         else:
             self.controls.btn_play.setText("▶")
             if state == "stopped" and self._preview_timer:
@@ -2730,8 +2740,8 @@ For more information, visit the project repository.
         """Start playback then re-apply libmpv volume after the stream opens."""
         if hasattr(self, "engine") and self.engine is not None:
             self.engine.play()
-        QTimer.singleShot(400, self._apply_output_gain_from_state)
-        QTimer.singleShot(1200, self._apply_output_gain_from_state)
+        QTimer.singleShot(400, self._reassert_engine_volume)
+        QTimer.singleShot(1200, self._reassert_engine_volume)
         if self._preview_timer and not self._preview_timer.isActive():
             self._preview_timer.start()
 
@@ -2822,6 +2832,7 @@ For more information, visit the project repository.
         gain = volume / 100.0
 
         # Persist logical volume so keyboard/slider/Media Info stay in sync.
+        # 0% must remain 0 (never coerced via truthiness to a default).
         self.app_state.volume = volume
         self.base_volume = min(1.0, gain)
         self.volume_amplification = gain
@@ -3187,7 +3198,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.3.1")
+    app.setApplicationVersion("1.3.2")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

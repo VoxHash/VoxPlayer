@@ -12,6 +12,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Broader subtitle format support where maintainable
 - Skin/theme packs; optional local control daemon; Android / GrapheneOS companion phase
 
+## [1.3.2] - 2026-10-23
+
+### Fixed
+- Volume **0%** no longer snaps back to 100% (`volume or 100` truthiness on engine setup; play-start timers re-assert engine volume instead of clobbering a fresh 0% set)
+- Persisted 0% survives reload; mute and 100–200% restore from 0% unchanged
+
+### Tests
+- `tests/test_volume_zero.py` — UI `set_volume(0)` + libmpv readback across play-start timers
+
 ## [1.3.1] - 2026-10-23
 
 ### Fixed

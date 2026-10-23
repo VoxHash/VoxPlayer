@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.3.1**). Stack: **PyQt6 shell** + **libmpv-only playback** (python-mpv + system libmpv). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.3.2**). Stack: **PyQt6 shell** + **libmpv-only playback** (python-mpv + system libmpv). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 

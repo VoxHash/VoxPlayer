@@ -25,13 +25,14 @@ A professional media player with advanced features including:
 - Timeline preview and keyboard shortcuts
 - Android / GrapheneOS LAN companion (library browse + remote control)
 - LAN VPN bypass helper so companions reach the desktop daemon on Wi‑Fi/LAN
+- On-device Media3 playback + Connect discovery for Android / Quest
 
 Author: VoxHash
 License: MIT
-Version: 1.26.0
+Version: 1.27.0
 """
 
-__version__ = "1.26.0"
+__version__ = "1.27.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

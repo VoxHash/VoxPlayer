@@ -7,8 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Android companion phase 2: on-device library / offline cache (GrapheneOS-scoped storage)
-- Android companion phase 3–4: on-device playback + optional playlist/podcast pull
+- Android companion phase 4: optional playlist/podcast pull from desktop
+- Optional Bluetooth RFCOMM control profile (Connect today uses Wi‑Fi discovery; BT lists paired hints)
+
+## [1.27.0] - 2026-10-23
+
+### Added
+- Android / Quest app is a full on-device player: Media3 ExoPlayer for local audio/video, MediaStore library, SAF open, view intents
+- Connect sheet (devices icon): pick **This device** or a desktop found on Wi‑Fi; tips for same network / VPN bypass / Bluetooth paired hints
+- Desktop UDP discovery beacon (`voxplayer/discovery.py`, port 17891) so phones find the PC without USB
+- GrapheneOS-friendly permissions (READ_MEDIA_* / Storage Scopes / SAF; no Google Nearby)
+
+### Changed
+- ROADMAP Later items 2–3 marked done for 1.27.0
 
 ## [1.26.0] - 2026-10-23
 

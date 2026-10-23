@@ -29,6 +29,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlparse
 
+from .discovery import DiscoveryBeacon
+
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 17890
@@ -59,12 +61,14 @@ def daemon_bind() -> tuple:
 class ControlDaemon:
     """Thin threaded HTTP server; callbacks run on the server thread — keep them safe."""
 
-    def __init__(self):
+    def __init__(self, version: str = ""):
         self._server: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
         self._callbacks: Dict[str, Callable[..., Any]] = {}
+        self._beacon: Optional[DiscoveryBeacon] = None
         self.host = DEFAULT_HOST
         self.port = DEFAULT_PORT
+        self.version = version or ""
 
     def set_callbacks(self, **kwargs: Callable[..., Any]) -> None:
         self._callbacks.update(kwargs)
@@ -246,9 +250,26 @@ class ControlDaemon:
             return False
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
+        # LAN discovery for phone/Quest Connect (UDP); works even when HTTP is loopback-only
+        # so USB reverse still functions, while Wi‑Fi peers find LAN IPs in the payload.
+        try:
+            self._beacon = DiscoveryBeacon(
+                http_host=self.host,
+                http_port=self.port,
+                version=self.version,
+            )
+            self._beacon.start()
+        except Exception:
+            self._beacon = None
         return True
 
     def stop(self) -> None:
+        if self._beacon is not None:
+            try:
+                self._beacon.stop()
+            except Exception:
+                pass
+            self._beacon = None
         if self._server is not None:
             try:
                 self._server.shutdown()

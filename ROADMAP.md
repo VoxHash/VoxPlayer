@@ -113,8 +113,8 @@ Build Phase 3 (optional lighter scanner): `native/vox_scan_zig/build.sh` → `na
 A **separate Android app phase** (not a thin WebView wrapper):
 
 1. **Read-only companion**: browse library + remote-control a desktop/daemon instance on the LAN (**Done 1.25.0** — `android/` Compose+OkHttp companion; daemon `GET /library`; LAN or `adb reverse`)
-2. **On-device library**: local files, offline cache, GrapheneOS-friendly permissions (storage scoped, no Google Play Services required)
-3. **Playback**: prefer a maintained native media backend on Android (ExoPlayer-class or a native media core on Android) with the same volume/mute semantics as desktop
+2. **On-device library**: local files, offline cache, GrapheneOS-friendly permissions (storage scoped, no Google Play Services required) (**Done 1.27.0** — MediaStore + SAF; READ_MEDIA_* )
+3. **Playback**: prefer a maintained native media backend on Android (ExoPlayer-class or a native media core on Android) with the same volume/mute semantics as desktop (**Done 1.27.0** — Media3 ExoPlayer; Connect sheet for Wi‑Fi desktop discovery)
 4. **Sync**: optional pull of playlists / podcast feeds from the desktop daemon; no cloud account required
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

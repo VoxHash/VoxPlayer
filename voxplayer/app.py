@@ -1297,7 +1297,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self._watch_dirty_roots: Set[str] = set()
         self.podcast_store = PodcastStore()
         self.mpris = MprisController(self)
-        self.control_daemon = ControlDaemon()
+        self.control_daemon = ControlDaemon(version=self.current_version)
         self.multiroom = load_multiroom_config()
         self._multiroom_inbound = False
         self.plugin_manager = PluginManager()

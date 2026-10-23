@@ -951,7 +951,7 @@ class VoxPlayerMainWindow(QMainWindow):
         # Torrent and update functionality
         self.torrent_streamer = None
         self.update_checker = None
-        self.current_version = "1.2.0"
+        self.current_version = "1.2.1"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
@@ -959,6 +959,8 @@ class VoxPlayerMainWindow(QMainWindow):
         self._enrich_thread = None
         self.playlist_store = PlaylistStore()
         self._stage_expanded = False
+        self._shell_page = "home"
+        self._fav_selected = PlaylistStore.FAVORITES
         self._close_to_tray = True
         self.tray_icon = None
 
@@ -1036,6 +1038,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.home_view.search_changed.connect(self.apply_home_search)
         self.home_view.media_context.connect(self.show_library_context_menu)
         self.home_view.facet_selected.connect(self.apply_facet_bucket)
+        self.home_view.collection_selected.connect(self.show_favorites_library)
 
         self.stage_page = QWidget()
         stage_layout = QVBoxLayout(self.stage_page)
@@ -1060,7 +1063,10 @@ class VoxPlayerMainWindow(QMainWindow):
         self.now_playing.queue_play_requested.connect(self.load_and_play_media)
         self.now_playing.queue_remove_requested.connect(self.remove_from_up_next)
         self.now_playing.queue_clear_requested.connect(self.clear_up_next_and_stop)
-        self.now_playing.add_to_playlist_requested.connect(self.add_path_to_named_playlist)
+        self.now_playing.add_to_playlist_requested.connect(self.toggle_or_add_playlist_path)
+        self.now_playing.favorite_check = lambda p: self.playlist_store.contains(
+            PlaylistStore.FAVORITES, p
+        )
         body_layout.addWidget(self.now_playing)
 
         shell_layout.addWidget(body, 1)
@@ -1068,30 +1074,9 @@ class VoxPlayerMainWindow(QMainWindow):
         self.controls = TransportBar(self)
         shell_layout.addWidget(self.controls)
 
+        # Up next data model only — no right-side Queue dock (Up next lives in Now Playing).
         self.playlist = PlaylistWidget(self)
-        self.playlist_dock = QDockWidget("Queue")
-        playlist_container = QWidget()
-        playlist_layout = QVBoxLayout(playlist_container)
-        playlist_layout.setContentsMargins(0, 0, 0, 0)
-        playlist_layout.setSpacing(2)
-        self.playlist_search = QLineEdit()
-        self.playlist_search.setPlaceholderText("Search queue...")
-        self.playlist_search.setObjectName("SearchField")
-        self.playlist_search.textChanged.connect(self.filter_playlist)
-        search_container = QWidget()
-        search_layout = QHBoxLayout(search_container)
-        search_layout.setContentsMargins(4, 4, 4, 0)
-        search_layout.setSpacing(2)
-        search_layout.addWidget(self.playlist_search)
-        self.clear_search_btn = QPushButton("✕")
-        self.clear_search_btn.setFixedSize(24, 24)
-        self.clear_search_btn.clicked.connect(self.clear_playlist_search)
-        search_layout.addWidget(self.clear_search_btn)
-        playlist_layout.addWidget(search_container)
-        playlist_layout.addWidget(self.playlist)
-        self.playlist_dock.setWidget(playlist_container)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.playlist_dock)
-        self.playlist_dock.hide()
+        self.playlist.hide()
         self.playlist_visible = False
 
         self.subtitle_manager = SubtitleManager(self.video_widget, self)
@@ -1119,6 +1104,7 @@ class VoxPlayerMainWindow(QMainWindow):
             self.refresh_home_grid()
 
     def show_shell_page(self, page: str):
+        self._shell_page = page
         if page == "stage":
             self.shell_mode = "stage"
             self._stage_expanded = True
@@ -1132,20 +1118,29 @@ class VoxPlayerMainWindow(QMainWindow):
         if page == "browse":
             self.left_rail.set_active("browse")
             self.home_view.set_browse_mode(True)
+            self.home_view.set_facets_enabled(True)
+            self.home_view.clear_collections()
             self.refresh_home_grid()
             self.refresh_facets()
         elif page == "favorites":
             self.left_rail.set_active("favorites")
             self.home_view.set_browse_mode(False)
+            self.home_view.set_facets_enabled(False)
             self.show_favorites_library()
         elif page in ("home", "library"):
             self.left_rail.set_active("library" if page == "library" else "home")
             self.home_view.set_browse_mode(False)
+            self.home_view.set_facets_enabled(True)
+            self.home_view.clear_collections()
             self.refresh_home_grid()
+            self.refresh_facets()
         else:
             self.left_rail.set_active("home")
             self.home_view.set_browse_mode(False)
+            self.home_view.set_facets_enabled(True)
+            self.home_view.clear_collections()
             self.refresh_home_grid()
+            self.refresh_facets()
 
     def is_video_path(self, path: str) -> bool:
         if not path:
@@ -1171,8 +1166,8 @@ class VoxPlayerMainWindow(QMainWindow):
         self.toggle_now_playing(True)
 
     def focus_queue_panel(self):
+        """Focus Up next in the Now Playing panel (Queue dock removed)."""
         self.toggle_now_playing(True)
-        self.left_rail.set_active("home")
 
     def toggle_now_playing(self, force=None):
         visible = (not self.now_playing_visible) if force is None else bool(force)
@@ -1230,12 +1225,22 @@ class VoxPlayerMainWindow(QMainWindow):
             self.refresh_facets()
 
     def apply_home_filter(self, name: str):
+        self.home_view._filter_name = (name or "all").lower()
+        if getattr(self, "_shell_page", "") == "favorites":
+            self.show_favorites_library(getattr(self, "_fav_selected", None))
+            return
         self.refresh_home_grid(filter_name=name)
+        self.refresh_facets()
 
     def apply_home_search(self, text: str):
+        if getattr(self, "_shell_page", "") == "favorites":
+            self.show_favorites_library(getattr(self, "_fav_selected", None))
+            return
         self.refresh_home_grid(query=text)
 
     def refresh_facets(self):
+        if getattr(self, "_shell_page", "") == "favorites":
+            return
         items = list(getattr(self, "library_paths", []) or [])
         facets = group_library(items, self._meta_cache)
         self.home_view.set_facets(facets)
@@ -1258,19 +1263,42 @@ class VoxPlayerMainWindow(QMainWindow):
                     pass
         self.home_view.set_items(paths, thumbnails=thumbs)
         self.home_view.hint.setText(f"{bucket}: {len(paths)} items")
-        self.home_view.title_label.setText(f"Browse · {facet_key.title()}")
+        label_map = {
+            "year": "Year",
+            "genre": "Genre",
+            "artist": "Artist",
+            "movies": "Movies",
+            "tv": "TV Shows",
+        }
+        self.home_view.title_label.setText(f"Browse · {label_map.get(facet_key, facet_key.title())}")
 
-    def show_favorites_library(self):
+    def show_favorites_library(self, playlist_name: str = None):
         names = self.playlist_store.names()
-        # Flatten Favorites first, then other playlists
-        paths = []
-        for name in names:
-            for p in self.playlist_store.get(name):
-                if p not in paths and os.path.isfile(p):
-                    paths.append(p)
-        thumbs = {p: self._thumb_map.get(p) or get_thumbnail_path(p) for p in paths if get_thumbnail_path(p) or self._thumb_map.get(p)}
-        self.home_view.set_items(paths, thumbnails={k: v for k, v in thumbs.items() if v})
-        self.home_view.title_label.setText("Favorites & playlists")
+        selected = playlist_name or getattr(self, "_fav_selected", None) or PlaylistStore.FAVORITES
+        if selected not in names:
+            selected = PlaylistStore.FAVORITES if PlaylistStore.FAVORITES in names else (names[0] if names else PlaylistStore.FAVORITES)
+        self._fav_selected = selected
+        self.home_view.set_collections(names, selected)
+        paths = [p for p in self.playlist_store.get(selected) if os.path.isfile(p)]
+        filt = (getattr(self.home_view, "_filter_name", "all") or "all").lower()
+        query = (getattr(self, "_home_query", "") or "").lower()
+        if filt == "video":
+            paths = [p for p in paths if os.path.splitext(p)[1].lower() in FACET_VIDEO_EXT]
+        elif filt == "audio":
+            paths = [p for p in paths if os.path.splitext(p)[1].lower() in FACET_AUDIO_EXT]
+        elif filt == "recent":
+            paths = paths[:24]
+        if query:
+            paths = [p for p in paths if query in os.path.basename(p).lower()]
+        thumbs = {}
+        for p in paths:
+            cached = self._thumb_map.get(p) or get_thumbnail_path(p)
+            if cached:
+                thumbs[p] = cached
+        self.home_view.set_items(paths, thumbnails=thumbs)
+        self.home_view.title_label.setText(
+            "Favorites & playlists" if selected == PlaylistStore.FAVORITES else selected
+        )
         self.home_view.hint.setText(f"{len(paths)} saved items")
 
     def show_library_context_menu(self, path: str, global_pos):
@@ -1279,19 +1307,65 @@ class VoxPlayerMainWindow(QMainWindow):
         menu = QMenu(self)
         play = menu.addAction("Play")
         add_q = menu.addAction("Add to Up next")
-        fav = menu.addAction("Add to Favorites")
-        create = menu.addAction("Save to playlist…")
+        in_fav = self.playlist_store.contains(PlaylistStore.FAVORITES, path)
+        fav = menu.addAction("Remove from Favorites" if in_fav else "Add to Favorites")
+        save_pl = menu.addAction("Save to playlist…")
+        remove_pl = None
+        current_pl = getattr(self, "_fav_selected", None)
+        if (
+            getattr(self, "_shell_page", "") == "favorites"
+            and current_pl
+            and current_pl != PlaylistStore.FAVORITES
+            and self.playlist_store.contains(current_pl, path)
+        ):
+            remove_pl = menu.addAction(f"Remove from {current_pl}")
         chosen = menu.exec(global_pos)
         if chosen == play:
             self.load_and_play_media(path)
         elif chosen == add_q:
             self.add_to_up_next(path)
         elif chosen == fav:
-            self.add_path_to_named_playlist(path, PlaylistStore.FAVORITES)
-        elif chosen == create:
-            name, ok = QInputDialog.getText(self, "Save to playlist", "Playlist name:")
-            if ok and name.strip():
-                self.add_path_to_named_playlist(path, name.strip())
+            if in_fav:
+                self.playlist_store.remove(PlaylistStore.FAVORITES, path)
+                self.status_bar.showMessage(
+                    f"Removed {os.path.basename(path)} from Favorites", 3000
+                )
+                if getattr(self, "_shell_page", "") == "favorites":
+                    self.show_favorites_library()
+            else:
+                self.add_path_to_named_playlist(path, PlaylistStore.FAVORITES)
+        elif chosen == save_pl:
+            self.save_path_to_playlist_picker(path)
+        elif remove_pl is not None and chosen == remove_pl and current_pl:
+            self.playlist_store.remove(current_pl, path)
+            self.status_bar.showMessage(
+                f"Removed {os.path.basename(path)} from {current_pl}", 3000
+            )
+            self.show_favorites_library(current_pl)
+
+    def save_path_to_playlist_picker(self, path: str):
+        """Pick an existing playlist or create a new one, then add path."""
+        if not path:
+            return
+        existing = [n for n in self.playlist_store.names() if n != PlaylistStore.FAVORITES]
+        choices = existing + ["Create new…"]
+        chosen, ok = QInputDialog.getItem(
+            self,
+            "Save to playlist",
+            "Choose playlist:",
+            choices,
+            0,
+            False,
+        )
+        if not ok or not chosen:
+            return
+        if chosen == "Create new…":
+            name, ok2 = QInputDialog.getText(self, "New playlist", "Playlist name:")
+            if not ok2 or not name.strip():
+                return
+            self.add_path_to_named_playlist(path, name.strip())
+        else:
+            self.add_path_to_named_playlist(path, chosen)
 
     def add_to_up_next(self, path: str):
         if not path or not os.path.exists(path):
@@ -1306,7 +1380,7 @@ class VoxPlayerMainWindow(QMainWindow):
         if hasattr(self, "playlist"):
             self.playlist.remove_item_by_file(path)
         self._sync_now_playing_queue()
-        self.status_bar.showMessage(f"Removed from queue: {os.path.basename(path)}", 2500)
+        self.status_bar.showMessage(f"Removed from Up next: {os.path.basename(path)}", 2500)
 
     def clear_up_next_and_stop(self):
         self.stop_playback()
@@ -1316,11 +1390,19 @@ class VoxPlayerMainWindow(QMainWindow):
         if hasattr(self, "now_playing"):
             self.now_playing.update_now_playing(None)
             self.now_playing.set_queue([])
+            self.now_playing.engine_label.setText("Engine: —")
         if hasattr(self, "controls"):
             self.controls.set_track_meta("VoxPlayer", "Ready")
             self.controls.set_track_art()
+            self.controls.update_time(0, 0)
+            self.controls.update_seek_position(0)
+            self.controls.btn_play.setText("▶")
         self.setWindowTitle("VoxPlayer")
-        self.minimize_now_playing_view()
+        if self.isFullScreen():
+            self.showNormal()
+        self._stage_expanded = False
+        self.show_shell_page("home")
+        self.toggle_now_playing(True)
         self.status_bar.showMessage("Cleared Up next and stopped playback.", 3000)
 
     def _sync_now_playing_queue(self):
@@ -1329,12 +1411,31 @@ class VoxPlayerMainWindow(QMainWindow):
         paths = [self.playlist.get_file_at_index(i) for i in range(self.playlist.count())]
         self.now_playing.set_queue([p for p in paths if p], getattr(self.app_state, "last_file", None))
 
+    def toggle_or_add_playlist_path(self, path: str, playlist_name: str):
+        """Add path, or remove when Favorites is already saved (context-menu toggle)."""
+        if not path:
+            return
+        if (
+            playlist_name == PlaylistStore.FAVORITES
+            and self.playlist_store.contains(PlaylistStore.FAVORITES, path)
+        ):
+            self.playlist_store.remove(PlaylistStore.FAVORITES, path)
+            self.status_bar.showMessage(
+                f"Removed {os.path.basename(path)} from Favorites", 3000
+            )
+            if getattr(self, "_shell_page", "") == "favorites":
+                self.show_favorites_library()
+            return
+        self.add_path_to_named_playlist(path, playlist_name)
+
     def add_path_to_named_playlist(self, path: str, playlist_name: str):
         if not path:
             return
         added = self.playlist_store.add(playlist_name, path)
         msg = "Added" if added else "Already in"
         self.status_bar.showMessage(f"{msg} {os.path.basename(path)} → {playlist_name}", 3000)
+        if getattr(self, "_shell_page", "") == "favorites":
+            self.show_favorites_library(playlist_name)
 
     def show_now_playing_more_menu(self, global_pos):
         path = getattr(self.app_state, "last_file", "") or ""
@@ -1342,7 +1443,10 @@ class VoxPlayerMainWindow(QMainWindow):
         expand = menu.addAction("Expand Now Playing")
         minimize = menu.addAction("Minimize Now Playing")
         menu.addSeparator()
-        fav = menu.addAction("Add current to Favorites")
+        in_fav = bool(path) and self.playlist_store.contains(PlaylistStore.FAVORITES, path)
+        fav = menu.addAction(
+            "Remove current from Favorites" if in_fav else "Add current to Favorites"
+        )
         add_q = menu.addAction("Add current to Up next")
         clear = menu.addAction("Clear Up next and stop")
         menu.addSeparator()
@@ -1353,7 +1457,7 @@ class VoxPlayerMainWindow(QMainWindow):
         elif chosen == minimize:
             self.minimize_now_playing_view()
         elif chosen == fav and path:
-            self.add_path_to_named_playlist(path, PlaylistStore.FAVORITES)
+            self.toggle_or_add_playlist_path(path, PlaylistStore.FAVORITES)
         elif chosen == add_q and path:
             self.add_to_up_next(path)
         elif chosen == clear:
@@ -1424,9 +1528,9 @@ class VoxPlayerMainWindow(QMainWindow):
         clear_playlist_action.triggered.connect(self.clear_up_next_and_stop)
         playlists_menu.addAction(clear_playlist_action)
 
-        fav_action = QAction("Add Current to &Favorites", self)
+        fav_action = QAction("Toggle Current in &Favorites", self)
         fav_action.triggered.connect(
-            lambda: self.add_path_to_named_playlist(
+            lambda: self.toggle_or_add_playlist_path(
                 getattr(self.app_state, "last_file", "") or "", PlaylistStore.FAVORITES
             )
         )
@@ -1660,9 +1764,6 @@ class VoxPlayerMainWindow(QMainWindow):
         if hasattr(self, 'status_bar'):
             self.status_bar.setAcceptDrops(True)
 
-        # Enable drag and drop on the playlist dock and widget
-        if hasattr(self, 'playlist_dock'):
-            self.playlist_dock.setAcceptDrops(True)
         if hasattr(self, 'playlist'):
             self.playlist.setAcceptDrops(True)
 
@@ -1778,12 +1879,12 @@ Keyboard Shortcuts:
 • Ctrl+O: Open File
 • Ctrl+Shift+O: Open Files
 • Ctrl+Shift+F: Open Folder
-• Ctrl+L: Toggle Playlist
+• Ctrl+Shift+N: Toggle Now Playing panel
 • Ctrl+I: Import Playlist
 • Ctrl+M: Open Magnet Link
 • Ctrl+T: Open Torrent File
 • Ctrl+E: Export Playlist
-• Ctrl+Shift+C: Clear Playlist
+• Ctrl+Shift+C: Clear Up next and stop
 • Ctrl+U: Check for Updates
 • P: Previous Media
 • N: Next Media
@@ -2056,14 +2157,16 @@ For more information, visit the project repository.
             # Clear the playlist
             self.playlist.clear()
 
-            # Reset app state
             self.app_state.last_file = ""
             self.setWindowTitle("VoxPlayer")
-
-            # Clear search if active
-            if hasattr(self, 'playlist_search'):
-                self.playlist_search.clear()
-
+            self._sync_now_playing_queue()
+            if hasattr(self, "now_playing"):
+                self.now_playing.update_now_playing(None)
+            if hasattr(self, "controls"):
+                self.controls.set_track_meta("VoxPlayer", "Ready")
+                self.controls.set_track_art()
+                self.controls.update_time(0, 0)
+                self.controls.update_seek_position(0)
             self.status_bar.showMessage("Playlist cleared")
 
     def check_for_updates(self):
@@ -2198,10 +2301,8 @@ For more information, visit the project repository.
 
                     status_msg = f"Loaded {len(unique_media_files)} media files from {', '.join(status_parts)}"
                     self.status_bar.showMessage(status_msg, 5000)
-
-                    # Show playlist if it was hidden
-                    if hasattr(self, 'playlist_dock') and self.playlist_dock.isHidden():
-                        self.show_playlist()
+                    self._sync_now_playing_queue()
+                    self.toggle_now_playing(True)
 
                 event.acceptProposedAction()
                 return
@@ -2824,31 +2925,16 @@ For more information, visit the project repository.
             self.controls_visible = False
 
     def toggle_playlist(self):
-        """Toggle playlist visibility"""
-        if not hasattr(self, 'playlist_dock'):
-            return
-        if self.playlist_visible:
-            self.playlist_dock.hide()
-            self.playlist_visible = False
-        else:
-            self.playlist_dock.show()
-            self.playlist_visible = True
+        """Focus Up next (right Queue dock removed)."""
+        self.focus_queue_panel()
 
     def hide_playlist(self):
-        """Hide playlist (only in fullscreen)"""
-        if not hasattr(self, 'playlist_dock'):
-            return
-        if self.isFullScreen() and self.playlist_visible:
-            self.playlist_dock.hide()
-            self.playlist_visible = False
+        """No-op — Queue dock removed; Up next stays in Now Playing."""
+        return
 
     def show_playlist(self):
-        """Show playlist"""
-        if not hasattr(self, 'playlist_dock'):
-            return
-        if not self.playlist_visible:
-            self.playlist_dock.show()
-            self.playlist_visible = True
+        """Focus Up next in Now Playing (Queue dock removed)."""
+        self.focus_queue_panel()
 
     def show_timeline_preview(self, show):
         """Show or hide timeline preview"""
@@ -2894,15 +2980,6 @@ For more information, visit the project repository.
             self.show_controls()
             # Restart the hide timer
             self.mouse_timer.start(3000)
-
-            # Check if mouse is near right edge for playlist
-            mouse_x = event.position().x()
-            window_width = self.width()
-            if mouse_x > window_width - 50:  # Within 50px of right edge
-                self.show_playlist()
-                self.playlist_timer.start(2000)  # Hide after 2 seconds
-            else:
-                self.playlist_timer.start(2000)  # Start hide timer
         super().mouseMoveEvent(event)
 
     def position_changed(self, position):

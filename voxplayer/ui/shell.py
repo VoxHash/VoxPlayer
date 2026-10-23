@@ -188,6 +188,10 @@ class HomeView(QWidget):
     view_mode_changed = pyqtSignal(str)  # grid|list
     media_context = pyqtSignal(str, object)  # path, QPoint
     facet_selected = pyqtSignal(str, str)  # facet_key, bucket
+    collection_selected = pyqtSignal(str)  # playlist name
+
+    _AUDIO_FACETS = ("year", "genre", "artist")
+    _VIDEO_FACETS = ("movies", "tv")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -198,6 +202,8 @@ class HomeView(QWidget):
         self._card_w = 160
         self._card_h = 190
         self._browse_mode = False
+        self._filter_name = "all"
+        self._facets_enabled = True
 
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 16, 20, 12)
@@ -240,7 +246,7 @@ class HomeView(QWidget):
         chips.addStretch(1)
         root.addLayout(chips)
 
-        # Facet browse row (hidden until browse mode)
+        # Facet browse row — Audio: Year/Genre/Artist · Video: Movies/TV Shows
         self.facet_row = QWidget()
         facet_layout = QHBoxLayout(self.facet_row)
         facet_layout.setContentsMargins(0, 0, 0, 0)
@@ -249,7 +255,6 @@ class HomeView(QWidget):
         for key, label in (
             ("year", "Year"),
             ("genre", "Genre"),
-            ("type", "Type"),
             ("artist", "Artist"),
             ("movies", "Movies"),
             ("tv", "TV Shows"),
@@ -270,6 +275,15 @@ class HomeView(QWidget):
         self.facet_buckets.hide()
         self.facet_buckets.itemClicked.connect(self._on_bucket_clicked)
         root.addWidget(self.facet_buckets)
+
+        # Playlist / Favorites collection chips (Favorites page only)
+        self.collection_row = QWidget()
+        self._collection_layout = QHBoxLayout(self.collection_row)
+        self._collection_layout.setContentsMargins(0, 0, 0, 0)
+        self._collection_layout.setSpacing(8)
+        self._collection_buttons: Dict[str, QPushButton] = {}
+        self.collection_row.hide()
+        root.addWidget(self.collection_row)
 
         header = QHBoxLayout()
         self.title_label = QLabel("Home")
@@ -306,14 +320,36 @@ class HomeView(QWidget):
 
     def set_browse_mode(self, enabled: bool) -> None:
         self._browse_mode = bool(enabled)
-        self.facet_row.setVisible(self._browse_mode)
-        self.facet_buckets.setVisible(self._browse_mode)
-        self.title_label.setText("Browse" if self._browse_mode else "Home")
+        if self._browse_mode:
+            self.title_label.setText("Browse")
+        self._facets_enabled = True
+        self._apply_facet_visibility()
+
+    def set_facets_enabled(self, enabled: bool) -> None:
+        """Hide facet UI on Favorites / non-library pages."""
+        self._facets_enabled = bool(enabled)
+        if not enabled:
+            self.clear_collections()
+        self._apply_facet_visibility()
 
     def set_facets(self, facets: Dict[str, Dict[str, List[str]]]) -> None:
         self._facet_data = facets or {}
-        if self._browse_mode:
-            self._select_facet(self._active_facet)
+        self._apply_facet_visibility()
+
+    def _apply_facet_visibility(self) -> None:
+        filt = (self._filter_name or "all").lower()
+        show = self._facets_enabled and filt in ("audio", "video")
+        allowed = self._AUDIO_FACETS if filt == "audio" else self._VIDEO_FACETS if filt == "video" else ()
+        for key, btn in self._facet_buttons.items():
+            btn.setVisible(key in allowed)
+        self.facet_row.setVisible(show)
+        if not show:
+            self.facet_buckets.hide()
+            return
+        if self._active_facet not in allowed:
+            self._active_facet = allowed[0] if allowed else "year"
+        self._select_facet(self._active_facet)
+        self.facet_buckets.setVisible(True)
 
     def _select_facet(self, key: str) -> None:
         self._active_facet = key
@@ -333,6 +369,37 @@ class HomeView(QWidget):
         if label:
             self.facet_selected.emit(self._active_facet, label)
 
+    def set_collections(self, names: List[str], active: str) -> None:
+        """Show Favorites / playlist chips so named playlists are visible and selectable."""
+        while self._collection_layout.count():
+            item = self._collection_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self._collection_buttons = {}
+        if not names:
+            self.collection_row.hide()
+            return
+        for name in names:
+            btn = QPushButton(name)
+            btn.setObjectName("Chip")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setProperty("active", "true" if name == active else "false")
+            btn.clicked.connect(lambda _=False, n=name: self.collection_selected.emit(n))
+            self._collection_layout.addWidget(btn)
+            self._collection_buttons[name] = btn
+        self._collection_layout.addStretch(1)
+        self.collection_row.show()
+
+    def clear_collections(self) -> None:
+        while self._collection_layout.count():
+            item = self._collection_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self._collection_buttons = {}
+        self.collection_row.hide()
+
     def set_view_mode(self, mode: str) -> None:
         mode = "list" if mode == "list" else "grid"
         self._view_mode = mode
@@ -350,7 +417,9 @@ class HomeView(QWidget):
             btn.setProperty("active", "true" if key == name else "false")
             btn.style().unpolish(btn)
             btn.style().polish(btn)
-        self.filter_changed.emit(name.lower())
+        self._filter_name = name.lower()
+        self._apply_facet_visibility()
+        self.filter_changed.emit(self._filter_name)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -469,7 +538,7 @@ class NowPlayingPanel(QWidget):
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(10)
 
-        # Header: title + more / expand / minimize
+        # Header: title + more (Expand / Minimize live in the ⋯ menu only)
         header = QHBoxLayout()
         header.setSpacing(4)
         icon = QLabel("◉")
@@ -486,21 +555,7 @@ class NowPlayingPanel(QWidget):
         self.btn_more.clicked.connect(
             lambda: self.more_requested.emit(self.btn_more.mapToGlobal(self.btn_more.rect().bottomLeft()))
         )
-
-        self.btn_expand = QPushButton("⤢")
-        self.btn_expand.setObjectName("NpIconBtn")
-        self.btn_expand.setToolTip("Expand Now Playing view")
-        self.btn_expand.setFixedSize(28, 28)
-        self.btn_expand.clicked.connect(self.expand_requested.emit)
-
-        self.btn_minimize = QPushButton("⤡")
-        self.btn_minimize.setObjectName("NpIconBtn")
-        self.btn_minimize.setToolTip("Minimize Now Playing view (Esc)")
-        self.btn_minimize.setFixedSize(28, 28)
-        self.btn_minimize.clicked.connect(self.minimize_requested.emit)
-
-        for b in (self.btn_more, self.btn_expand, self.btn_minimize):
-            header.addWidget(b)
+        header.addWidget(self.btn_more)
         layout.addLayout(header)
 
         self.art = ClickableArt("VoxPlayer")
@@ -539,10 +594,10 @@ class NowPlayingPanel(QWidget):
         queue_label = QLabel("Up next")
         queue_label.setObjectName("SectionLink")
         queue_head.addWidget(queue_label, 1)
-        self.btn_clear_queue = QPushButton("Clear")
-        self.btn_clear_queue.setObjectName("Chip")
-        self.btn_clear_queue.setToolTip("Clear Up next and stop playback")
-        self.btn_clear_queue.setFixedHeight(26)
+        self.btn_clear_queue = QPushButton("⌫")
+        self.btn_clear_queue.setObjectName("NpIconBtn")
+        self.btn_clear_queue.setToolTip("Clear Up next and stop")
+        self.btn_clear_queue.setFixedSize(28, 28)
         self.btn_clear_queue.clicked.connect(self.queue_clear_requested.emit)
         queue_head.addWidget(self.btn_clear_queue)
         layout.addLayout(queue_head)
@@ -552,6 +607,7 @@ class NowPlayingPanel(QWidget):
         self.queue.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.queue.itemClicked.connect(self._on_queue_click)
         self.queue.customContextMenuRequested.connect(self._on_queue_context)
+        self.favorite_check = None  # optional callable(path) -> bool
         layout.addWidget(self.queue, 1)
 
     def _on_queue_click(self, item: QListWidgetItem) -> None:
@@ -564,8 +620,9 @@ class NowPlayingPanel(QWidget):
         menu = QMenu(self)
         if item:
             path = item.data(Qt.ItemDataRole.UserRole)
-            remove = menu.addAction("Remove from queue")
-            fav = menu.addAction("Add to Favorites")
+            remove = menu.addAction("Remove from Up next")
+            in_fav = bool(self.favorite_check and path and self.favorite_check(path))
+            fav = menu.addAction("Remove from Favorites" if in_fav else "Add to Favorites")
             chosen = menu.exec(self.queue.mapToGlobal(pos))
             if chosen == remove and path:
                 self.queue_remove_requested.emit(path)

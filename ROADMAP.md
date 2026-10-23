@@ -1,12 +1,18 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (v1.2.0). Hybrid stack: **PyQt6 shell** + **libmpv preferred** (when system libmpv is present) with **Qt Multimedia** fallback.
+Status as of October 2026 (v1.2.1). Hybrid stack: **PyQt6 shell** + **libmpv preferred** (when system libmpv is present) with **Qt Multimedia** fallback.
+
+## Shipped in 1.2.1
+
+- Favorites / playlist chips, Remove-from-Favorites context menus, playlist picker with existing lists
+- Queue dock removed; Clear Up next fully stops and resets transport
+- Audio/Video-scoped metadata facets (Type facet removed); Expand/Minimize only in ⋯ menu
 
 ## Shipped in 1.2.0
 
 - Audio keeps the library visible; video stage only for video or explicit expand
 - Responsive grid/list library, metadata facet browse, Favorites/local playlists
-- Streaming-style Now Playing header (expand / minimize / more) and tray background playback
+- Streaming-style Now Playing header and tray background playback
 - libmpv default for 0–200% volume; qbittorrent-api in main deps
 - Smarter video posters (reject black frames)
 

@@ -11,12 +11,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Persist library roots across sessions
 - Broader subtitle format support where maintainable
 
+## [1.2.1] - 2026-10-23
+
+### Changed
+- Now Playing header keeps Expand / Minimize only in the ⋯ menu (standalone icon buttons removed)
+- Up next **Clear** is an icon-only control with tooltip “Clear Up next and stop”
+- Right-side **Queue** dock removed; Up next under Now Playing is the only queue UI
+- Library facets: **Audio** shows Year / Genre / Artist; **Video** shows Movies / TV Shows; **Type** facet removed; All / Recent hide the facet row
+- Save to playlist offers existing playlists plus “Create new…”
+- `run.py` prefers the project `.venv` interpreter so torrent deps resolve consistently
+
+### Fixed
+- Favorites context menu shows **Remove from Favorites** when the item is already saved
+- Named playlists appear as selectable chips in Favorites & playlists and open to their tracks
+- Clearing Up next fully stops playback and resets Now Playing / transport title, art, and time
+
 ## [1.2.0] - 2026-10-23
 
 ### Added
-- **Streaming-style Now Playing**: header with More / Expand / Minimize (Esc), large rounded cover, click art to expand
+- **Streaming-style Now Playing**: header with More menu, large rounded cover, click art to expand
 - **Grid / List toggle** with responsive grid columns that reflow on resize
-- **Library browse facets**: year, genre, type, artist, movies (chronological), TV by season
+- **Library browse facets**: year, genre, artist, movies (chronological), TV by season
 - **Favorites & local playlists** persisted under `~/.local/share/voxplayer/playlists/` (file paths)
 - **System tray**: minimize / close-to-tray keeps audio and video playing; restore from tray
 - **Modern About modal** with VoxPlayer branding, version, and copyright
@@ -26,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **libmpv is the default engine** when available — reliable 0–200% volume without requiring `VOXPLAYER_ENGINE` or Pulse-only workarounds for the happy path
 - **Audio no longer opens the empty center stage**; video stage shows for video playback or when the user expands Now Playing
 - `qbittorrent-api` and `python-mpv` moved into **main install dependencies**
-- Redundant dock “Queue Panel” path de-emphasized; Up next lives in the Now Playing rail
+- Up next lives in the Now Playing rail
 
 ### Fixed
 - Video poster/thumbnail capture skips near-black frames and retries multiple seek points

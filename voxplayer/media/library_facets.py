@@ -51,13 +51,12 @@ def group_library(
 ) -> Dict[str, Dict[str, List[str]]]:
     """
     Build nested facet maps:
-      year / genre / type / artist / movies / tv
+      year / genre / artist (audio) · movies / tv (video)
     Each value is { bucket_label: [paths...] }.
     """
     meta_by_path = meta_by_path or {}
     years: Dict[str, List[str]] = defaultdict(list)
     genres: Dict[str, List[str]] = defaultdict(list)
-    types: Dict[str, List[str]] = defaultdict(list)
     artists: Dict[str, List[str]] = defaultdict(list)
     movies: Dict[str, List[str]] = defaultdict(list)
     tv: Dict[str, List[str]] = defaultdict(list)
@@ -72,17 +71,17 @@ def group_library(
         mtype = media_type(path)
         title = getattr(meta, "title", "") or os.path.splitext(os.path.basename(path))[0]
 
-        years[year].append(path)
-        genres[(genre.strip() or "Unknown")].append(path)
-        types[mtype].append(path)
-        artists[(artist.strip() or "Unknown Artist")].append(path)
-
-        show_season = infer_show_season(path)
-        if show_season:
-            show, season = show_season
-            tv[f"{show} · {season}"].append(path)
+        if mtype == "Audio":
+            years[year].append(path)
+            genres[(genre.strip() or "Unknown")].append(path)
+            artists[(artist.strip() or "Unknown Artist")].append(path)
         elif mtype == "Video":
-            movies[f"{year} · {title}"].append(path)
+            show_season = infer_show_season(path)
+            if show_season:
+                show, season = show_season
+                tv[f"{show} · {season}"].append(path)
+            else:
+                movies[f"{year} · {title}"].append(path)
 
     def _sorted_buckets(src: Dict[str, List[str]], reverse: bool = False) -> Dict[str, List[str]]:
         keys = sorted(src.keys(), reverse=reverse, key=lambda k: (k == "Unknown", k.lower() if isinstance(k, str) else k))
@@ -91,7 +90,6 @@ def group_library(
     return {
         "year": _sorted_buckets(years, reverse=True),
         "genre": _sorted_buckets(genres),
-        "type": _sorted_buckets(types),
         "artist": _sorted_buckets(artists),
         "movies": _sorted_buckets(movies, reverse=True),
         "tv": _sorted_buckets(tv),

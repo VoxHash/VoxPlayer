@@ -22,8 +22,8 @@ voxplayer
 - **libmpv by default**: Reliable 0–200% volume when system libmpv is present; Qt Multimedia remains the fallback
 - **True volume amplification**: Up to 200% without manual engine env vars for the default path
 - **Thumbnails & live preview**: Smart ffmpeg posters (skips black frames); live frame grabs in Now Playing / transport
-- **Metadata enrichment**: Offline-first local tags; browse by year, genre, type, artist, movies, TV seasons
-- **Queue / playlists**: Click Up next to play; add/remove/clear; Favorites and local playlists by file path
+- **Metadata enrichment**: Offline-first local tags; Audio browse by year / genre / artist; Video browse by movies / TV seasons
+- **Up next & playlists**: Click Up next to play; icon clear-and-stop; Favorites chips plus named local playlists by file path
 - **Torrent streaming**: qBittorrent API client included in main install deps, with media-library gating
 - **Tray background**: Minimize / close-to-tray while playback continues
 - **File associations**: Double-click media to open with VoxPlayer

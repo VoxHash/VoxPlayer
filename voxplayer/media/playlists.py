@@ -109,6 +109,11 @@ class PlaylistStore:
         self.save()
         return True
 
+    def contains(self, name: str, path: str) -> bool:
+        if not path or name not in self._data:
+            return False
+        return os.path.abspath(path) in self._data[name]
+
     def clear(self, name: str) -> None:
         if name in self._data:
             self._data[name] = []

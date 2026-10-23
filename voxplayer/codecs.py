@@ -232,7 +232,8 @@ def avcodec_hw_arg() -> Optional[str]:
     LibVLC Instance arg for hardware decode when allowed.
 
     Override with ``VOXPLAYER_AVCODEC_HW`` (e.g. ``vaapi``, ``none``, ``any``).
-    Default ``any`` on Linux/macOS/Windows so HEVC/AV1 can use GPU when present.
+    Default ``any`` so HEVC can use GPU; AV1 prefers the separate ``dav1d`` module
+    via Instance ``--codec=dav1d,avcodec,all`` (avoids black-frame avcodec paths).
     """
     raw = os.environ.get("VOXPLAYER_AVCODEC_HW", "any").strip()
     if not raw or raw.lower() in {"0", "off", "false", "no"}:

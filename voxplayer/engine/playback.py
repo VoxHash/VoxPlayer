@@ -68,6 +68,29 @@ def prefer_xcb_for_embed() -> None:
 prefer_xcb_for_mpv_embed = prefer_xcb_for_embed
 
 
+def configure_embed_surface(widget) -> None:
+    """Set Qt native-window flags that libvlc needs for a reliable WID bind.
+
+    Upstream VLC: ``WA_DontCreateNativeAncestors`` is for Wayland only. On X11 /
+    XWayland it misplaces or blanks the video while audio still plays.
+    """
+    if widget is None:
+        return
+    try:
+        from PyQt6.QtCore import Qt as _Qt
+        from PyQt6.QtWidgets import QApplication
+
+        widget.setAttribute(_Qt.WidgetAttribute.WA_NativeWindow, True)
+        app = QApplication.instance()
+        plat = (app.platformName() if app is not None else "").lower()
+        pure_wayland = "wayland" in plat and "xcb" not in plat
+        widget.setAttribute(
+            _Qt.WidgetAttribute.WA_DontCreateNativeAncestors, bool(pure_wayland)
+        )
+    except Exception:
+        pass
+
+
 def libvlc_has_wayland_surface_api() -> bool:
     """True when libvlc exports a Wayland surface bind (VLC 4+ / experimental builds)."""
     if not sys.platform.startswith("linux"):
@@ -308,11 +331,11 @@ class PlaybackEngine(QObject):
                 "--quiet",
                 "--no-keyboard-events",
                 "--no-mouse-events",
-                # Prefer avcodec (HEVC/AV1/Opus) then fall through to other decoders.
-                "--codec=avcodec,all",
+                # Prefer dav1d for AV1 (avcodec-first caused black frames / buffer deadlock).
+                "--codec=dav1d,avcodec,all",
             ]
-            # XInitThreads already called; --no-xlib avoids double Xlib init on Linux.
-            if sys.platform.startswith("linux"):
+            # --no-xlib only on pure Wayland; X11/XWayland embed needs Xlib/xcb vout.
+            if sys.platform.startswith("linux") and embed_platform_hint() == "wayland-limited":
                 args.append("--no-xlib")
             try:
                 from ..codecs import avcodec_hw_arg
@@ -414,12 +437,7 @@ class PlaybackEngine(QObject):
         if self.video_widget is None:
             return 0
         try:
-            from PyQt6.QtCore import Qt as _Qt
-
-            self.video_widget.setAttribute(_Qt.WidgetAttribute.WA_NativeWindow, True)
-            self.video_widget.setAttribute(
-                _Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True
-            )
+            configure_embed_surface(self.video_widget)
             return int(self.video_widget.winId())
         except Exception:
             return 0
@@ -643,16 +661,43 @@ class PlaybackEngine(QObject):
                 self.duration_changed.emit(self._duration_ms)
         except Exception:
             pass
-        self._bind_video_drawable(force=False)
+        self._bind_video_drawable(force=True)
         self._apply_volume_to_player()
         self.set_muted(self._muted)
         self._pause_after_load = bool(start_paused)
         self._player.play()
+        # Re-apply WID after the surface is mapped — first bind often races show().
+        QTimer.singleShot(50, lambda: self._bind_video_drawable(force=True))
+        QTimer.singleShot(250, self._ensure_video_output)
         if start_paused:
             QTimer.singleShot(80, self._apply_pause_after_load)
         else:
             self._last_state = "playing"
             self.state_changed.emit("playing")
+
+    def _ensure_video_output(self) -> None:
+        """If a video track exists but size is still 0, force another WID bind."""
+        if self._player is None or not self._looks_like_video(self._source_path):
+            return
+        try:
+            size = self._player.video_get_size(0)
+            w = int(size[0]) if size else 0
+            h = int(size[1]) if size else 0
+        except Exception:
+            w = h = 0
+        if w > 0 and h > 0 and self._video_bound:
+            return
+        configure_embed_surface(self.video_widget)
+        self._bind_video_drawable(force=True)
+        try:
+            # Ensure the first enabled video track is selected.
+            tracks = self._player.video_get_track_count()
+            if tracks and int(tracks) > 0:
+                cur = self._player.video_get_track()
+                if cur is None or int(cur) < 0:
+                    self._player.video_set_track(0)
+        except Exception:
+            pass
 
     def _apply_pause_after_load(self) -> None:
         if not self._pause_after_load or self._player is None:

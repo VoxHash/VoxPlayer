@@ -9,8 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Android / GrapheneOS companion phase (Later)
 
+## [1.24.1] - 2026-10-23
+
 ### Fixed
-- About / update checker / daemon `version` now read `voxplayer.__version__` instead of a stale hardcoded `1.13.0` string in `app.py`
+- Black video stage while audio plays: do not set `WA_DontCreateNativeAncestors` on X11/XWayland (VLC-upstream guidance); re-bind WID after map
+- Prefer `--codec=dav1d,avcodec,all` so AV1 uses dav1d instead of an avcodec-first path that blanked frames
+- Skip `--no-xlib` when embedding on X11/XWayland so the xcb vout can paint into the Qt surface
+- About / update checker / daemon `version` read `voxplayer.__version__` (was hardcoded `1.13.0`)
 - `setup.py` version derived from `voxplayer/__init__.py`
 
 ## [1.24.0] - 2026-10-23

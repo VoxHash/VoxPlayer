@@ -1404,8 +1404,12 @@ class VoxPlayerMainWindow(QMainWindow):
         # Plain QWidget host for native window-ID video embed (QVideoWidget can paint black over VO).
         self.video_widget = QWidget()
         self.video_widget.setObjectName("VideoSurface")
-        self.video_widget.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
-        self.video_widget.setAttribute(Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True)
+        try:
+            from .engine.playback import configure_embed_surface
+
+            configure_embed_surface(self.video_widget)
+        except Exception:
+            self.video_widget.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
         self.video_widget.setStyleSheet("#VideoSurface { background-color: #000000; }")
         self.video_widget.setAcceptDrops(True)
         self.video_widget.mouseDoubleClickEvent = lambda event: self.toggle_fullscreen()

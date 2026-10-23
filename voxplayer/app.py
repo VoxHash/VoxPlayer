@@ -16,14 +16,14 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple, Set
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QHBoxLayout, QPushButton, QSlider, QLabel,
                             QFileDialog, QDockWidget, QListWidget, QListWidgetItem,
                             QMenuBar, QMenu, QStatusBar, QMessageBox, QInputDialog,
                             QLineEdit, QStackedWidget, QSizePolicy, QSystemTrayIcon,
                             QStyle, QDialog)
-from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal, QFileSystemWatcher
 from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QActionGroup, QIcon, QPixmap
 
 from .theme import (
@@ -52,8 +52,9 @@ from .media.metadata import (
 from .media.torrent_gate import validate_torrent_file, validate_torrent_file_list
 from .media.playlists import PlaylistStore
 from .media.library_facets import group_library, VIDEO_EXT as FACET_VIDEO_EXT, AUDIO_EXT as FACET_AUDIO_EXT
-from .native_scan import scan_media_dir
+from .native_scan import scan_media_dir, backend_name as scan_backend_name
 from .native_workers import NativeMediaWorkers
+from .library_index import LibraryIndex, DEFAULT_EXTS
 from .ui.torrent_picker import TorrentFilePickerDialog, media_paths_only
 
 
@@ -1232,12 +1233,16 @@ class VoxPlayerMainWindow(QMainWindow):
         self._torrent_active_paths = set()  # local paths belonging to the active torrent session
         self._pending_torrent_rel_paths: List[str] = []
         self.update_checker = None
-        self.current_version = "1.11.0"
+        self.current_version = "1.12.0"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
         self._preview_timer = None
         self._enrich_thread = None
+        self.library_index = LibraryIndex.load()
+        self._library_watcher: Optional[QFileSystemWatcher] = None
+        self._watch_debounce: Optional[QTimer] = None
+        self._watch_dirty_roots: Set[str] = set()
         # Phase 2: Rust metadata + thumbnail worker pool (optional; falls back to sync Python).
         self.native_workers = NativeMediaWorkers(self)
         if self.native_workers.available:
@@ -1400,6 +1405,7 @@ class VoxPlayerMainWindow(QMainWindow):
         if self.app_state.last_file and os.path.exists(self.app_state.last_file):
             self._register_library_path(self.app_state.last_file)
         self._restore_library_roots()
+        self._setup_library_watcher()
         self.refresh_home_grid()
         if hasattr(self, "controls"):
             self.controls.sync_playback_modes(
@@ -1498,21 +1504,149 @@ class VoxPlayerMainWindow(QMainWindow):
         roots.insert(0, root)
         self.app_state.library_roots = roots[:32]
         self.settings.save_state(self.app_state)
+        self._incremental_scan_root(root, quiet=True)
+        self.library_index.save()
+        self._watch_library_root(root)
 
     def _restore_library_roots(self) -> None:
-        """Re-index persisted library folder roots into ``library_paths``."""
+        """Re-index persisted library folder roots via incremental native scan."""
         roots = [r for r in (self.app_state.library_roots or []) if isinstance(r, str)]
         alive: List[str] = []
+        added_total = 0
+        removed_total = 0
         for root in roots:
             if not os.path.isdir(root):
                 continue
-            alive.append(root)
-            for path in self.find_media_files_in_folder(root):
+            alive.append(os.path.abspath(root))
+            current, added, removed = self._incremental_scan_root(root, quiet=True)
+            for path in current:
                 if path and path not in self.library_paths:
                     self.library_paths.append(path)
+            added_total += len(added)
+            removed_total += len(removed)
+            for path in removed:
+                if path in self.library_paths:
+                    self.library_paths.remove(path)
         if alive != list(self.app_state.library_roots or []):
             self.app_state.library_roots = alive
             self.settings.save_state(self.app_state)
+        self.library_index.save()
+        if hasattr(self, "status_bar") and (added_total or removed_total):
+            backend = scan_backend_name() or "python"
+            self.status_bar.showMessage(
+                f"Library index ({backend}): +{added_total} / −{removed_total}",
+                4000,
+            )
+
+    def _incremental_scan_root(
+        self, root: str, *, quiet: bool = False
+    ) -> Tuple[List[str], List[str], List[str]]:
+        """Scan one root with fingerprinting; uses native vox_scan when built."""
+        root = os.path.abspath(root)
+
+        def _walker(folder: str) -> List[str]:
+            return self.find_media_files_in_folder(folder)
+
+        current, added, removed = self.library_index.scan_root(
+            root, extensions=DEFAULT_EXTS, walker=_walker
+        )
+        if not quiet and hasattr(self, "status_bar"):
+            backend = scan_backend_name() or "python"
+            self.status_bar.showMessage(
+                f"Rescan {os.path.basename(root)} ({backend}): "
+                f"+{len(added)} / −{len(removed)}",
+                3500,
+            )
+        return current, added, removed
+
+    def _setup_library_watcher(self) -> None:
+        """Watch persisted library roots; debounce incremental re-scans."""
+        if self._library_watcher is None:
+            self._library_watcher = QFileSystemWatcher(self)
+            self._library_watcher.directoryChanged.connect(self._on_library_path_changed)
+            self._library_watcher.fileChanged.connect(self._on_library_path_changed)
+        if self._watch_debounce is None:
+            self._watch_debounce = QTimer(self)
+            self._watch_debounce.setSingleShot(True)
+            self._watch_debounce.setInterval(900)
+            self._watch_debounce.timeout.connect(self._flush_library_watch)
+        # Periodic catch-up for nested dirs inotify may miss
+        if not hasattr(self, "_watch_poll") or self._watch_poll is None:
+            self._watch_poll = QTimer(self)
+            self._watch_poll.setInterval(60_000)
+            self._watch_poll.timeout.connect(self._poll_library_roots)
+            self._watch_poll.start()
+        for root in list(self.app_state.library_roots or []):
+            self._watch_library_root(root)
+
+    def _watch_library_root(self, root: str) -> None:
+        if not root or not os.path.isdir(root):
+            return
+        if self._library_watcher is None:
+            self._setup_library_watcher()
+        watched = set(self._library_watcher.directories())
+        abs_root = os.path.abspath(root)
+        if abs_root not in watched:
+            self._library_watcher.addPath(abs_root)
+        # Watch one level of subdirs for better nested coverage without flooding.
+        try:
+            for name in os.listdir(abs_root)[:64]:
+                sub = os.path.join(abs_root, name)
+                if os.path.isdir(sub) and sub not in watched:
+                    self._library_watcher.addPath(sub)
+        except OSError:
+            pass
+
+    def _on_library_path_changed(self, path: str) -> None:
+        if not path:
+            return
+        abs_path = os.path.abspath(path)
+        roots = [os.path.abspath(r) for r in (self.app_state.library_roots or [])]
+        hit = None
+        for root in roots:
+            if abs_path == root or abs_path.startswith(root + os.sep):
+                hit = root
+                break
+        if hit is None:
+            # fileChanged may report a media file; map to nearest root
+            for root in roots:
+                if abs_path.startswith(root + os.sep):
+                    hit = root
+                    break
+        if hit:
+            self._watch_dirty_roots.add(hit)
+            if self._watch_debounce is not None:
+                self._watch_debounce.start()
+
+    def _poll_library_roots(self) -> None:
+        for root in list(self.app_state.library_roots or []):
+            if os.path.isdir(root):
+                self._watch_dirty_roots.add(os.path.abspath(root))
+        if self._watch_dirty_roots and self._watch_debounce is not None:
+            self._watch_debounce.start()
+
+    def _flush_library_watch(self) -> None:
+        dirty = list(self._watch_dirty_roots)
+        self._watch_dirty_roots.clear()
+        if not dirty:
+            return
+        changed = False
+        for root in dirty:
+            current, added, removed = self._incremental_scan_root(root)
+            for path in added:
+                if path not in self.library_paths:
+                    self.library_paths.insert(0, path)
+                    changed = True
+            for path in removed:
+                if path in self.library_paths:
+                    self.library_paths.remove(path)
+                    changed = True
+            # Ensure root still watched (new subdirs)
+            self._watch_library_root(root)
+        self.library_index.save()
+        if changed:
+            self.refresh_home_grid()
+            self.refresh_facets()
 
     def refresh_home_grid(self, filter_name: str = None, query: str = None):
         filter_name = (filter_name or getattr(self, "_home_filter", "all")).lower()
@@ -1570,11 +1704,21 @@ class VoxPlayerMainWindow(QMainWindow):
         if getattr(self, "_shell_page", "") == "favorites":
             return
         items = list(getattr(self, "library_paths", []) or [])
-        facets = group_library(items, self._meta_cache)
+        stats = getattr(self, "library_index", None)
+        facets = group_library(
+            items,
+            self._meta_cache,
+            stats_by_path=stats.stats if stats else None,
+        )
         self.home_view.set_facets(facets)
 
     def apply_facet_bucket(self, facet_key: str, bucket: str):
-        facets = group_library(list(getattr(self, "library_paths", []) or []), self._meta_cache)
+        stats = getattr(self, "library_index", None)
+        facets = group_library(
+            list(getattr(self, "library_paths", []) or []),
+            self._meta_cache,
+            stats_by_path=stats.stats if stats else None,
+        )
         paths = facets.get(facet_key, {}).get(bucket, [])
         thumbs = {}
         for path in paths[:64]:
@@ -1589,8 +1733,12 @@ class VoxPlayerMainWindow(QMainWindow):
             "year": "Year",
             "genre": "Genre",
             "artist": "Artist",
+            "album": "Album",
             "movies": "Movies",
             "tv": "TV Shows",
+            "recently": "Recently played",
+            "never": "Never played",
+            "most_played": "Most played",
         }
         self.home_view.title_label.setText(f"Browse · {label_map.get(facet_key, facet_key.title())}")
 
@@ -3323,6 +3471,11 @@ For more information, visit the project repository.
     def load_and_play_media(self, file_path):
         """Load media file and auto-play it"""
         self.load_media(file_path)
+        if file_path and hasattr(self, "library_index"):
+            self.library_index.record_play(file_path)
+            self.library_index.save()
+            if getattr(self, "_shell_page", "") in ("home", "browse", "library"):
+                self.refresh_facets()
         if hasattr(self, "engine") and self.app_state.last_file:
             QTimer.singleShot(200, self._start_playback_with_gain)
 
@@ -3958,7 +4111,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.11.0")
+    app.setApplicationVersion("1.12.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

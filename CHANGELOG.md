@@ -7,10 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Watch-folder / incremental `vox_scan` re-index
-- Deeper library facets (albums, artists, play counts, recently played / never played)
 - Broader subtitle format support where maintainable
 - Optional local control daemon; Android / GrapheneOS companion phase
+
+## [1.12.0] - 2026-10-23
+
+### Added
+- Watch-folder library roots via `QFileSystemWatcher` + debounced incremental re-scan (native `vox_scan` / Zig when built); fingerprints in `~/.cache/voxplayer/library_index.json`
+- Periodic 60s catch-up poll for nested directory changes
+- Deeper browse facets: Album; Recently / Never / Most played (local play counts + last played)
+- Play stats recorded on play; facets refresh accordingly
+
+### Changed
+- ROADMAP library watch/incremental and deeper facets marked done
 
 ## [1.11.0] - 2026-10-23
 

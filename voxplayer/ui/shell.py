@@ -228,8 +228,10 @@ class HomeView(_MediaDropMixin, QWidget):
     collection_selected = pyqtSignal(str)  # playlist name
     files_dropped = pyqtSignal(list, str)
 
-    _AUDIO_FACETS = ("year", "genre", "artist")
-    _VIDEO_FACETS = ("movies", "tv")
+    _PLAY_FACETS = ("recently", "never", "most_played")
+    _AUDIO_FACETS = ("year", "genre", "artist", "album") + _PLAY_FACETS
+    _VIDEO_FACETS = ("movies", "tv") + _PLAY_FACETS
+    _ALL_FACETS = _PLAY_FACETS
     drop_mode = "index"
 
     def __init__(self, parent=None):
@@ -304,8 +306,12 @@ class HomeView(_MediaDropMixin, QWidget):
             ("year", "Year"),
             ("genre", "Genre"),
             ("artist", "Artist"),
+            ("album", "Album"),
             ("movies", "Movies"),
             ("tv", "TV Shows"),
+            ("recently", "Recently"),
+            ("never", "Never played"),
+            ("most_played", "Most played"),
         ):
             btn = QPushButton(label)
             btn.setObjectName("Chip")
@@ -391,8 +397,15 @@ class HomeView(_MediaDropMixin, QWidget):
 
     def _apply_facet_visibility(self) -> None:
         filt = (self._filter_name or "all").lower()
-        show = self._facets_enabled and filt in ("audio", "video")
-        allowed = self._AUDIO_FACETS if filt == "audio" else self._VIDEO_FACETS if filt == "video" else ()
+        if filt == "audio":
+            allowed = self._AUDIO_FACETS
+        elif filt == "video":
+            allowed = self._VIDEO_FACETS
+        elif filt in ("all", "recent"):
+            allowed = self._ALL_FACETS
+        else:
+            allowed = ()
+        show = self._facets_enabled and bool(allowed)
         for key, btn in self._facet_buttons.items():
             btn.setVisible(key in allowed)
         self.facet_row.setVisible(show)

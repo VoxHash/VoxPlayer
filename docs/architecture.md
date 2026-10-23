@@ -25,6 +25,7 @@ QApplication
 | `app.py` | Thin launcher re-exporting `voxplayer.app` |
 | `voxplayer/app.py` | Main window, torrent, settings, playlists, zone drops |
 | `voxplayer/theme.py` | Bundled palettes + user JSON theme packs; live `COLORS` + stylesheet |
+| `voxplayer/library_index.py` | Fingerprints + play stats; incremental re-scan / watch-folder support |
 | `voxplayer/ui/shell.py` | Shell widgets (rail, home, now playing, transport) |
 | `voxplayer/engine/playback.py` | native-C-core-only playback (volume 0–200, mute) |
 | `voxplayer/native_scan.py` | ctypes loader for Rust `vox_scan` |

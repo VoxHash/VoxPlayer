@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.11.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.12.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -51,9 +51,9 @@ Native migration table Phases 0–5 are complete (Phase 4 remains an ongoing she
 - Further Wayland compositor embed when available without a second media stack (**Done 1.11.0**)
 
 ### Library & indexing
-- Expand Rust `vox_scan` usage (watch folders, incremental re-scan)
+- Expand Rust `vox_scan` usage (watch folders, incremental re-scan) (**Done 1.12.0**)
 - Metadata workers in native code (tags / covers off the UI thread) (**Done 1.5.0**)
-- Deeper library facets (albums, artists, play counts, recently played / never played)
+- Deeper library facets (albums, artists, play counts, recently played / never played) (**Done 1.12.0**)
 
 ### Torrent streaming
 - Safer sequential-download defaults and buffer thresholds (**Done 1.11.0**)

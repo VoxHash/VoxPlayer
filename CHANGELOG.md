@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Further Android companion polish (background playback limits)
 
+## [1.29.1] - 2026-10-23
+
+### Fixed
+- System mixer branding: LibVLC Pulse stream now reports **VoxPlayer** name + `voxplayer` icon (not “VLC media player”) via `set_user_agent` / `set_app_id`; refresh XDG hicolor icon on startup
+- Audio → Sound Output → Select Device enumerates all Pulse/PipeWire sinks from the native engine and applies the chosen device
+
 ## [1.29.0] - 2026-10-23
 
 ### Added

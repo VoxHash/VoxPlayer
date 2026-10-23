@@ -68,6 +68,7 @@ from .portable_sync import (
     list_portable_volumes,
     sync_files_to_volume,
 )
+from .branding import ensure_xdg_app_branding
 from .audio_viz import (
     analyze_track_async,
     get_cached as get_viz_cached,
@@ -2283,6 +2284,8 @@ class VoxPlayerMainWindow(QMainWindow):
         # Create audio device submenu for manual mode
         self.audio_device_menu = sound_output_menu.addMenu("&Select Device")
         self.audio_device_menu.setEnabled(self.app_state.audio_output_mode == "manual")
+        self.audio_device_menu.aboutToShow.connect(self.update_audio_device_menu)
+        sound_output_menu.aboutToShow.connect(self.update_audio_device_menu)
         self.update_audio_device_menu()
 
         # Portable-player companion: gapless queue + bookmark resume
@@ -2616,44 +2619,90 @@ class VoxPlayerMainWindow(QMainWindow):
                 action.setChecked(mode == "manual")
 
         # Enable/disable device selection menu
-        if hasattr(self, 'audio_device_menu'):
+        if hasattr(self, "audio_device_menu"):
             self.audio_device_menu.setEnabled(mode == "manual")
+            self.update_audio_device_menu()
 
         # Update audio device
         self.update_audio_device()
 
     def update_audio_device_menu(self):
-        """Update the audio device selection menu"""
-        if not hasattr(self, 'audio_device_menu'):
+        """Populate Sound Output → Select Device from native Pulse/PipeWire sinks."""
+        if not hasattr(self, "audio_device_menu"):
             return
 
-        # Clear existing actions
         self.audio_device_menu.clear()
+        selected = (self.app_state.selected_audio_device or "default").strip() or "default"
+        devices: List[Tuple[str, str]] = []
+        engine = getattr(self, "engine", None)
+        if engine is not None and hasattr(engine, "list_audio_output_devices"):
+            try:
+                devices = list(engine.list_audio_output_devices() or [])
+            except Exception:
+                devices = []
+        self.available_audio_devices = devices
 
-        # Simplified approach - just show default device option
-        # In a real implementation, you would enumerate available devices
-        default_action = QAction("Default Device", self)
+        group = QActionGroup(self)
+        group.setExclusive(True)
+
+        default_action = QAction("Default (system sink)", self)
         default_action.setCheckable(True)
-        default_action.setChecked(True)
+        default_action.setChecked(selected == "default")
         default_action.triggered.connect(lambda: self.select_audio_device("default"))
+        group.addAction(default_action)
         self.audio_device_menu.addAction(default_action)
 
-        # Store available devices as empty for now
-        self.available_audio_devices = []
+        if not devices:
+            empty = QAction("(no output devices detected)", self)
+            empty.setEnabled(False)
+            self.audio_device_menu.addAction(empty)
+            return
+
+        self.audio_device_menu.addSeparator()
+        for device_id, label in devices:
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(selected == device_id)
+            action.setData(device_id)
+            action.setToolTip(device_id)
+            action.triggered.connect(
+                lambda _checked=False, did=device_id: self.select_audio_device(did)
+            )
+            group.addAction(action)
+            self.audio_device_menu.addAction(action)
 
     def select_audio_device(self, device_id):
         """Select a specific audio device"""
         self.app_state.selected_audio_device = device_id
         self.settings.settings.setValue("selected_audio_device", device_id)
         self.update_audio_device()
+        self.update_audio_device_menu()
 
     def update_audio_device(self):
-        """Audio device selection is handled by the native engine / OS mixer."""
+        """Apply Default vs Manual sink selection to the native engine."""
         self._apply_output_gain_from_state()
         mode = self.app_state.audio_output_mode
+        engine = getattr(self, "engine", None)
+        if engine is None or not hasattr(engine, "set_audio_output_device"):
+            self.status_bar.showMessage("Audio device: engine unavailable", 2500)
+            return
+        if mode == "default":
+            ok = engine.set_audio_output_device("default")
+            label = "Default (system sink)"
+        else:
+            device_id = (self.app_state.selected_audio_device or "default").strip()
+            ok = engine.set_audio_output_device(device_id)
+            # Prefer friendly label from last enumeration
+            label = device_id
+            for did, desc in getattr(self, "available_audio_devices", []) or []:
+                if did == device_id:
+                    label = desc
+                    break
+            if device_id == "default":
+                label = "Default (system sink)"
         self.status_bar.showMessage(
-            f"Audio device: {'Default' if mode == 'default' else 'Manual'} (native / system)",
-            2500,
+            f"Audio output: {label}" + ("" if ok else " (apply failed)"),
+            3500,
         )
 
     def show_help(self):
@@ -3195,10 +3244,22 @@ For more information, visit the project repository.
         )
 
     def check_audio_device_changes(self):
-        """native engine owns the audio device; re-assert volume if a stream is active."""
+        """Refresh Sound Output device list when sinks appear/disappear; keep volume."""
         try:
-            if hasattr(self, "engine") and self.engine is not None and self.engine.is_playing():
+            engine = getattr(self, "engine", None)
+            if engine is None:
+                return
+            if engine.is_playing():
                 self._apply_output_gain_from_state()
+            if not hasattr(engine, "list_audio_output_devices"):
+                return
+            devices = list(engine.list_audio_output_devices() or [])
+            prev = getattr(self, "available_audio_devices", None) or []
+            prev_ids = [d[0] for d in prev]
+            new_ids = [d[0] for d in devices]
+            if prev_ids != new_ids:
+                self.available_audio_devices = devices
+                self.update_audio_device_menu()
         except Exception:
             pass
 
@@ -3417,7 +3478,11 @@ For more information, visit the project repository.
         self.status_bar.showMessage("Unsupported format — see dialog for details", 5000)
 
     def setup_icon(self):
-        """Setup application and window icons"""
+        """Setup application and window icons + XDG brand for the system mixer."""
+        try:
+            ensure_xdg_app_branding(self.current_version)
+        except Exception:
+            pass
         try:
             # Try to load icon from package directory first
             icon_path = os.path.join(os.path.dirname(__file__), "logo.png")

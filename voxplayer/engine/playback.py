@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 import sys
 from enum import Enum
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from PyQt6.QtCore import QObject, QEvent, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QWidget, QMessageBox
@@ -338,6 +338,9 @@ class PlaybackEngine(QObject):
                 # yields "cannot start codec (opus)" / "No active audio output".
                 "--codec=dav1d,opus,avcodec,all",
             ]
+            # Pulse/PipeWire: device enum + mixer identity (not the stock VLC aout brand)
+            if sys.platform.startswith("linux"):
+                args.append("--aout=pulse")
             # --no-xlib only on pure Wayland; X11/XWayland embed needs Xlib/xcb vout.
             if sys.platform.startswith("linux") and embed_platform_hint() == "wayland-limited":
                 args.append("--no-xlib")
@@ -356,6 +359,7 @@ class PlaybackEngine(QObject):
             except Exception:
                 pass
             self._instance = vlc.Instance(*args)
+            self._apply_native_app_identity()
             self._player = self._instance.media_player_new()
             try:
                 self._player.video_set_mouse_input(False)
@@ -371,6 +375,87 @@ class PlaybackEngine(QObject):
             self._player = None
             self._instance = None
             return False
+
+    def _apply_native_app_identity(self) -> None:
+        """Tell Pulse/PipeWire we are VoxPlayer — not stock VLC mixer branding."""
+        if self._instance is None:
+            return
+        try:
+            from .. import __version__ as ver
+        except Exception:
+            ver = "1.0"
+        try:
+            # application.name in the system mixer
+            self._instance.set_user_agent(f"VoxPlayer {ver}", f"VoxPlayer/{ver}")
+        except Exception:
+            try:
+                self._instance.set_user_agent("VoxPlayer", "VoxPlayer")
+            except Exception:
+                pass
+        try:
+            # application.id / application.icon_name (needs XDG icon theme name ``voxplayer``)
+            self._instance.set_app_id("dev.voxhash.voxplayer", str(ver), "voxplayer")
+        except Exception:
+            pass
+
+    def list_audio_output_devices(self) -> List[Tuple[str, str]]:
+        """Return ``(device_id, description)`` for every Pulse/system sink libvlc sees."""
+        if self._player is None:
+            return []
+        out: List[Tuple[str, str]] = []
+        head = None
+        try:
+            head = self._player.audio_output_device_enum()
+            cur = head
+            while cur:
+                d = cur.contents
+                device = d.device
+                desc = d.description
+                if isinstance(device, bytes):
+                    device = device.decode("utf-8", "replace")
+                if isinstance(desc, bytes):
+                    desc = desc.decode("utf-8", "replace")
+                device = (device or "").strip()
+                desc = (desc or device or "Audio device").strip()
+                if device:
+                    out.append((device, desc))
+                cur = d.next
+        except Exception:
+            out = []
+        finally:
+            if head is not None and self._vlc is not None:
+                try:
+                    self._vlc.libvlc_audio_output_device_list_release(head)
+                except Exception:
+                    pass
+        return out
+
+    def set_audio_output_device(self, device_id: Optional[str]) -> bool:
+        """Route playback to ``device_id`` (Pulse sink name) or system default if empty."""
+        if self._player is None:
+            return False
+        try:
+            if not device_id or device_id in {"default", "auto", ""}:
+                # Empty id = follow the session default sink
+                self._player.audio_output_device_set(None, "")
+            else:
+                self._player.audio_output_device_set(None, str(device_id))
+            return True
+        except Exception:
+            return False
+
+    def current_audio_output_device(self) -> str:
+        if self._player is None:
+            return ""
+        try:
+            raw = self._player.audio_output_device_get()
+            if raw is None:
+                return ""
+            if isinstance(raw, bytes):
+                return raw.decode("utf-8", "replace")
+            return str(raw)
+        except Exception:
+            return ""
 
     def _attach_error_events(self) -> None:
         """Subscribe to native EncounteredError — never silently switch engines."""

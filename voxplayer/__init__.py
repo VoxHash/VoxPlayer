@@ -23,13 +23,14 @@ A professional media player with advanced features including:
 - Desktop onedir bundles that can ship the native C media core
 - Native parallel scan meta + quick content ids (Rust/Zig hot paths)
 - Timeline preview and keyboard shortcuts
+- Android / GrapheneOS LAN companion (library browse + remote control)
 
 Author: VoxHash
 License: MIT
-Version: 1.24.1
+Version: 1.25.0
 """
 
-__version__ = "1.24.1"
+__version__ = "1.25.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

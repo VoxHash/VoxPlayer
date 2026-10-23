@@ -28,6 +28,7 @@ voxplayer
 - **Torrent streaming**: qBittorrent API client included in main install deps, with media-library gating
 - **Tray background**: Minimize / close-to-tray while playback continues
 - **Daemon remotes**: `voxplayer-tui` / `voxplayer-ctl` and browser UI at `http://127.0.0.1:17890/ui/`
+- **Android companion**: GrapheneOS-friendly LAN remote under `android/` (library browse + transport; no GMS)
 - **Desktop bundles**: onedir builds can ship the native C media core; clear per-OS installers under `packaging/`
 - **File associations**: Double-click media to open with VoxPlayer
 - **Cross-platform**: Windows, macOS, and Linux

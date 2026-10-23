@@ -275,6 +275,8 @@ class PlaybackEngine(QObject):
         self._next_media = None
         self._next_path = ""
         self._user_stop = False
+        self._suppress_error_reports = False
+        self._load_generation = 0
 
         self.media_player = None
         self.audio_output = None
@@ -331,8 +333,10 @@ class PlaybackEngine(QObject):
                 "--quiet",
                 "--no-keyboard-events",
                 "--no-mouse-events",
-                # Prefer dav1d for AV1 (avcodec-first caused black frames / buffer deadlock).
-                "--codec=dav1d,avcodec,all",
+                # Prefer dav1d for AV1 and the dedicated Opus module for audio.
+                # Do NOT use dav1d,avcodec alone — that forces Opus through avcodec and
+                # yields "cannot start codec (opus)" / "No active audio output".
+                "--codec=dav1d,opus,avcodec,all",
             ]
             # --no-xlib only on pure Wayland; X11/XWayland embed needs Xlib/xcb vout.
             if sys.platform.startswith("linux") and embed_platform_hint() == "wayland-limited":
@@ -383,7 +387,18 @@ class PlaybackEngine(QObject):
 
     def _on_native_encountered_error(self, event) -> None:
         # libvlc callbacks are not on the Qt thread — queue to the main loop.
-        QTimer.singleShot(0, lambda: self._report_playback_error("encountered_error"))
+        gen = self._load_generation
+        QTimer.singleShot(0, lambda g=gen: self._report_playback_error("encountered_error", g))
+
+    def _clear_libvlc_errmsg(self) -> None:
+        if self._vlc is None:
+            return
+        try:
+            clear = getattr(self._vlc, "libvlc_clearerr", None)
+            if callable(clear):
+                clear()
+        except Exception:
+            pass
 
     def _libvlc_errmsg(self) -> str:
         if self._vlc is None:
@@ -397,6 +412,21 @@ class PlaybackEngine(QObject):
             return str(raw).strip()
         except Exception:
             return ""
+
+    def _begin_load_transition(self) -> None:
+        """Suppress false EncounteredError alerts while stopping / swapping tracks."""
+        self._load_generation += 1
+        self._suppress_error_reports = True
+        self._user_stop = False
+        self._clear_libvlc_errmsg()
+        self.clear_last_error()
+        gen = self._load_generation
+
+        def _lift(g=gen):
+            if g == self._load_generation:
+                self._suppress_error_reports = False
+
+        QTimer.singleShot(700, _lift)
 
     def _format_playback_error(self, reason: str) -> str:
         path = self._source_path or ""
@@ -417,8 +447,24 @@ class PlaybackEngine(QObject):
         )
         return "\n".join(bits)
 
-    def _report_playback_error(self, reason: str) -> None:
+    def _near_natural_end(self) -> bool:
+        dur = self.duration()
+        pos = self.position()
+        if dur <= 0:
+            return False
+        return pos >= max(0, dur - 1500)
+
+    def _report_playback_error(self, reason: str, generation: Optional[int] = None) -> None:
         """Surface a codec/demux failure once per source (no silent fallback)."""
+        if generation is not None and generation != self._load_generation:
+            return
+        if self._suppress_error_reports or self._user_stop:
+            return
+        # Interrupted decode at EOS / queue advance often reports Error — treat as end.
+        if self._near_natural_end():
+            self._last_state = "ended"
+            self.state_changed.emit("ended")
+            return
         key = f"{self._source_path}|{reason}|{self._libvlc_errmsg()}"
         if key == self._error_emitted_for_source and self._last_error_msg:
             return
@@ -711,10 +757,9 @@ class PlaybackEngine(QObject):
         self.state_changed.emit("paused")
 
     def set_source(self, file_path: str) -> None:
+        self._begin_load_transition()
         self.clear_prepared_next()
-        self._user_stop = False
         self._source_path = file_path
-        self.clear_last_error()
         if self._player is None:
             self._report_playback_error("engine_not_initialized")
             return
@@ -756,6 +801,7 @@ class PlaybackEngine(QObject):
     def stop(self) -> None:
         if self._player is None:
             return
+        self._begin_load_transition()
         self._user_stop = True
         self.clear_prepared_next()
         self._player.stop()
@@ -832,6 +878,7 @@ class PlaybackEngine(QObject):
         """Swap to the prepared player. Returns the new source path or None."""
         if self._next_player is None or not self._next_path:
             return None
+        self._begin_load_transition()
         old = self._player
         path = self._next_path
         self._player = self._next_player
@@ -1051,6 +1098,12 @@ class PlaybackEngine(QObject):
             st_i = self._state_int(self._player.get_state())
             # libvlc State.Error == 6 — surface clearly; do not treat as a quiet stop.
             if st_i == 6 and self._last_state != "error":
+                if self._suppress_error_reports or self._user_stop:
+                    return
+                if self._near_natural_end():
+                    self._last_state = "ended"
+                    self.state_changed.emit("ended")
+                    return
                 self._report_playback_error("decoder_or_demux_error")
                 return
             self.position_changed.emit(self.position())

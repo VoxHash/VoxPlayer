@@ -7,7 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Android / GrapheneOS companion phase (Later)
+- Android companion phase 2: on-device library / offline cache (GrapheneOS-scoped storage)
+- Android companion phase 3–4: on-device playback + optional playlist/podcast pull
+
+## [1.25.0] - 2026-10-23
+
+### Added
+- Android / GrapheneOS-friendly LAN companion (`android/`): OkHttp + Compose; no GMS; browse desktop library + transport remote
+- Control daemon `GET /library` (read-only indexed paths for companions)
+- Companion intent extras `host` / `port` / `autoconnect` for USB `adb reverse` e2e
+
+### Fixed
+- Queue / track-advance false “Playback error” alerts: keep Opus in the native codec list (`dav1d,opus,avcodec,all`); suppress EncounteredError during load transitions and near EOS
+
+### Changed
+- ROADMAP Later item 1 (read-only companion) marked done for 1.25.0
 
 ## [1.24.1] - 2026-10-23
 

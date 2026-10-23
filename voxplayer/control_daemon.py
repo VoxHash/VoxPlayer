@@ -6,6 +6,7 @@ Default bind: ``127.0.0.1:17890`` (override with ``VOXPLAYER_DAEMON_HOST`` /
 Endpoints (JSON)::
 
     GET  /status
+    GET  /library  query: limit (default 200), offset (default 0)
     POST /play  /pause  /playpause  /stop  /next  /previous
     POST /volume   body: {"percent": 0-200}
     POST /seek     body: {"ms": int} or {"relative_ms": int}
@@ -151,10 +152,34 @@ class ControlDaemon:
             def do_GET(self):
                 if self._serve_ui(""):
                     return
-                path = urlparse(self.path).path.rstrip("/") or "/"
+                parsed = urlparse(self.path)
+                path = parsed.path.rstrip("/") or "/"
                 if path == "/status":
                     fn = callbacks.get("status")
                     data = fn() if callable(fn) else {}
+                    self._json(200, data if isinstance(data, dict) else {})
+                    return
+                if path == "/library":
+                    fn = callbacks.get("library")
+                    if not callable(fn):
+                        self._json(501, {"error": "not_implemented"})
+                        return
+                    from urllib.parse import parse_qs
+
+                    qs = parse_qs(parsed.query or "")
+                    try:
+                        limit = int((qs.get("limit") or ["200"])[0])
+                    except ValueError:
+                        limit = 200
+                    try:
+                        offset = int((qs.get("offset") or ["0"])[0])
+                    except ValueError:
+                        offset = 0
+                    try:
+                        data = fn({"limit": limit, "offset": offset})
+                    except Exception as exc:
+                        self._json(500, {"error": str(exc)})
+                        return
                     self._json(200, data if isinstance(data, dict) else {})
                     return
                 if path in {"", "/"}:
@@ -166,6 +191,7 @@ class ControlDaemon:
                             "port": parent.port,
                             "endpoints": [
                                 "/status",
+                                "/library",
                                 "/play",
                                 "/pause",
                                 "/playpause",

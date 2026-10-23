@@ -42,6 +42,27 @@ Browser remote (same JSON API; CORS enabled for external hosts / future WASM):
 
 Override target with `--url` or `VOXPLAYER_DAEMON_HOST` / `VOXPLAYER_DAEMON_PORT`.
 
+## Android / GrapheneOS companion
+
+Build the debug APK (JDK 17 + Android SDK):
+
+```bash
+export JAVA_HOME="${JAVA_HOME:-$HOME/.local/jdk-17}"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
+cd android && ./gradlew :app:assembleDebug
+```
+
+Trusted LAN: set `VOXPLAYER_DAEMON_ALLOW_LAN=1` and `VOXPLAYER_DAEMON_HOST=0.0.0.0` on the desktop, then enter the LAN IP in the companion.
+
+USB without Wi‑Fi:
+
+```bash
+adb reverse tcp:17890 tcp:17890
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n dev.voxhash.voxplayer.companion.debug/dev.voxhash.voxplayer.companion.MainActivity \
+  --es host 127.0.0.1 --es port 17890 --ez autoconnect true
+```
+
 ## Useful environment flags
 
 ```bash

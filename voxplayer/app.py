@@ -4558,6 +4558,7 @@ Position: {position // 1000}s
 
         self.control_daemon.set_callbacks(
             status=self._daemon_status,
+            library=self._daemon_library,
             play=_ok(self._engine_play),
             pause=_ok(lambda: self.engine.pause() if hasattr(self, "engine") else None),
             play_pause=_ok(self.toggle_playback),
@@ -4647,6 +4648,22 @@ Position: {position // 1000}s
             "repeat": self.app_state.repeat_mode,
             "version": self.current_version,
         }
+
+    def _daemon_library(self, body: dict) -> dict:
+        """Read-only library listing for LAN / Android companions."""
+        limit = int((body or {}).get("limit", 200))
+        offset = int((body or {}).get("offset", 0))
+        idx = getattr(self, "library_index", None)
+        if idx is None:
+            return {"items": [], "total": 0, "limit": limit, "offset": offset}
+        total = sum(len(files) for files in (idx.roots or {}).values())
+        paths = idx.list_paths(limit=limit, offset=offset)
+        items = []
+        for p in paths:
+            meta = self._meta_cache.get(p) if hasattr(self, "_meta_cache") else None
+            title = (meta.title if meta and getattr(meta, "title", None) else None) or os.path.basename(p)
+            items.append({"path": p, "title": title})
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
 
     def _daemon_set_volume(self, body: dict) -> dict:
         pct = int(body.get("percent", self.app_state.volume))

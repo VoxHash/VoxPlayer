@@ -178,3 +178,15 @@ class LibraryIndex:
                     del files[p]
             if not files:
                 self.roots.pop(root, None)
+
+    def list_paths(self, *, limit: int = 200, offset: int = 0) -> List[str]:
+        """Flat read-only listing of indexed paths (sorted), for companion / daemon."""
+        paths: List[str] = []
+        for files in self.roots.values():
+            paths.extend(files.keys())
+        paths.sort()
+        limit = max(0, int(limit))
+        offset = max(0, int(offset))
+        if limit <= 0:
+            return paths[offset:]
+        return paths[offset : offset + limit]

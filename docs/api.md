@@ -27,4 +27,18 @@ main()
 | `UpdateChecker` | `voxplayer.app` / `app` | GitHub release update checks |
 | `Settings` | `voxplayer.app` / `app` | Thin wrapper around `QSettings` |
 
-There is no HTTP server or public REST API. Integrate by launching the process or embedding `VoxPlayerMainWindow` inside another Qt application (advanced; not officially supported).
+## Control daemon (localhost / trusted LAN)
+
+While the desktop app is running (unless `VOXPLAYER_DAEMON=0`), a small HTTP JSON API listens on `127.0.0.1:17890` by default. Non-loopback binds require `VOXPLAYER_DAEMON_ALLOW_LAN=1`.
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/status` | Now playing, position, volume, version |
+| GET | `/library?limit=&offset=` | Read-only indexed library for companions |
+| POST | `/play` `/pause` `/playpause` `/stop` `/next` `/previous` | Transport |
+| POST | `/volume` | Body `{"percent": 0-200}` |
+| POST | `/seek` | Body `{"ms": int}` or `{"relative_ms": int}` |
+| POST | `/open` | Body `{"path": "/abs/file"}` |
+| GET | `/ui/` | Packaged browser remote |
+
+The Android companion under `android/` uses this API over LAN or `adb reverse`.

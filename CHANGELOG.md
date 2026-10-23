@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Android companion phase 2: on-device library / offline cache (GrapheneOS-scoped storage)
 - Android companion phase 3–4: on-device playback + optional playlist/podcast pull
 
+## [1.26.0] - 2026-10-23
+
+### Added
+- `voxplayer-lan-bypass`: keep RFC1918 / home Wi‑Fi subnets on the physical LAN NIC so ProtonVPN (and similar) policy routing does not black-hole Android/Quest companions
+- `voxplayer-usb-bridge`: collapse duplicate `adb` fork-servers and refresh `adb reverse` for USB companion e2e
+
+### Fixed
+- Companion USB workflow when dozens of IDE `adb` servers hide Pixel / Quest devices
+
 ## [1.25.0] - 2026-10-23
 
 ### Added

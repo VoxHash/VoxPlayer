@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxplayer"
-version = "1.25.0"
+version = "1.26.0"
 description = "A modern multimedia player built with PyQt6"
 readme = "README.md"
 license = {text = "MIT"}
@@ -75,6 +75,8 @@ Repository = "https://github.com/VoxHash/VoxPlayer.git"
 voxplayer = "voxplayer.app:main"
 voxplayer-tui = "voxplayer.tui_client:main"
 voxplayer-ctl = "voxplayer.tui_client:main"
+voxplayer-lan-bypass = "voxplayer.lan_bypass:main"
+voxplayer-usb-bridge = "voxplayer.usb_companion_bridge:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

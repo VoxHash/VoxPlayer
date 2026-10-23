@@ -29,6 +29,7 @@ voxplayer
 - **Tray background**: Minimize / close-to-tray while playback continues
 - **Daemon remotes**: `voxplayer-tui` / `voxplayer-ctl` and browser UI at `http://127.0.0.1:17890/ui/`
 - **Android companion**: GrapheneOS-friendly LAN remote under `android/` (library browse + transport; no GMS)
+- **LAN VPN bypass**: `voxplayer-lan-bypass` keeps home/RFC1918 traffic off the VPN path for phone/Quest remotes
 - **Desktop bundles**: onedir builds can ship the native C media core; clear per-OS installers under `packaging/`
 - **File associations**: Double-click media to open with VoxPlayer
 - **Cross-platform**: Windows, macOS, and Linux

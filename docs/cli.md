@@ -54,12 +54,20 @@ cd android && ./gradlew :app:assembleDebug
 
 Trusted LAN: set `VOXPLAYER_DAEMON_ALLOW_LAN=1` and `VOXPLAYER_DAEMON_HOST=0.0.0.0` on the desktop, then enter the LAN IP in the companion.
 
-USB without Wi‑Fi:
+When a desktop VPN (e.g. ProtonVPN) steals RFC1918 routes, keep LAN local:
 
 ```bash
-adb reverse tcp:17890 tcp:17890
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n dev.voxhash.voxplayer.companion.debug/dev.voxhash.voxplayer.companion.MainActivity \
+voxplayer-lan-bypass status
+sudo voxplayer-lan-bypass on --prefix 192.168.68.0/24   # extra home subnet if needed
+```
+
+USB without Wi‑Fi (also resets duplicate `adb` servers that hide devices):
+
+```bash
+voxplayer-usb-bridge reset
+voxplayer-usb-bridge probe --serial <SERIAL>
+adb -s <SERIAL> install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb -s <SERIAL> shell am start -n dev.voxhash.voxplayer.companion.debug/dev.voxhash.voxplayer.companion.MainActivity \
   --es host 127.0.0.1 --es port 17890 --ez autoconnect true
 ```
 

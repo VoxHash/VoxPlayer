@@ -226,6 +226,7 @@ class HomeView(_MediaDropMixin, QWidget):
     media_context = pyqtSignal(str, object)  # path, QPoint
     facet_selected = pyqtSignal(str, str)  # facet_key, bucket
     collection_selected = pyqtSignal(str)  # playlist name
+    library_nav_selected = pyqtSignal(str)  # albums|artists|tracks|liked
     files_dropped = pyqtSignal(list, str)
 
     _PLAY_FACETS = ("recently", "never", "most_played")
@@ -295,6 +296,31 @@ class HomeView(_MediaDropMixin, QWidget):
             self._chip_buttons[name] = btn
         chips.addStretch(1)
         root.addLayout(chips)
+
+        # Streaming-style library nav alongside Home grid
+        self.library_nav_row = QWidget()
+        self.library_nav_row.setObjectName("LibraryNavRow")
+        lib_nav = QHBoxLayout(self.library_nav_row)
+        lib_nav.setContentsMargins(0, 0, 0, 0)
+        lib_nav.setSpacing(6)
+        self._library_nav_buttons: Dict[str, QPushButton] = {}
+        self._library_nav_mode = ""
+        for key, label, tip in (
+            ("albums", "Albums", "Browse by album"),
+            ("artists", "Artists", "Browse by artist"),
+            ("tracks", "Tracks", "All audio tracks"),
+            ("liked", "Liked", "Favorites / liked tracks"),
+        ):
+            btn = QPushButton(label)
+            btn.setObjectName("LibraryNav")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setToolTip(tip)
+            btn.setProperty("active", "false")
+            btn.clicked.connect(lambda _=False, k=key: self._select_library_nav(k))
+            lib_nav.addWidget(btn)
+            self._library_nav_buttons[key] = btn
+        lib_nav.addStretch(1)
+        root.addWidget(self.library_nav_row)
 
         # Facet browse row — Audio: Year/Genre/Artist · Video: Movies/TV Shows
         self.facet_row = QWidget()
@@ -376,6 +402,7 @@ class HomeView(_MediaDropMixin, QWidget):
 
         self._active_facet = "year"
         self._facet_data: Dict[str, Dict[str, List[str]]] = {}
+        self._library_nav_visible = True
 
     def set_browse_mode(self, enabled: bool) -> None:
         self._browse_mode = bool(enabled)
@@ -383,6 +410,26 @@ class HomeView(_MediaDropMixin, QWidget):
             self.title_label.setText("Browse")
         self._facets_enabled = True
         self._apply_facet_visibility()
+
+    def set_library_nav_visible(self, visible: bool) -> None:
+        self._library_nav_visible = bool(visible)
+        self.library_nav_row.setVisible(self._library_nav_visible)
+
+    def set_library_nav_mode(self, mode: str) -> None:
+        """Highlight a nav tab without emitting (used when restoring page state)."""
+        mode = (mode or "").strip().lower()
+        self._library_nav_mode = mode if mode in self._library_nav_buttons else ""
+        for key, btn in self._library_nav_buttons.items():
+            btn.setProperty("active", "true" if key == self._library_nav_mode else "false")
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+    def _select_library_nav(self, key: str) -> None:
+        self.set_library_nav_mode(key)
+        self.library_nav_selected.emit(key)
+
+    def clear_library_nav(self) -> None:
+        self.set_library_nav_mode("")
 
     def set_facets_enabled(self, enabled: bool) -> None:
         """Hide facet UI on Favorites / non-library pages."""

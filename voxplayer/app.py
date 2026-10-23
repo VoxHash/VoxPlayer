@@ -1274,6 +1274,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self._stage_expanded = False
         self._shell_page = "home"
         self._fav_selected = PlaylistStore.FAVORITES
+        self._library_nav_mode = ""
         self._close_to_tray = True
         self.tray_icon = None
 
@@ -1355,6 +1356,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.home_view.search_changed.connect(self.apply_home_search)
         self.home_view.media_context.connect(self.show_library_context_menu)
         self.home_view.facet_selected.connect(self.apply_facet_bucket)
+        self.home_view.library_nav_selected.connect(self.apply_library_nav)
         self.home_view.collection_selected.connect(self.show_favorites_library)
         self.home_view.files_dropped.connect(self.handle_shell_drop)
 
@@ -1453,25 +1455,43 @@ class VoxPlayerMainWindow(QMainWindow):
             self.left_rail.set_active("browse")
             self.home_view.set_browse_mode(True)
             self.home_view.set_facets_enabled(True)
+            self.home_view.set_library_nav_visible(True)
             self.home_view.clear_collections()
             self.refresh_home_grid()
             self.refresh_facets()
+            # Keep current library nav highlight if set
+            nav = getattr(self, "_library_nav_mode", "") or ""
+            if nav:
+                self.apply_library_nav(nav)
         elif page == "favorites":
             self.left_rail.set_active("favorites")
             self.home_view.set_browse_mode(False)
             self.home_view.set_facets_enabled(False)
+            self.home_view.set_library_nav_visible(True)
+            self.home_view.set_library_nav_mode("liked")
+            self._library_nav_mode = "liked"
             self.show_favorites_library()
+            self.home_view.title_label.setText("Liked")
         elif page in ("home", "library"):
             self.left_rail.set_active("library" if page == "library" else "home")
             self.home_view.set_browse_mode(False)
-            self.home_view.set_facets_enabled(True)
+            self.home_view.set_facets_enabled(page == "library")
+            self.home_view.set_library_nav_visible(True)
             self.home_view.clear_collections()
-            self.refresh_home_grid()
-            self.refresh_facets()
+            if page == "library":
+                mode = getattr(self, "_library_nav_mode", "") or "tracks"
+                self.apply_library_nav(mode)
+            else:
+                self.home_view.clear_library_nav()
+                self._library_nav_mode = ""
+                self.refresh_home_grid()
+                self.refresh_facets()
+                self.home_view.title_label.setText("Home")
         else:
             self.left_rail.set_active("home")
             self.home_view.set_browse_mode(False)
             self.home_view.set_facets_enabled(True)
+            self.home_view.set_library_nav_visible(True)
             self.home_view.clear_collections()
             self.refresh_home_grid()
             self.refresh_facets()
@@ -1711,6 +1731,10 @@ class VoxPlayerMainWindow(QMainWindow):
 
     def apply_home_filter(self, name: str):
         self.home_view._filter_name = (name or "all").lower()
+        nav = getattr(self, "_library_nav_mode", "") or ""
+        if nav in ("albums", "artists", "tracks", "liked"):
+            self.apply_library_nav(nav)
+            return
         if getattr(self, "_shell_page", "") == "favorites":
             self.show_favorites_library(getattr(self, "_fav_selected", None))
             return
@@ -1718,6 +1742,11 @@ class VoxPlayerMainWindow(QMainWindow):
         self.refresh_facets()
 
     def apply_home_search(self, text: str):
+        self._home_query = text or ""
+        nav = getattr(self, "_library_nav_mode", "") or ""
+        if nav in ("albums", "artists", "tracks", "liked"):
+            self.apply_library_nav(nav)
+            return
         if getattr(self, "_shell_page", "") == "favorites":
             self.show_favorites_library(getattr(self, "_fav_selected", None))
             return
@@ -1763,7 +1792,118 @@ class VoxPlayerMainWindow(QMainWindow):
             "never": "Never played",
             "most_played": "Most played",
         }
-        self.home_view.title_label.setText(f"Browse · {label_map.get(facet_key, facet_key.title())}")
+        nav = getattr(self, "_library_nav_mode", "") or ""
+        if nav in ("albums", "artists") and facet_key in ("album", "artist"):
+            self.home_view.title_label.setText(
+                f"{nav.title()} · {bucket}"
+            )
+        else:
+            self.home_view.title_label.setText(
+                f"Browse · {label_map.get(facet_key, facet_key.title())}"
+            )
+
+    def apply_library_nav(self, mode: str) -> None:
+        """Albums / Artists / Tracks / Liked navigation alongside Home."""
+        mode = (mode or "").strip().lower()
+        if mode not in ("albums", "artists", "tracks", "liked"):
+            return
+        self._library_nav_mode = mode
+        self.home_view.set_library_nav_mode(mode)
+        self.home_view.set_library_nav_visible(True)
+
+        if mode == "liked":
+            self._shell_page = "favorites"
+            self.left_rail.set_active("favorites")
+            self.home_view.set_browse_mode(False)
+            self.home_view.set_facets_enabled(False)
+            self._fav_selected = PlaylistStore.FAVORITES
+            self.show_favorites_library(PlaylistStore.FAVORITES)
+            self.home_view.title_label.setText("Liked")
+            return
+
+        self.left_rail.set_active("library")
+        self._shell_page = "library"
+        self.home_view.clear_collections()
+
+        if mode == "tracks":
+            self.home_view.set_browse_mode(False)
+            self.home_view.set_facets_enabled(False)
+            items = list(getattr(self, "library_paths", []) or [])
+            query = (getattr(self, "_home_query", "") or "").lower()
+            tracks = [
+                p
+                for p in items
+                if os.path.splitext(p)[1].lower() in FACET_AUDIO_EXT
+                and os.path.isfile(p)
+            ]
+            if query:
+                tracks = [
+                    p
+                    for p in tracks
+                    if query in os.path.basename(p).lower()
+                    or query
+                    in (
+                        getattr(self._meta_cache.get(p), "artist", "") or ""
+                    ).lower()
+                    or query
+                    in (getattr(self._meta_cache.get(p), "title", "") or "").lower()
+                ]
+
+            def _track_sort_key(p: str):
+                meta = self._meta_cache.get(p)
+                artist = (getattr(meta, "artist", "") or "").lower()
+                title = (
+                    getattr(meta, "title", "") or os.path.splitext(os.path.basename(p))[0]
+                ).lower()
+                return (artist, title)
+
+            tracks.sort(key=_track_sort_key)
+            thumbs = {}
+            for path in tracks[:64]:
+                cached = self._thumb_map.get(path) or get_thumbnail_path(path)
+                if cached:
+                    thumbs[path] = cached
+                else:
+                    self._queue_library_media_work(path)
+            self.home_view.set_items(tracks, thumbnails=thumbs)
+            self.home_view.title_label.setText("Tracks")
+            self.home_view.hint.setText(f"{len(tracks)} tracks")
+            return
+
+        # albums / artists — show facet buckets then drill into a bucket
+        self.home_view.set_browse_mode(True)
+        self.home_view.set_facets_enabled(True)
+        self.home_view._filter_name = "audio"
+        self.refresh_facets()
+        facet_key = "album" if mode == "albums" else "artist"
+        self.home_view._apply_facet_visibility()
+        self.home_view._select_facet(facet_key)
+        buckets = dict(self.home_view._facet_data.get(facet_key, {}) or {})
+        query = (getattr(self, "_home_query", "") or "").lower()
+        if query:
+            buckets = {
+                k: v
+                for k, v in buckets.items()
+                if query in k.lower()
+                or any(query in os.path.basename(p).lower() for p in v)
+            }
+            # Temporarily show filtered buckets in the list
+            self.home_view.facet_buckets.clear()
+            for label, paths in buckets.items():
+                item = QListWidgetItem(f"{label}  ({len(paths)})")
+                item.setData(Qt.ItemDataRole.UserRole, label)
+                self.home_view.facet_buckets.addItem(item)
+        if buckets:
+            first = next(iter(buckets.keys()))
+            self.apply_facet_bucket(facet_key, first)
+        else:
+            self.home_view.set_items([], thumbnails={})
+            self.home_view.hint.setText(
+                "No matching albums/artists"
+                if query
+                else "No tagged audio yet — open a folder to index"
+            )
+        self.home_view.title_label.setText("Albums" if mode == "albums" else "Artists")
 
     def show_favorites_library(self, playlist_name: str = None):
         names = self.playlist_store.names()
@@ -1791,9 +1931,13 @@ class VoxPlayerMainWindow(QMainWindow):
             else:
                 self._queue_library_media_work(p)
         self.home_view.set_items(paths, thumbnails=thumbs)
-        self.home_view.title_label.setText(
-            "Favorites & playlists" if selected == PlaylistStore.FAVORITES else selected
-        )
+        liked_mode = getattr(self, "_library_nav_mode", "") == "liked"
+        if liked_mode and selected == PlaylistStore.FAVORITES:
+            self.home_view.title_label.setText("Liked")
+        else:
+            self.home_view.title_label.setText(
+                "Favorites & playlists" if selected == PlaylistStore.FAVORITES else selected
+            )
         self.home_view.hint.setText(f"{len(paths)} saved items")
 
     def show_library_context_menu(self, path: str, global_pos):
@@ -4983,7 +5127,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.16.0")
+    app.setApplicationVersion("1.17.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

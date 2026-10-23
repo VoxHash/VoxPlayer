@@ -8,8 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Android / GrapheneOS companion phase
-- Library UX: Albums / Artists / Tracks / Liked navigation
 - Waveform / spectrum meter as optional transport chrome
+- Accessibility contrast pass on the dark shell
+
+## [1.17.0] - 2026-10-23
+
+### Added
+- Streaming-style library nav: Albums / Artists / Tracks / Liked alongside the Home grid (Library rail opens Tracks by default)
+- Liked maps to Favorites; Albums/Artists drill into tagged buckets; Tracks is a sorted flat audio list with search
+
+### Changed
+- ROADMAP Library UX Albums/Artists/Tracks/Liked marked done; analytics facets credited to 1.12.0
 
 ## [1.16.0] - 2026-10-23
 

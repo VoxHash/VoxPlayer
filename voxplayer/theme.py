@@ -366,6 +366,24 @@ def app_stylesheet() -> str:
         border-bottom: 2px solid {c['accent']};
         font-weight: 600;
     }}
+    QPushButton#LibraryNav {{
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        color: {c['text_muted']};
+        padding: 4px 10px 6px 10px;
+        font-family: {FONT_DISPLAY};
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+    }}
+    QPushButton#LibraryNav:hover {{
+        color: {c['text']};
+    }}
+    QPushButton#LibraryNav[active="true"] {{
+        color: {c['text']};
+        border-bottom: 2px solid {c['accent']};
+    }}
     QPushButton#FilterIcon {{
         background: transparent;
         border: none;

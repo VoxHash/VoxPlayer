@@ -14,14 +14,15 @@ A professional media player with advanced features including:
 - Portable / USB playlist and podcast sync
 - LAN multi-room transport sync (peer control daemons)
 - Gapless queue prefetch, bookmark resume, on-device library browse
+- Albums / Artists / Tracks / Liked library navigation
 - Timeline preview and keyboard shortcuts
 
 Author: VoxHash
 License: MIT
-Version: 1.16.0
+Version: 1.17.0
 """
 
-__version__ = "1.16.0"
+__version__ = "1.17.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

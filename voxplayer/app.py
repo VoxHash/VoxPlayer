@@ -1160,7 +1160,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self._torrent_active_paths = set()  # local paths belonging to the active torrent session
         self._pending_torrent_rel_paths: List[str] = []
         self.update_checker = None
-        self.current_version = "1.9.0"
+        self.current_version = "1.10.0"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
@@ -2936,6 +2936,7 @@ For more information, visit the project repository.
 
             if hasattr(self, "engine"):
                 self.engine.set_source(file_path)
+            self._last_media_error_body = None
             self.app_state.last_file = file_path
             self._register_library_path(file_path)
             if file_path not in [self.playlist.get_file_at_index(i) for i in range(self.playlist.count())]:
@@ -3575,40 +3576,48 @@ For more information, visit the project repository.
             QTimer.singleShot(100, self._engine_play)
 
     def media_error(self, error, error_string):
-        """Handle media errors"""
-        # Only show critical errors to user, suppress common warnings
-        if error_string and "pts == AV_NOPTS_VALUE" not in error_string:
-            if "Unknown property transform" not in error_string:
-                lower = (error_string or "").lower()
-                codecish = any(
-                    k in lower
-                    for k in (
-                        "codec",
-                        "unsupported",
-                        "no suitable",
-                        "could not demux",
-                        "cannot find",
-                        "format",
-                        "decoder",
-                    )
-                )
-                title = "Unsupported or unreadable media" if codecish else "Media Error"
-                body = error_string
-                if codecish:
-                    body = (
-                        f"{error_string}\n\n"
-                        f"{self._supported_formats_hint()}\n"
-                        "If the extension looks correct, the codec may be missing "
-                        "from the system native media core (libvlc plugins)."
-                    )
-                QMessageBox.warning(self, title, body)
-                self.status_bar.showMessage(f"Error: {error_string}", 6000)
-            else:
-                # Suppress transform warnings
-                pass
-        else:
-            # Suppress pts warnings as they're common and not critical
-            pass
+        """Surface native-engine failures; never fall back to another media stack."""
+        if not error_string:
+            return
+        # Suppress common non-fatal decoder chatter
+        if "pts == AV_NOPTS_VALUE" in error_string:
+            return
+        if "Unknown property transform" in error_string:
+            return
+        lower = error_string.lower()
+        codecish = any(
+            k in lower
+            for k in (
+                "codec",
+                "unsupported",
+                "no suitable",
+                "could not demux",
+                "cannot find",
+                "format",
+                "decoder",
+                "demux",
+                "native media core could not play",
+                "encountered error",
+                "decoder_or_demux",
+                "load_failed",
+            )
+        )
+        title = "Playback error (native engine)" if codecish else "Media Error"
+        body = error_string
+        if codecish and "Supported formats:" not in error_string:
+            body = (
+                f"{error_string}\n\n"
+                f"{self._supported_formats_hint()}\n"
+                "There is no alternate engine in VoxPlayer — fix codecs/plugins "
+                "or choose a supported file."
+            )
+        # Avoid stacking identical modals for the same source
+        if getattr(self, "_last_media_error_body", None) == body:
+            self.status_bar.showMessage(error_string.split("\n", 1)[0][:120], 6000)
+            return
+        self._last_media_error_body = body
+        QMessageBox.warning(self, title, body)
+        self.status_bar.showMessage(error_string.split("\n", 1)[0][:120], 8000)
 
     def update_ui(self):
         """Update UI elements"""
@@ -3824,7 +3833,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.9.0")
+    app.setApplicationVersion("1.10.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

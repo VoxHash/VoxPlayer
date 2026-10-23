@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.9.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.10.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -47,7 +47,7 @@ Native migration table Phases 0–5 are complete (Phase 4 remains an ongoing she
 ### Playback (native-C-core-only)
 - Soft WID rebind on show/resize; hard rebind only when the native window is recreated (**Done 1.7.0**)
 - Coalesced non-blocking seeks with bounded retries (**Done 1.7.0**)
-- Clearer codec error surfacing from the native engine (no silent engine switches)
+- Clearer codec error surfacing from the native engine (no silent engine switches) (**Done 1.10.0**)
 - Further Wayland compositor embed when available without a second media stack
 
 ### Library & indexing

@@ -14,6 +14,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Broader subtitle format support where maintainable
 - Optional local control daemon; Android / GrapheneOS companion phase
 
+## [1.10.0] - 2026-10-23
+
+### Added
+- Native engine hooks `MediaPlayerEncounteredError` and Error-state polling with clear, once-per-source messages (file name, extension, libvlc errmsg)
+- Playback error dialogs state explicitly that VoxPlayer never switches to another media stack
+
+### Changed
+- Ended vs Error states are distinguished in the engine poll loop (Error is no longer a quiet stop)
+- ROADMAP codec-error surfacing marked done
+
 ## [1.9.0] - 2026-10-23
 
 ### Added

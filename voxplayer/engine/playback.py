@@ -157,6 +157,9 @@ class PlaybackEngine(QObject):
         self._soft_rebind_scheduled = False
         self._embed_hint = embed_platform_hint()
         self._surface_filter = None
+        self._last_error_msg = ""
+        self._error_emitted_for_source = ""
+        self._event_manager = None
 
         self.media_player = None
         self.audio_output = None
@@ -220,6 +223,7 @@ class PlaybackEngine(QObject):
                 self._player.video_set_key_input(False)
             except Exception:
                 pass
+            self._attach_error_events()
             self._bind_video_drawable(force=True)
             self._start_poll()
             self._apply_volume_to_player()
@@ -228,6 +232,71 @@ class PlaybackEngine(QObject):
             self._player = None
             self._instance = None
             return False
+
+    def _attach_error_events(self) -> None:
+        """Subscribe to native EncounteredError — never silently switch engines."""
+        if self._player is None or self._vlc is None:
+            return
+        try:
+            self._event_manager = self._player.event_manager()
+            self._event_manager.event_attach(
+                self._vlc.EventType.MediaPlayerEncounteredError,
+                self._on_native_encountered_error,
+            )
+        except Exception:
+            self._event_manager = None
+
+    def _on_native_encountered_error(self, event) -> None:
+        # libvlc callbacks are not on the Qt thread — queue to the main loop.
+        QTimer.singleShot(0, lambda: self._report_playback_error("encountered_error"))
+
+    def _libvlc_errmsg(self) -> str:
+        if self._vlc is None:
+            return ""
+        try:
+            raw = self._vlc.libvlc_errmsg()
+            if raw is None:
+                return ""
+            if isinstance(raw, bytes):
+                return raw.decode("utf-8", errors="replace").strip()
+            return str(raw).strip()
+        except Exception:
+            return ""
+
+    def _format_playback_error(self, reason: str) -> str:
+        path = self._source_path or ""
+        name = os.path.basename(path) if path else "(no file)"
+        ext = os.path.splitext(path)[1].lower() if path else ""
+        core = self._libvlc_errmsg()
+        bits = [
+            f"Native media core could not play “{name}”.",
+            f"Reason: {reason.replace('_', ' ')}.",
+        ]
+        if ext:
+            bits.append(f"Extension: {ext}.")
+        if core:
+            bits.append(f"Engine detail: {core}")
+        bits.append(
+            "VoxPlayer does not switch to another playback stack — "
+            "install or enable the matching libvlc plugin/codec, or use a supported format."
+        )
+        return "\n".join(bits)
+
+    def _report_playback_error(self, reason: str) -> None:
+        """Surface a codec/demux failure once per source (no silent fallback)."""
+        key = f"{self._source_path}|{reason}|{self._libvlc_errmsg()}"
+        if key == self._error_emitted_for_source and self._last_error_msg:
+            return
+        msg = self._format_playback_error(reason)
+        self._error_emitted_for_source = key
+        self._last_error_msg = msg
+        self._last_state = "error"
+        self.state_changed.emit("error")
+        self.error_occurred.emit(msg)
+
+    def clear_last_error(self) -> None:
+        self._last_error_msg = ""
+        self._error_emitted_for_source = ""
 
     def _current_wid(self) -> int:
         if self.video_widget is None:
@@ -408,15 +477,18 @@ class PlaybackEngine(QObject):
 
     def set_source(self, file_path: str) -> None:
         self._source_path = file_path
+        self.clear_last_error()
         if self._player is None:
-            self.error_occurred.emit("Native engine not initialized")
+            self._report_playback_error("engine_not_initialized")
             return
         if self._looks_like_video(file_path):
             self._bind_video_drawable(force=False)
         try:
             self._load_media_path(file_path, start_paused=True)
         except Exception as exc:
-            self.error_occurred.emit(f"Native engine load failed: {exc}")
+            self.error_occurred.emit(
+                self._format_playback_error(f"load_failed: {exc}")
+            )
 
     def play(self) -> None:
         if self._player is None:
@@ -630,6 +702,11 @@ class PlaybackEngine(QObject):
         if self._player is None:
             return
         try:
+            st_i = self._state_int(self._player.get_state())
+            # libvlc State.Error == 6 — surface clearly; do not treat as a quiet stop.
+            if st_i == 6 and self._last_state != "error":
+                self._report_playback_error("decoder_or_demux_error")
+                return
             self.position_changed.emit(self.position())
             dur = self.duration()
             if dur:
@@ -639,11 +716,11 @@ class PlaybackEngine(QObject):
                 self._last_state = "playing"
                 self.state_changed.emit("playing")
             elif not playing and self._last_state == "playing":
-                try:
-                    ended = self._state_int(self._player.get_state()) in (5, 6)
-                except Exception:
-                    ended = False
-                if ended:
+                # 5 = Ended, 6 handled above
+                if st_i == 5:
+                    self._last_state = "stopped"
+                    self.state_changed.emit("stopped")
+                elif st_i not in (1, 2, 4):  # Opening/Buffering/Paused
                     self._last_state = "stopped"
                     self.state_changed.emit("stopped")
         except Exception:

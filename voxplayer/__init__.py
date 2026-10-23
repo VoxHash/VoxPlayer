@@ -21,14 +21,15 @@ A professional media player with advanced features including:
 - Optional shell plugin hooks (out of the native core path)
 - TUI + browser remotes for the localhost control daemon
 - Desktop onedir bundles that can ship the native C media core
+- Native parallel scan meta + quick content ids (Rust/Zig hot paths)
 - Timeline preview and keyboard shortcuts
 
 Author: VoxHash
 License: MIT
-Version: 1.23.0
+Version: 1.24.0
 """
 
-__version__ = "1.23.0"
+__version__ = "1.24.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

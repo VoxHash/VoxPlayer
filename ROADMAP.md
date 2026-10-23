@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.21.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.24.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -74,6 +74,7 @@ Industry desktop players keep demux → decode → output in C/native code and r
 | **3** | Optional Zig experiments for alternate scanners / packagers if Rust artifacts are heavy | **Done (1.6.0)** — see `native/vox_scan_zig` |
 | **4** | Keep PyQt6 as the product surface; avoid second playback engines | Ongoing |
 | **5** | Harden in-app video WID embed + non-blocking seeks on all desktop targets | **Done (1.7.0)** |
+| **6** | Grow scan/metadata hot paths: parallel ``vox_scan_dir_meta`` + blake3 ``vox_scan_quick_ids``; library index uses native stats | **Done (1.24.0)** |
 
 **Long-run stance:** Keep investing in Rust/C (and Zig where it helps packaging) for hot paths so memory and parallel work stay efficient while the desktop shell remains PyQt6. That is how the project stays robust as library size and features grow.
 
@@ -125,7 +126,7 @@ GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analyti
 - Optional plugin hooks that stay out of the core path (**Done 1.21.0** — `~/.config/voxplayer/plugins/` + `voxplayer.plugins` entry points; Help → Plugins)
 - WebAssembly / TUI clients talking to the local daemon (**Done 1.22.0** — `voxplayer-tui` / `voxplayer-ctl`; browser UI at daemon `/ui` with CORS for external / WASM hosts)
 - Packaging: ship the native C media core (or clear per-OS installers) inside desktop bundles for Windows/macOS/Linux (**Done 1.23.0** — PyInstaller onedir + `native_core/`; `packaging/install_native_core_*`; CI installs core before bundle)
-- Continue growing the native (Rust / C / optional Zig) surface area for scan, metadata, and other hot paths so the PyQt6 shell stays light under heavy multitasking
+- Continue growing the native (Rust / C / optional Zig) surface area for scan, metadata, and other hot paths so the PyQt6 shell stays light under heavy multitasking (**Done 1.24.0** — Phase 6 `vox_scan_dir_meta` / `vox_scan_quick_ids`; Zig meta via `statx`; library index off Python `stat`)
 
 ---
 

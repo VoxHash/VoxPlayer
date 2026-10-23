@@ -8,7 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Android / GrapheneOS companion phase (Later)
-- Stretch: grow Rust/Zig/C hot paths (scan, metadata) under heavy multitasking
+
+## [1.24.0] - 2026-10-23
+
+### Added
+- Phase 6 native scan ABI: `vox_scan_dir_meta` (parallel walk+stat TSV) and Rust `vox_scan_quick_ids` (blake3 of size/mtime/first 64KiB)
+- Zig scanner gains `vox_scan_dir_meta` (linux `statx`) + shared `vox_scan_version`
+- `library_index.scan_root` uses native meta when available (no per-file Python `stat` on the hot path)
+- Loader prefers meta-capable builds, then quick-ids (Rust), then Zig
+
+### Changed
+- ROADMAP Stretch native-surface-area item and Phase 6 marked done
 
 ## [1.23.0] - 2026-10-23
 

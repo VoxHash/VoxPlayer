@@ -45,9 +45,10 @@ QApplication
 - Probe future libvlc Wayland surface bind when present; skip XID bind on pure Wayland without that API (no second media stack)
 - Seeks are coalesced and non-blocking (scrub vs exact); on pure Wayland audio volume still works when embed is limited
 - Optional **Rust** hot paths: `cargo build --release --manifest-path native/Cargo.toml` → `libvox_scan.so` + `libvox_meta.so`
-- Optional **Zig** scanner (Phase 3): `native/vox_scan_zig/build.sh` → lighter `libvox_scan_zig.so` (preferred over Rust when both exist)
+- Optional **Zig** scanner (Phase 3): `native/vox_scan_zig/build.sh` → lighter `libvox_scan_zig.so`
+- **Phase 6**: `vox_scan_dir_meta` + Rust `vox_scan_quick_ids`; loader prefers meta/quick-id capable libs
 - Set `VOXPLAYER_NATIVE_DIR` to override where shared libraries are loaded from
-- Further native phases (Zig experiments, WID harden) are tracked in `ROADMAP.md`
+- Further native work is tracked in `ROADMAP.md`
 - Torrent mode drives an external qBittorrent instance
 - Window geometry, volume, and resume data live in platform `QSettings` storage
 

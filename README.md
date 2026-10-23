@@ -21,7 +21,7 @@ voxplayer
 - **Universal format support**: MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MP3, FLAC, WAV, OGG, M4A, AAC, WMA
 - **native C media core only**: Native 0–200% volume and mute; clear install error if libvlc/python-vlc is missing (no Qt playback fallback)
 - **Zone drag-and-drop**: Library grid indexes; Now Playing / Up next / transport play immediately
-- **Native scan (optional)**: Rust `vox_scan` for parallel folder walks (`cargo build --release --manifest-path native/Cargo.toml`)
+- **Native scan (optional)**: Rust/Zig `vox_scan` with parallel meta + quick ids (`cargo build --release --manifest-path native/Cargo.toml`)
 - **Thumbnails & live preview**: Smart ffmpeg posters (skips black frames); live frame grabs in Now Playing / transport
 - **Metadata enrichment**: Offline-first local tags; Audio browse by year / genre / artist; Video browse by movies / TV seasons
 - **Up next & playlists**: Click Up next to play; icon clear-and-stop; Favorites chips plus named local playlists by file path

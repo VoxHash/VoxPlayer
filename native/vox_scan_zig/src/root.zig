@@ -3,7 +3,9 @@
 //! Uses libc/POSIX so the shared object stays small (no Zig Io runtime).
 
 const std = @import("std");
+const builtin = @import("builtin");
 const c = std.c;
+const linux = std.os.linux;
 
 const DIR = c.DIR;
 
@@ -133,6 +135,46 @@ fn walkCollect(
     }
 }
 
+fn resolveRoot(root: [*:0]const u8, root_slice: []const u8) []const u8 {
+    var resolved_buf: [4096]u8 = undefined;
+    if (c.realpath(root, &resolved_buf)) |p| return std.mem.span(p);
+    return root_slice;
+}
+
+fn collectSortedPaths(
+    allocator: std.mem.Allocator,
+    abs_root: []const u8,
+    exts: []const []const u8,
+) ![][]const u8 {
+    var paths: std.ArrayListUnmanaged([]const u8) = .empty;
+    try walkCollect(allocator, abs_root, exts, &paths);
+    std.mem.sort([]const u8, paths.items, {}, struct {
+        fn less(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.order(u8, a, b) == .lt;
+        }
+    }.less);
+    return try paths.toOwnedSlice(allocator);
+}
+
+fn joinLines(paths: []const []const u8) ?[*:0]u8 {
+    if (paths.len == 0) return emptyString();
+    var total: usize = 0;
+    for (paths) |p| total += p.len + 1;
+    const buf = c.malloc(total) orelse return emptyString();
+    const out: [*]u8 = @ptrCast(buf);
+    var off: usize = 0;
+    for (paths, 0..) |p, i| {
+        @memcpy(out[off .. off + p.len], p);
+        off += p.len;
+        if (i + 1 < paths.len) {
+            out[off] = '\n';
+            off += 1;
+        }
+    }
+    out[off] = 0;
+    return @ptrCast(out);
+}
+
 /// Scan ``root`` recursively for files whose extension is in ``exts_csv``.
 export fn vox_scan_dir(root: ?[*:0]const u8, exts_csv: ?[*:0]const u8) callconv(.c) ?[*:0]u8 {
     if (root == null) return emptyString();
@@ -144,48 +186,69 @@ export fn vox_scan_dir(root: ?[*:0]const u8, exts_csv: ?[*:0]const u8) callconv(
     const allocator = arena.allocator();
 
     const exts = parseExts(exts_csv, allocator) catch return emptyString();
+    const abs_root = resolveRoot(root.?, root_slice);
+    const paths = collectSortedPaths(allocator, abs_root, exts) catch return emptyString();
+    return joinLines(paths);
+}
 
-    // Resolve to absolute path via libc realpath when possible.
-    var resolved_buf: [4096]u8 = undefined;
-    const abs_root: []const u8 = blk: {
-        const rp = c.realpath(root.?, &resolved_buf);
-        if (rp) |p| break :blk std.mem.span(p);
-        break :blk root_slice;
+fn fileMetaLine(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+    if (builtin.os.tag != .linux) return error.StatFailed;
+    const path_z = try dupeZ(allocator, path);
+    defer allocator.free(path_z);
+    var stx: linux.Statx = undefined;
+    const rc = linux.statx(
+        linux.AT.FDCWD,
+        path_z.ptr,
+        0,
+        .{ .SIZE = true, .MTIME = true },
+        &stx,
+    );
+    if (@as(isize, @bitCast(rc)) < 0) return error.StatFailed;
+    const size: u64 = stx.size;
+    const mtime_ns: u64 = blk: {
+        if (stx.mtime.sec < 0) break :blk 0;
+        const sec: u64 = @intCast(stx.mtime.sec);
+        const nsec: u64 = @intCast(@max(stx.mtime.nsec, 0));
+        break :blk sec * 1_000_000_000 + nsec;
     };
+    return try std.fmt.allocPrint(allocator, "{s}\t{d}\t{d}", .{ path, size, mtime_ns });
+}
 
-    var paths: std.ArrayListUnmanaged([]const u8) = .empty;
-    walkCollect(allocator, abs_root, exts, &paths) catch return emptyString();
+/// TSV lines ``path\\tsize\\tmtime_ns`` — same ABI as Rust ``vox_scan_dir_meta``.
+export fn vox_scan_dir_meta(root: ?[*:0]const u8, exts_csv: ?[*:0]const u8) callconv(.c) ?[*:0]u8 {
+    if (root == null) return emptyString();
+    const root_slice = std.mem.span(root.?);
+    if (root_slice.len == 0) return emptyString();
 
-    std.mem.sort([]const u8, paths.items, {}, struct {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const exts = parseExts(exts_csv, allocator) catch return emptyString();
+    const abs_root = resolveRoot(root.?, root_slice);
+    const paths = collectSortedPaths(allocator, abs_root, exts) catch return emptyString();
+
+    var lines: std.ArrayListUnmanaged([]const u8) = .empty;
+    for (paths) |p| {
+        const line = fileMetaLine(allocator, p) catch continue;
+        lines.append(allocator, line) catch continue;
+    }
+    std.mem.sort([]const u8, lines.items, {}, struct {
         fn less(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.order(u8, a, b) == .lt;
         }
     }.less);
-
-    if (paths.items.len == 0) return emptyString();
-
-    var total: usize = 0;
-    for (paths.items) |p| total += p.len + 1;
-
-    const buf = c.malloc(total) orelse return emptyString();
-    const out: [*]u8 = @ptrCast(buf);
-    var off: usize = 0;
-    for (paths.items, 0..) |p, i| {
-        @memcpy(out[off .. off + p.len], p);
-        off += p.len;
-        if (i + 1 < paths.items.len) {
-            out[off] = '\n';
-            off += 1;
-        }
-    }
-    out[off] = 0;
-    return @ptrCast(out);
+    return joinLines(lines.items);
 }
 
 export fn vox_scan_free(ptr: ?[*:0]u8) callconv(.c) void {
     if (ptr) |p| c.free(p);
 }
 
+export fn vox_scan_version() callconv(.c) [*:0]const u8 {
+    return "0.2.0-zig";
+}
+
 export fn vox_scan_zig_version() callconv(.c) [*:0]const u8 {
-    return "0.1.0-zig";
+    return vox_scan_version();
 }

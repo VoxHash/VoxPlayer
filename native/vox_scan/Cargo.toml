@@ -13,3 +13,4 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 walkdir = "2.5"
 rayon = "1.10"
+blake3 = "1.5"

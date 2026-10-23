@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from .native_scan import scan_media_dir
+from .native_scan import has_meta_scan, scan_media_dir, scan_media_dir_meta
 
 from .codecs import ALL_EXTENSIONS
 
@@ -118,36 +118,53 @@ class LibraryIndex:
             self.roots.pop(root, None)
             return [], [], sorted(prev)
 
-        if walker is not None:
-            found = walker(root) or []
-        else:
-            found = scan_media_dir(root, extensions)
-            if found is None:
-                found = []
-                for dirpath, _dirs, files in os.walk(root):
-                    for name in files:
-                        path = os.path.join(dirpath, name)
-                        ext = os.path.splitext(name)[1].lower()
-                        if ext in extensions or ext in {e.lower() for e in extensions}:
-                            found.append(path)
-
         prev_map = dict(self.roots.get(root) or {})
         new_map: Dict[str, Dict[str, int]] = {}
         added_or_changed: List[str] = []
         current: List[str] = []
 
-        for path in found:
-            if not path:
-                continue
-            abs_path = os.path.abspath(path)
-            fp = _file_fingerprint(abs_path)
-            if not fp:
-                continue
-            current.append(abs_path)
-            new_map[abs_path] = fp
-            old = prev_map.get(abs_path)
-            if old is None or old.get("mtime") != fp["mtime"] or old.get("size") != fp["size"]:
-                added_or_changed.append(abs_path)
+        # Phase 6: prefer native parallel walk+stat (keeps PyQt shell off the hot path).
+        meta_map: Optional[Dict[str, Dict[str, int]]] = None
+        if walker is None and has_meta_scan():
+            meta_map = scan_media_dir_meta(root, extensions)
+
+        if meta_map is not None:
+            for abs_path, fp in meta_map.items():
+                current.append(abs_path)
+                new_map[abs_path] = {"mtime": int(fp["mtime"]), "size": int(fp["size"])}
+                old = prev_map.get(abs_path)
+                if (
+                    old is None
+                    or old.get("mtime") != new_map[abs_path]["mtime"]
+                    or old.get("size") != new_map[abs_path]["size"]
+                ):
+                    added_or_changed.append(abs_path)
+        else:
+            if walker is not None:
+                found = walker(root) or []
+            else:
+                found = scan_media_dir(root, extensions)
+                if found is None:
+                    found = []
+                    for dirpath, _dirs, files in os.walk(root):
+                        for name in files:
+                            path = os.path.join(dirpath, name)
+                            ext = os.path.splitext(name)[1].lower()
+                            if ext in extensions or ext in {e.lower() for e in extensions}:
+                                found.append(path)
+
+            for path in found:
+                if not path:
+                    continue
+                abs_path = os.path.abspath(path)
+                fp = _file_fingerprint(abs_path)
+                if not fp:
+                    continue
+                current.append(abs_path)
+                new_map[abs_path] = fp
+                old = prev_map.get(abs_path)
+                if old is None or old.get("mtime") != fp["mtime"] or old.get("size") != fp["size"]:
+                    added_or_changed.append(abs_path)
 
         removed = sorted(set(prev_map.keys()) - set(new_map.keys()))
         self.roots[root] = new_map

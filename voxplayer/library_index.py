@@ -15,31 +15,9 @@ from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tupl
 
 from .native_scan import scan_media_dir
 
-DEFAULT_EXTS: Tuple[str, ...] = (
-    ".mp4",
-    ".avi",
-    ".mkv",
-    ".mov",
-    ".wmv",
-    ".flv",
-    ".webm",
-    ".m4v",
-    ".3gp",
-    ".mpg",
-    ".mpeg",
-    ".ts",
-    ".m2ts",
-    ".mp3",
-    ".wav",
-    ".flac",
-    ".aac",
-    ".ogg",
-    ".wma",
-    ".m4a",
-    ".opus",
-    ".ape",
-    ".aiff",
-)
+from .codecs import ALL_EXTENSIONS
+
+DEFAULT_EXTS: Tuple[str, ...] = tuple(sorted(ALL_EXTENSIONS))
 
 
 def _cache_path() -> str:

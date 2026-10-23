@@ -71,6 +71,13 @@ from .audio_viz import (
     spectrum_bands,
     waveform_slice,
 )
+from .codecs import (
+    file_dialog_filter,
+    formats_hint,
+    is_supported_extension,
+    probe_file_codecs,
+    probe_system_codecs,
+)
 from .multiroom import (
     RoomPeer,
     fanout_action,
@@ -2385,6 +2392,10 @@ class VoxPlayerMainWindow(QMainWindow):
         help_action.triggered.connect(self.show_help)
         help_menu.addAction(help_action)
 
+        codec_support_action = QAction("&Codec support…", self)
+        codec_support_action.triggered.connect(self.show_codec_support)
+        help_menu.addAction(codec_support_action)
+
         help_menu.addSeparator()
 
         check_updates_action = QAction("&Check for Updates", self)
@@ -2648,6 +2659,16 @@ Features:
 For more information, visit the project repository.
         """
         QMessageBox.information(self, "VoxPlayer Help", help_text)
+
+    def show_codec_support(self) -> None:
+        """Honest probe of local ffmpeg/libvlc focus codecs (HEVC / AV1 / Opus)."""
+        report = probe_system_codecs()
+        body = "\n".join(report.summary_lines())
+        body += (
+            "\n\nHardware decode: VOXPLAYER_AVCODEC_HW=any|vaapi|none "
+            "(default any)."
+        )
+        QMessageBox.information(self, "Codec support", body)
 
     def show_qbittorrent_webui_setup(self, _checked: bool = False) -> None:
         """Show help copy for enabling the Web UI (no embedded secrets)."""
@@ -3195,14 +3216,9 @@ For more information, visit the project repository.
 
     def find_media_files_in_folder(self, folder_path):
         """Find all supported media files in a folder recursively (native scan when built)."""
-        video_formats = [
-            ".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".3gp", ".3g2", ".mj2",
-            ".mpg", ".mpeg", ".ts", ".m2ts",
-        ]
-        audio_formats = [
-            ".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma", ".m4a", ".opus", ".ape", ".aiff",
-        ]
-        exts = video_formats + audio_formats
+        from .codecs import audio_extensions_list, video_extensions_list
+
+        exts = video_extensions_list() + audio_extensions_list()
         native = scan_media_dir(folder_path, exts)
         if native is not None:
             return native
@@ -3218,20 +3234,10 @@ For more information, visit the project repository.
         return media_files
 
     def is_supported_media_file(self, file_path):
-        """Check if file is a supported media format"""
+        """Check if file is a supported media format (incl. HEVC / AV1 / Opus)."""
         if not file_path or not os.path.exists(file_path):
             return False
-
-        # Get file extension
-        _, ext = os.path.splitext(file_path.lower())
-
-        # Supported video formats
-        video_formats = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.3g2', '.mj2', '.mpg', '.mpeg']
-
-        # Supported audio formats
-        audio_formats = ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a', '.opus']
-
-        return ext in video_formats or ext in audio_formats
+        return is_supported_extension(file_path)
 
     def exit_fullscreen(self):
         """Exit fullscreen mode"""
@@ -3277,10 +3283,7 @@ For more information, visit the project repository.
             )
 
     def _supported_formats_hint(self) -> str:
-        return (
-            "Supported formats: MP4, MKV, WebM, AVI, MOV, MP3, FLAC, M4A, Opus, OGG, WAV, and similar.\n"
-            "Archives, disk images, executables, and documents are not playable."
-        )
+        return formats_hint()
 
     def _warn_unsupported_paths(self, paths: List[str], context: str = "open") -> None:
         """Surface a clear message when nothing in the selection is playable."""
@@ -3378,10 +3381,7 @@ For more information, visit the project repository.
     def open_file(self):
         """Open file dialog and load media"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open Media File", "",
-            "Video Files (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v);;"
-            "Audio Files (*.mp3 *.flac *.wav *.ogg *.m4a *.aac *.wma *.opus);;"
-            "All Files (*)"
+            self, "Open Media File", "", file_dialog_filter()
         )
 
         if file_path:
@@ -3397,10 +3397,7 @@ For more information, visit the project repository.
     def open_files(self):
         """Open multiple files dialog and load media"""
         file_paths, _ = QFileDialog.getOpenFileNames(
-            self, "Open Media Files", "",
-            "Video Files (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v);;"
-            "Audio Files (*.mp3 *.flac *.wav *.ogg *.m4a *.aac *.wma *.opus);;"
-            "All Files (*)"
+            self, "Open Media Files", "", file_dialog_filter()
         )
 
         if file_paths:
@@ -4243,6 +4240,14 @@ Album: {meta.album or '—'}
 Year: {meta.year or '—'}
 Source: {meta.source}
 """
+            stream = probe_file_codecs(file_path)
+            codec_block = ""
+            if stream:
+                codec_block = (
+                    f"\nStream codecs (ffprobe):\n"
+                    f"Video: {stream.get('video_codec') or '—'}\n"
+                    f"Audio: {stream.get('audio_codec') or '—'}\n"
+                )
 
             info_text = f"""
 Media Information:
@@ -4255,7 +4260,7 @@ Duration: {duration_min}:{duration_sec:02d}
 Volume: {volume_pct}%
 Muted: {'Yes' if muted else 'No'}
 Engine: {engine_label}
-{meta_block}
+{codec_block}{meta_block}
 Player Status:
 State: {state}
 Position: {position // 1000}s
@@ -5212,7 +5217,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.18.0")
+    app.setApplicationVersion("1.19.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties
@@ -5237,15 +5242,10 @@ def main():
         file_to_open = sys.argv[1]
         # Validate the file exists and is a supported media file
         if os.path.exists(file_to_open):
-            # Check if it's a supported media file
-            supported_extensions = [
-                '.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v',  # Video
-                '.mp3', '.flac', '.wav', '.ogg', '.m4a', '.aac', '.wma'  # Audio
-            ]
-            file_ext = os.path.splitext(file_to_open)[1].lower()
-            if file_ext in supported_extensions:
-                file_to_open = os.path.abspath(file_to_open)  # Convert to absolute path
+            if is_supported_extension(file_to_open):
+                file_to_open = os.path.abspath(file_to_open)
             else:
+                file_ext = os.path.splitext(file_to_open)[1].lower()
                 print(f"Warning: Unsupported file format: {file_ext}")
                 file_to_open = None
         else:

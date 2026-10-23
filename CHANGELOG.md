@@ -8,8 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Android / GrapheneOS companion phase
-- Broader codec coverage (HEVC, AV1, Opus) as the native C core allows
 - Accessibility contrast pass on the dark shell
+
+## [1.19.0] - 2026-10-23
+
+### Added
+- HEVC (`.hevc`/`.h265`), AV1 (`.av1`/`.ivf`), and related containers in open/scan/index lists; Opus already covered, demux hints for elementary streams
+- Native engine prefers `--codec=avcodec,all` and optional `--avcodec-hw` (`VOXPLAYER_AVCODEC_HW`, default `any`)
+- Help → Codec support… probes local ffmpeg for HEVC/AV1/Opus decoders and HW accels
+- Media Info shows ffprobe stream codec names
+
+### Changed
+- Central `voxplayer/codecs.py` owns format lists and capability probe
+- ROADMAP broader codec coverage marked done
 
 ## [1.18.0] - 2026-10-23
 

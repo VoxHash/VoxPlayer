@@ -7,8 +7,7 @@ import re
 from collections import defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
-VIDEO_EXT = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
-AUDIO_EXT = {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma", ".opus"}
+from ..codecs import AUDIO_EXTENSIONS as AUDIO_EXT, VIDEO_EXTENSIONS as VIDEO_EXT
 
 _SEASON_RE = re.compile(
     r"(?:^|[.\s_\-])(?:S|Season[\s._-]*)(\d{1,2})(?:[.\s_\-]*E|x)(\d{1,3})",

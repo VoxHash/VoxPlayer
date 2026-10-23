@@ -33,7 +33,7 @@ from .marquee import MarqueeLabel
 from .spectrum import SpectrumMeter, WaveformStrip
 
 
-VIDEO_EXT = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
+from ..codecs import VIDEO_EXTENSIONS as VIDEO_EXT
 
 
 class _MediaDropMixin:

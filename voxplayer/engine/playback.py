@@ -274,6 +274,10 @@ class PlaybackEngine(QObject):
             ".ts",
             ".m2ts",
             ".vob",
+            ".hevc",
+            ".h265",
+            ".av1",
+            ".ivf",
         }
 
     def _try_init_native(self) -> bool:
@@ -294,10 +298,20 @@ class PlaybackEngine(QObject):
                 "--quiet",
                 "--no-keyboard-events",
                 "--no-mouse-events",
+                # Prefer avcodec (HEVC/AV1/Opus) then fall through to other decoders.
+                "--codec=avcodec,all",
             ]
             # XInitThreads already called; --no-xlib avoids double Xlib init on Linux.
             if sys.platform.startswith("linux"):
                 args.append("--no-xlib")
+            try:
+                from ..codecs import avcodec_hw_arg
+
+                hw = avcodec_hw_arg()
+                if hw:
+                    args.append(hw)
+            except Exception:
+                pass
             self._instance = vlc.Instance(*args)
             self._player = self._instance.media_player_new()
             try:
@@ -586,6 +600,17 @@ class PlaybackEngine(QObject):
                 media.add_option(f":gain={gain:.3f}")
             except Exception:
                 pass
+        # Hint demux/codec for HEVC / AV1 elementary streams and modern containers.
+        ext = os.path.splitext(file_path)[1].lower()
+        try:
+            if ext in {".hevc", ".h265"}:
+                media.add_option(":demux=hevc")
+            elif ext in {".av1", ".ivf"}:
+                media.add_option(":demux=avformat,none")
+            elif ext == ".opus":
+                media.add_option(":demux=ogg,avformat,none")
+        except Exception:
+            pass
         self._media = media
         self._player.set_media(media)
         try:

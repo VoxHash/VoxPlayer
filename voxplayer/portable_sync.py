@@ -13,6 +13,8 @@ import sys
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence, Set, Tuple
 
+from .codecs import ALL_EXTENSIONS as _MEDIA_EXTS
+
 
 @dataclass
 class PortableVolume:
@@ -195,24 +197,6 @@ def _unique_dest(folder: str, filename: str) -> str:
         if not os.path.exists(cand):
             return cand
         n += 1
-
-
-_MEDIA_EXTS = {
-    ".mp3",
-    ".flac",
-    ".wav",
-    ".ogg",
-    ".m4a",
-    ".aac",
-    ".wma",
-    ".opus",
-    ".mp4",
-    ".mkv",
-    ".avi",
-    ".mov",
-    ".webm",
-    ".m4v",
-}
 
 
 def on_device_library_root(volume_path: str, subdir: str = "VoxPlayer") -> str:

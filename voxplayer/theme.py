@@ -106,22 +106,62 @@ def app_stylesheet() -> str:
         color: {c['accent']};
     }}
     QPushButton#Chip {{
-        background: {c['bg_elevated']};
-        border: 1px solid {c['border']};
-        border-radius: 16px;
-        color: {c['text']};
-        padding: 6px 14px;
+        background: transparent;
+        border: none;
+        border-radius: 8px;
+        color: {c['text_secondary']};
+        padding: 6px 12px;
         font-size: 12px;
     }}
     QPushButton#Chip:hover {{
-        border-color: {c['accent']};
-        color: {c['accent']};
+        color: {c['text']};
+        background: {c['bg_hover']};
     }}
     QPushButton#Chip[active="true"] {{
-        background: {c['accent']};
-        border-color: {c['accent']};
-        color: #1A1208;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid {c['accent']};
+        border-radius: 0;
+        color: {c['accent']};
         font-weight: 600;
+    }}
+    QPushButton#FilterTab {{
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        border-bottom: 2px solid transparent;
+        color: {c['text_secondary']};
+        padding: 8px 12px 6px 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }}
+    QPushButton#FilterTab:hover {{
+        color: {c['text']};
+        background: {c['accent_soft']};
+        border-radius: 8px;
+        border-bottom: 2px solid transparent;
+    }}
+    QPushButton#FilterTab[active="true"] {{
+        color: {c['accent']};
+        background: transparent;
+        border-bottom: 2px solid {c['accent']};
+        font-weight: 600;
+    }}
+    QPushButton#FilterIcon {{
+        background: transparent;
+        border: none;
+        border-radius: 8px;
+        color: {c['text_secondary']};
+        font-size: 14px;
+        padding: 4px;
+    }}
+    QPushButton#FilterIcon:hover {{
+        color: {c['text']};
+        background: {c['bg_hover']};
+    }}
+    QPushButton#FilterIcon[active="true"] {{
+        color: {c['accent']};
+        background: {c['accent_soft']};
     }}
     QPushButton#TransportPrimary {{
         background: {c['text']};
@@ -216,17 +256,58 @@ def app_stylesheet() -> str:
         background: transparent;
         border: none;
     }}
-    QScrollBar:vertical {{
+    QScrollArea#LibraryScroll, QListWidget#LibraryList, QListWidget#QueueList {{
         background: transparent;
-        width: 10px;
-        margin: 0;
+        border: none;
+    }}
+    /* Wider, higher-contrast scrollbars — easier to see and grab on dark UI */
+    QScrollBar:vertical {{
+        background: {c['bg_input']};
+        width: 14px;
+        margin: 2px;
+        border-radius: 7px;
+        border: 1px solid {c['border_soft']};
     }}
     QScrollBar::handle:vertical {{
-        background: {c['border']};
-        border-radius: 5px;
-        min-height: 24px;
+        background: {c['text_muted']};
+        border-radius: 6px;
+        min-height: 36px;
+        margin: 2px;
+        border: 1px solid {c['border']};
+    }}
+    QScrollBar::handle:vertical:hover {{
+        background: {c['accent']};
+        border-color: {c['accent_hover']};
+    }}
+    QScrollBar::handle:vertical:pressed {{
+        background: {c['accent_pressed']};
     }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+        height: 0;
+        width: 0;
+        background: none;
+        border: none;
+    }}
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+        background: none;
+    }}
+    QScrollBar:horizontal {{
+        background: {c['bg_input']};
+        height: 14px;
+        margin: 2px;
+        border-radius: 7px;
+    }}
+    QScrollBar::handle:horizontal {{
+        background: {c['text_muted']};
+        border-radius: 6px;
+        min-width: 36px;
+        margin: 2px;
+    }}
+    QScrollBar::handle:horizontal:hover {{
+        background: {c['accent']};
+    }}
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+        width: 0;
         height: 0;
     }}
     QMenuBar {{

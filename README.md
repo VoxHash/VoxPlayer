@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://python.org/)
 [![PyQt6](https://img.shields.io/badge/pyqt6-6.0+-blue.svg)](https://pypi.org/project/PyQt6/)
 
-> A modern desktop media player for Windows, macOS, and Linux. Library rail, responsive home grid, streaming-style now playing, transport bar, libmpv-first decode, and qBittorrent streaming.
+> A modern desktop media player for Windows, macOS, and Linux. Library rail, responsive home grid, streaming-style now playing, transport bar, **libmpv-only** decode (0–200% volume), and qBittorrent streaming.
 
 Maintained by **VoxHash Technologies** · contact@voxhash.dev
 
@@ -19,8 +19,9 @@ voxplayer
 
 - **Modern shell**: Left library rail, responsive grid/list library, now-playing panel, bottom transport — video stage only when needed
 - **Universal format support**: MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MP3, FLAC, WAV, OGG, M4A, AAC, WMA
-- **libmpv by default**: Reliable 0–200% volume when system libmpv is present; Qt Multimedia remains the fallback
-- **True volume amplification**: Up to 200% without manual engine env vars for the default path
+- **libmpv only**: Native 0–200% volume and mute; clear install error if libmpv/python-mpv is missing (no Qt playback fallback)
+- **Zone drag-and-drop**: Library grid indexes; Now Playing / Up next / transport play immediately
+- **Native scan (optional)**: Rust `vox_scan` for parallel folder walks (`cargo build --release --manifest-path native/Cargo.toml`)
 - **Thumbnails & live preview**: Smart ffmpeg posters (skips black frames); live frame grabs in Now Playing / transport
 - **Metadata enrichment**: Offline-first local tags; Audio browse by year / genre / artist; Video browse by movies / TV seasons
 - **Up next & playlists**: Click Up next to play; icon clear-and-stop; Favorites chips plus named local playlists by file path
@@ -47,7 +48,7 @@ pip install voxplayer
 voxplayer "path/to/video.mp4"
 ```
 
-Torrent and native decode clients ship in the base install. System **libmpv** is still required for the preferred engine (e.g. `pacman -S mpv` / `apt install libmpv1` / `brew install mpv`).
+System **libmpv** is required (e.g. `pacman -S mpv` / `apt install libmpv2` / `brew install mpv`). Prefer launching with `python run.py` so the project `.venv` and engine preflight run.
 
 Optional metadata extras:
 
@@ -83,14 +84,13 @@ cd VoxPlayer
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python test.py
-python app.py "path/to/video.mp4"
+python run.py "path/to/video.mp4"
 ```
 
-Torrent extras from a clone:
+Optional faster library folder scans:
 
 ```bash
-pip install -e ".[torrent]"
+cargo build --release --manifest-path native/Cargo.toml
 ```
 
 ### Method 4: Built wheel (from source)

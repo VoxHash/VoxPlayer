@@ -1,20 +1,27 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (v1.2.1). Hybrid stack: **PyQt6 shell** + **libmpv preferred** (when system libmpv is present) with **Qt Multimedia** fallback.
+Status as of October 2026 (**v1.3.0**). Stack: **PyQt6 shell** + **libmpv-only playback** (python-mpv + system libmpv). No Qt Multimedia playback path.
+
+## Shipped in 1.3.0
+
+- Zone-aware drag-and-drop: Home/library **indexes only**; Now Playing / Up next / transport **play immediately**
+- Scrollbar contrast and grab size on library + Up next; understated All / Video / Audio / Recent filter tabs
+- **Definitive native volume**: libmpv `volume` 0–200 and `mute`; clear install failure if lib missing; `run.py` venv + preflight
+- First native hot-path: Rust `vox_scan` cdylib + Python ctypes loader for parallel folder scans
+- Honest Wayland note: prefer X11/XWayland for video embed; audio volume still works on pure Wayland
 
 ## Shipped in 1.2.1
 
 - Favorites / playlist chips, Remove-from-Favorites context menus, playlist picker with existing lists
 - Queue dock removed; Clear Up next fully stops and resets transport
-- Audio/Video-scoped metadata facets (Type facet removed); Expand/Minimize only in ⋯ menu
+- Audio/Video-scoped metadata facets; Expand/Minimize only in ⋯ menu
 
 ## Shipped in 1.2.0
 
 - Audio keeps the library visible; video stage only for video or explicit expand
 - Responsive grid/list library, metadata facet browse, Favorites/local playlists
 - Streaming-style Now Playing header and tray background playback
-- libmpv default for 0–200% volume; qbittorrent-api in main deps
-- Smarter video posters (reject black frames)
+- libmpv preferred for 0–200% volume; qbittorrent-api in main deps
 
 ## Shipped in 1.1.x
 
@@ -23,43 +30,91 @@ Status as of October 2026 (v1.2.1). Hybrid stack: **PyQt6 shell** + **libmpv pre
 - Volume amplification path and thumbnail pipeline foundations
 - qBittorrent Web UI torrent streaming with media-library gating
 
-## Now (Q4 2026)
+---
+
+## Now (Q4 2026 → H1 2027)
 
 ### Shell polish
 - Persist home library roots across sessions
 - Shuffle / repeat modes on the transport bar
+- Skin / theme variety (bundled palettes + user theme packs under a VoxPlayer config dir)
 - Stronger empty-state and unsupported-format messaging
 
-### Playback
-- Harden libmpv embed on pure Wayland (today prefers X11/XWayland when `DISPLAY` exists)
+### Playback (libmpv-only)
+- Harden WID embed on pure Wayland where compositors allow; keep audio volume correct when embed is limited
 - Prefer zero-copy / hardware video surfaces where the platform compositor allows
-- Clearer codec error surfacing when FFmpeg/Qt cannot open a stream
+- Clearer codec error surfacing from libmpv (no silent engine switches)
+
+### Library & indexing
+- Expand Rust `vox_scan` usage (watch folders, incremental re-scan)
+- Metadata workers in native code (tags / covers off the UI thread)
+- Deeper library facets (albums, artists, play counts, recently played / never played)
 
 ### Torrent streaming
 - Safer sequential-download defaults and buffer thresholds
 - Multi-file torrent picker UX
 - First-run Web UI setup copy (no embedded secrets)
 
-## Next (H1 2027)
+---
 
-### Native core migration (phased)
-Industry media frameworks use C/C++ for demux → decode → output and Qt for the shell. VoxPlayer follows that direction without a big-bang rewrite:
+## Native performance migration (concrete phases)
 
-1. Keep PyQt6 shell as the product surface
-2. Expand libmpv (C) as the preferred decode/output path where embedding is stable
-3. Evaluate a thin C++/Qt bridge only if Python bindings become a bottleneck
-4. Retain qBittorrent integration at the Python layer (API client)
+Industry desktop players keep demux → decode → output in C/native code and reserve dynamic languages for the shell. VoxPlayer follows that path without a big-bang rewrite.
+
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
+| **0** | libmpv as the **only** playback engine; volume/mute via engine properties | **Done (1.3.0)** |
+| **1** | Rust `vox_scan` cdylib + ctypes for parallel folder walks | **Done (1.3.0)** — see `native/` |
+| **2** | Rust/C metadata + thumbnail worker pool (queue from Python, results via callbacks) | Next |
+| **3** | Optional Zig experiments for alternate scanners / packagers if Rust artifacts are heavy | Later |
+| **4** | Keep PyQt6 as the product surface; avoid second playback engines | Ongoing |
+
+Build Phase 1 locally: `cargo build --release --manifest-path native/Cargo.toml`.
+
+---
+
+## Next (H1–H2 2027)
+
+### Daemon / remote control
+- Optional local control daemon (HTTP/gRPC-style or MPD-compatible surface) so phones and scripts can drive playback on a trusted LAN
+- Desktop media-key / MPRIS integration where the OS expects it
+- Multi-room / cast-style outputs only if maintainable without a second media stack
+
+### Podcast-like feeds & sync ideas
+- Subscribe to RSS/Atom audio feeds; download episodes into the library
+- Detect portable / USB media devices and sync playlists or podcast episodes with one action
+- Hardware / open-firmware portable-player concepts: gapless queues, bookmark resume, simple on-device library views (desktop companion first)
+
+### Library UX (streaming-style shells)
+- Albums / Artists / Tracks / Liked navigation alongside the current Home grid
+- Analytics-style views: most played, recently added, never played (local-only, privacy-first)
+- Waveform / spectrum meter as optional transport chrome
 
 ### Playback quality
-- Broader codec coverage (HEVC, AV1, Opus) as backends allow
-- Subtitle expansion (ASS/SSA/VTT) if maintainable without a second engine
+- Broader codec coverage (HEVC, AV1, Opus) as libmpv allows
+- Subtitle expansion (ASS/SSA/VTT) if maintainable on the single engine
 - Accessibility contrast pass on the dark shell
 
-## Later (H2 2027+)
+---
+
+## Later — Mobile (Android / GrapheneOS)
+
+A **separate Android app phase** (not a thin WebView wrapper):
+
+1. **Read-only companion**: browse library + remote-control a desktop/daemon instance on the LAN
+2. **On-device library**: local files, offline cache, GrapheneOS-friendly permissions (storage scoped, no Google Play Services required)
+3. **Playback**: prefer a maintained native media backend on Android (ExoPlayer-class or libmpv Android builds) with the same volume/mute semantics as desktop
+4. **Sync**: optional pull of playlists / podcast feeds from the desktop daemon; no cloud account required
+
+GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.
+
+---
+
+## Stretch (H2 2027+)
 
 - Optional plugin hooks that stay out of the core path
-- Media library indexing / watch folders
-- Stretch only: remote companion control (not committed)
+- WebAssembly / TUI clients talking to the local daemon
+- Packaging: ship libmpv (or clear per-OS installers) inside desktop bundles for Windows/macOS/Linux
 
 
 

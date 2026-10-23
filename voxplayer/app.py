@@ -24,12 +24,17 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QStyle)
 from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput  # QVideoWidget host only; playback is libmpv
 from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QIcon, QPixmap
 
 from .theme import app_stylesheet, COLORS
 from .ui.shell import LeftRail, HomeView, NowPlayingPanel, TransportBar, AboutDialog
-from .engine.playback import PlaybackEngine, prefer_xcb_for_mpv_embed
+from .engine.playback import (
+    PlaybackEngine,
+    prefer_xcb_for_mpv_embed,
+    NativeEngineError,
+    show_native_engine_failure,
+)
 from .media.thumbnails import ThumbnailCache, get_thumbnail_path
 from .media.metadata import (
     MediaMetadata,
@@ -40,6 +45,7 @@ from .media.metadata import (
 from .media.torrent_gate import validate_torrent_file, validate_torrent_file_list
 from .media.playlists import PlaylistStore
 from .media.library_facets import group_library, VIDEO_EXT as FACET_VIDEO_EXT, AUDIO_EXT as FACET_AUDIO_EXT
+from .native_scan import scan_media_dir
 
 
 class MetadataEnrichWorker(QThread):
@@ -82,7 +88,7 @@ class MetadataEnrichWorker(QThread):
 class AppState:
     window_geometry: Optional[bytes] = None
     theme: str = "dark"
-    volume: int = 50
+    volume: int = 100
     last_file: str = ""
     resume_positions: Dict[str, int] = None
     auto_update_enabled: bool = True
@@ -805,7 +811,7 @@ class PlaylistWidget(QListWidget):
                     self.setCurrentRow(0)
 
                     # Auto-start playback
-                    QTimer.singleShot(100, self.parent_window.media_player.play)
+                    QTimer.singleShot(100, self.parent_window._engine_play)
 
                     # Show comprehensive status message
                     status_parts = []
@@ -1039,6 +1045,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.home_view.media_context.connect(self.show_library_context_menu)
         self.home_view.facet_selected.connect(self.apply_facet_bucket)
         self.home_view.collection_selected.connect(self.show_favorites_library)
+        self.home_view.files_dropped.connect(self.handle_shell_drop)
 
         self.stage_page = QWidget()
         stage_layout = QVBoxLayout(self.stage_page)
@@ -1064,6 +1071,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.now_playing.queue_remove_requested.connect(self.remove_from_up_next)
         self.now_playing.queue_clear_requested.connect(self.clear_up_next_and_stop)
         self.now_playing.add_to_playlist_requested.connect(self.toggle_or_add_playlist_path)
+        self.now_playing.files_dropped.connect(self.handle_shell_drop)
         self.now_playing.favorite_check = lambda p: self.playlist_store.contains(
             PlaylistStore.FAVORITES, p
         )
@@ -1072,6 +1080,7 @@ class VoxPlayerMainWindow(QMainWindow):
         shell_layout.addWidget(body, 1)
 
         self.controls = TransportBar(self)
+        self.controls.files_dropped.connect(self.handle_shell_drop)
         shell_layout.addWidget(self.controls)
 
         # Up next data model only — no right-side Queue dock (Up next lives in Now Playing).
@@ -1659,23 +1668,36 @@ class VoxPlayerMainWindow(QMainWindow):
         self.video_widget.show()
         self.video_widget.winId()
 
-        self.engine = PlaybackEngine(self.video_widget, self)
-        self.media_player = self.engine.media_player
-        self.audio_output = self.engine.audio_output
+        try:
+            self.engine = PlaybackEngine(self.video_widget, self)
+        except NativeEngineError as exc:
+            show_native_engine_failure(str(exc))
+            raise
+
+        # Legacy aliases — playback is libmpv only; these stay None.
+        self.media_player = None
+        self.audio_output = None
 
         self.engine.position_changed.connect(self.position_changed)
         self.engine.duration_changed.connect(self.duration_changed)
         self.engine.state_changed.connect(self._engine_state_changed)
         self.engine.error_occurred.connect(lambda msg: self.media_error(None, msg))
         self.engine.backend_ready.connect(self._on_backend_ready)
-        self.media_player.playbackStateChanged.connect(self.playback_state_changed)
 
+        vol = max(0, min(200, int(self.app_state.volume or 100)))
+        self.app_state.volume = vol
+        self.controls.volume_slider.blockSignals(True)
+        self.controls.volume_slider.setValue(vol)
+        self.controls.volume_slider.blockSignals(False)
+        self.controls.volume_label.setText(f"{vol}%")
         self._apply_output_gain_from_state()
-        self.controls.volume_slider.setValue(self.app_state.volume)
         self._on_backend_ready(self.engine.backend_name)
 
     def _on_backend_ready(self, name: str):
-        label = "libmpv (HW)" if name == "mpv" else "Qt Multimedia"
+        embed = getattr(self.engine, "has_embedded_video", False)
+        label = "libmpv (embedded)" if embed else "libmpv (audio)"
+        if name != "mpv":
+            label = "libmpv"
         if hasattr(self, "now_playing"):
             self.now_playing.engine_label.setText(f"Engine: {label}")
         if hasattr(self, "status_bar"):
@@ -1686,12 +1708,13 @@ class VoxPlayerMainWindow(QMainWindow):
             self.controls.btn_play.setText("⏸")
             if self._preview_timer and not self._preview_timer.isActive():
                 self._preview_timer.start()
-            # Pulse sink-input often appears only after playback starts
-            QTimer.singleShot(300, self._apply_output_gain_from_state)
+            # Re-apply volume after stream opens (libmpv property timing)
+            QTimer.singleShot(200, self._apply_output_gain_from_state)
         else:
             self.controls.btn_play.setText("▶")
             if state == "stopped" and self._preview_timer:
                 self._preview_timer.stop()
+        self.playback_state_changed(state)
 
     def setup_shortcuts(self):
         # Space bar for play/pause
@@ -1751,46 +1774,12 @@ class VoxPlayerMainWindow(QMainWindow):
         self._preview_timer.timeout.connect(self._update_live_preview)
 
     def setup_drag_drop(self):
-        """Setup comprehensive drag and drop functionality for all app components"""
-        # Enable drag and drop on the entire main window
+        """Zone-based drops: library indexes; Now Playing / transport play immediately."""
         self.setAcceptDrops(True)
-        self.video_widget.setAcceptDrops(True)
-
-        # Enable on all major components
-        if hasattr(self, 'centralWidget'):
-            self.centralWidget().setAcceptDrops(True)
-        if hasattr(self, 'controls'):
-            self.controls.setAcceptDrops(True)
-        if hasattr(self, 'status_bar'):
-            self.status_bar.setAcceptDrops(True)
-
-        if hasattr(self, 'playlist'):
-            self.playlist.setAcceptDrops(True)
-
-        # Enable on menu bar and all dock widgets
-        if hasattr(self, 'menuBar'):
-            self.menuBar().setAcceptDrops(True)
-
-        # Enable on all dock widgets
-        for dock in self.findChildren(QDockWidget):
-            dock.setAcceptDrops(True)
-
-        # Enable on all child widgets recursively
-        self._enable_drag_drop_recursive(self)
-
-    def _enable_drag_drop_recursive(self, widget):
-        """Recursively enable drag and drop on all child widgets"""
-        try:
-            # Enable drag and drop on this widget
-            widget.setAcceptDrops(True)
-
-            # Recursively enable on all children
-            for child in widget.findChildren(QWidget):
-                if child != widget:  # Avoid infinite recursion
-                    child.setAcceptDrops(True)
-        except Exception:
-            # Silently handle any errors
-            pass
+        if hasattr(self, "video_widget"):
+            self.video_widget.setAcceptDrops(True)
+        # Home / Now Playing / Transport already accept drops via shell mixins.
+        # Do not recursively setAcceptDrops on every child — that breaks zone routing.
 
     def setup_auto_update(self):
         """Setup auto-update functionality"""
@@ -1843,26 +1832,13 @@ class VoxPlayerMainWindow(QMainWindow):
         self.update_audio_device()
 
     def update_audio_device(self):
-        """Update the current audio output device"""
-        try:
-            if self.app_state.audio_output_mode == "default":
-                # Use default device (simplified approach)
-                if hasattr(self, 'audio_output'):
-                    # Just recreate audio output to use default device
-                    self.audio_output = QAudioOutput()
-                    self.media_player.setAudioOutput(self.audio_output)
-                    self._apply_output_gain_from_state()
-                    self.status_bar.showMessage("Audio device: Default (Auto-adapt)")
-            else:
-                # Manual mode - for now just use default device
-                if hasattr(self, 'audio_output'):
-                    self.audio_output = QAudioOutput()
-                    self.media_player.setAudioOutput(self.audio_output)
-                    self._apply_output_gain_from_state()
-                    self.status_bar.showMessage("Audio device: Manual selection")
-
-        except Exception as e:
-            self.status_bar.showMessage(f"Audio device error: {str(e)}")
+        """Audio device selection is handled by libmpv / the OS mixer."""
+        self._apply_output_gain_from_state()
+        mode = self.app_state.audio_output_mode
+        self.status_bar.showMessage(
+            f"Audio device: {'Default' if mode == 'default' else 'Manual'} (libmpv / system)",
+            2500,
+        )
 
     def show_help(self):
         """Show help dialog"""
@@ -1979,7 +1955,7 @@ For more information, visit the project repository.
 
         # Load and play the media
         self.load_media(file_path)
-        QTimer.singleShot(100, self.media_player.play)
+        QTimer.singleShot(100, self._engine_play)
 
         self.status_bar.showMessage(f"Torrent file ready: {os.path.basename(file_path)}")
 
@@ -2151,8 +2127,8 @@ For more information, visit the project repository.
 
         if reply == QMessageBox.StandardButton.Yes:
             # Stop current playback if playing
-            if hasattr(self, 'media_player'):
-                self.media_player.stop()
+            if hasattr(self, "engine") and self.engine is not None:
+                self.engine.stop()
 
             # Clear the playlist
             self.playlist.clear()
@@ -2210,32 +2186,16 @@ For more information, visit the project repository.
         )
 
     def check_audio_device_changes(self):
-        """Check for audio device changes and update audio output accordingly"""
+        """libmpv owns the audio device; re-assert volume if a stream is active."""
         try:
-            # Simple approach: Check if audio output is still working
-            if hasattr(self, 'audio_output') and self.audio_output:
-                # Try to get volume to test if device is still accessible
-                current_volume = self.audio_output.volume()
-
-                # If we can't get volume, the device might have changed
-                if current_volume is None:
-                    # Recreate audio output to use default device
-                    self.audio_output = QAudioOutput()
-                    self.media_player.setAudioOutput(self.audio_output)
-                    self._apply_output_gain_from_state()
-
-                    # Update status bar
-                    self.status_bar.showMessage("Audio device updated")
-                    QTimer.singleShot(3000, lambda: self.status_bar.showMessage("Ready"))
-
-        except Exception as e:
-            # Silently handle any errors in device detection
+            if hasattr(self, "engine") and self.engine is not None and self.engine.is_playing():
+                self._apply_output_gain_from_state()
+        except Exception:
             pass
 
     def dragEnterEvent(self, event):
-        """Handle drag enter events"""
+        """Handle drag enter events (window chrome / stage fallback → play)."""
         if event.mimeData().hasUrls():
-            # Check if any of the URLs is a supported media file or folder
             urls = event.mimeData().urls()
             for url in urls:
                 file_path = url.toLocalFile()
@@ -2245,71 +2205,98 @@ For more information, visit the project repository.
         event.ignore()
 
     def dropEvent(self, event):
-        """Handle drop events with enhanced support for multiple files/folders"""
+        """Window-level drop (stage / chrome) → play immediately."""
         if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            media_files = []
-            folders_processed = 0
-            files_processed = 0
-
-            # Process all dropped items
-            for url in urls:
-                file_path = url.toLocalFile()
-                if os.path.isdir(file_path):
-                    # Handle folder - find all media files recursively
-                    folder_media = self.find_media_files_in_folder(file_path)
-                    media_files.extend(folder_media)
-                    folders_processed += 1
-                    if folder_media:
-                        self.status_bar.showMessage(f"Scanning folder: {os.path.basename(file_path)} ({len(folder_media)} files found)", 2000)
-                elif self.is_supported_media_file(file_path):
-                    # Handle individual media file
-                    media_files.append(file_path)
-                    files_processed += 1
-
-            if media_files:
-                # Remove duplicates while preserving order
-                seen = set()
-                unique_media_files = []
-                for file_path in media_files:
-                    if file_path not in seen:
-                        seen.add(file_path)
-                        unique_media_files.append(file_path)
-
-                # Sort files naturally for better organization
-                unique_media_files.sort()
-
-                # Clear current playlist and add all files
-                self.playlist.clear()
-                for file_path in unique_media_files:
-                    self.playlist.add_media_file(file_path)
-
-                # Load and auto-play the first file
-                if unique_media_files:
-                    self.load_media(unique_media_files[0])
-                    self.playlist.setCurrentRow(0)
-
-                    # Auto-start playback
-                    QTimer.singleShot(100, self.media_player.play)
-
-                    # Show comprehensive status message
-                    status_parts = []
-                    if files_processed > 0:
-                        status_parts.append(f"{files_processed} file{'s' if files_processed != 1 else ''}")
-                    if folders_processed > 0:
-                        status_parts.append(f"{folders_processed} folder{'s' if folders_processed != 1 else ''}")
-
-                    status_msg = f"Loaded {len(unique_media_files)} media files from {', '.join(status_parts)}"
-                    self.status_bar.showMessage(status_msg, 5000)
-                    self._sync_now_playing_queue()
-                    self.toggle_now_playing(True)
-
+            paths = [u.toLocalFile() for u in event.mimeData().urls() if u.toLocalFile()]
+            if paths:
+                self.handle_shell_drop(paths, "play")
                 event.acceptProposedAction()
                 return
         event.ignore()
 
+    def _collect_dropped_media(self, paths: List[str]) -> List[str]:
+        """Expand folders and filter to supported audio/video paths."""
+        media_files: List[str] = []
+        for file_path in paths:
+            if not file_path:
+                continue
+            if os.path.isdir(file_path):
+                folder_media = self.find_media_files_in_folder(file_path)
+                media_files.extend(folder_media)
+                if folder_media:
+                    self.status_bar.showMessage(
+                        f"Scanning folder: {os.path.basename(file_path)} ({len(folder_media)} files)",
+                        2000,
+                    )
+            elif self.is_supported_media_file(file_path):
+                media_files.append(file_path)
+        seen = set()
+        unique: List[str] = []
+        for p in media_files:
+            if p not in seen:
+                seen.add(p)
+                unique.append(p)
+        return unique
+
+    def handle_shell_drop(self, paths: list, mode: str = "play"):
+        """
+        Zone-aware drop handler.
+
+        - mode ``index``: add to library only (no autoplay) — Home / library grid
+        - mode ``play``: add to Up next and play immediately — Now Playing / transport
+        """
+        unique = self._collect_dropped_media(list(paths or []))
+        if not unique:
+            self.status_bar.showMessage("No supported media in drop", 3000)
+            return
+
+        if mode == "index":
+            for file_path in unique:
+                self._register_library_path(file_path)
+            self.refresh_home_grid()
+            self.status_bar.showMessage(
+                f"Indexed {len(unique)} item{'s' if len(unique) != 1 else ''} into library",
+                4000,
+            )
+            return
+
+        # Play immediately
+        for file_path in unique:
+            self._register_library_path(file_path)
+            if file_path not in [
+                self.playlist.get_file_at_index(i) for i in range(self.playlist.count())
+            ]:
+                self.playlist.add_media_file(file_path)
+        self.load_media(unique[0])
+        self.playlist.setCurrentRow(0)
+        QTimer.singleShot(100, self._engine_play)
+        self._sync_now_playing_queue()
+        self.toggle_now_playing(True)
+        self.refresh_home_grid()
+        self.status_bar.showMessage(
+            f"Playing {os.path.basename(unique[0])} (+{len(unique) - 1} queued)"
+            if len(unique) > 1
+            else f"Playing {os.path.basename(unique[0])}",
+            4000,
+        )
+
+    def _engine_play(self):
+        if hasattr(self, "engine") and self.engine is not None:
+            self.engine.play()
+
     def find_media_files_in_folder(self, folder_path):
-        """Find all supported media files in a folder recursively"""
+        """Find all supported media files in a folder recursively (native scan when built)."""
+        video_formats = [
+            ".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".3gp", ".3g2", ".mj2",
+            ".mpg", ".mpeg", ".ts", ".m2ts",
+        ]
+        audio_formats = [
+            ".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma", ".m4a", ".opus", ".ape", ".aiff",
+        ]
+        exts = video_formats + audio_formats
+        native = scan_media_dir(folder_path, exts)
+        if native is not None:
+            return native
         media_files = []
         try:
             for root, dirs, files in os.walk(folder_path):
@@ -2330,7 +2317,7 @@ For more information, visit the project repository.
         _, ext = os.path.splitext(file_path.lower())
 
         # Supported video formats
-        video_formats = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.3g2', '.mj2']
+        video_formats = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.3g2', '.mj2', '.mpg', '.mpeg']
 
         # Supported audio formats
         audio_formats = ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a', '.opus']
@@ -2491,8 +2478,6 @@ For more information, visit the project repository.
 
             if hasattr(self, "engine"):
                 self.engine.set_source(file_path)
-            else:
-                self.media_player.setSource(url)
             self.app_state.last_file = file_path
             self._register_library_path(file_path)
             if file_path not in [self.playlist.get_file_at_index(i) for i in range(self.playlist.count())]:
@@ -2504,11 +2489,13 @@ For more information, visit the project repository.
             if self.is_video_path(file_path):
                 self.show_shell_page("stage")
                 if hasattr(self, "engine") and not self.engine.has_embedded_video:
-                    # Re-bind libmpv into the visible stage, else Qt owns video frames.
+                    # Re-bind libmpv into the visible stage (X11/XWayland).
                     rebound = self.engine.rebind_video_widget()
-                    if not rebound and self.engine.backend_name == "mpv":
-                        self.engine._fallback_to_qt()
-                        self.engine.set_source(file_path)
+                    if not rebound:
+                        self.status_bar.showMessage(
+                            "Video embed limited on this display — audio via libmpv still works",
+                            5000,
+                        )
             else:
                 self.minimize_now_playing_view()
 
@@ -2525,8 +2512,8 @@ For more information, visit the project repository.
                 self._thumb_map[file_path] = thumb
 
             if hasattr(self, "now_playing"):
-                engine_name = self.engine.backend_name if hasattr(self, "engine") else "qt"
-                label = "libmpv (HW)" if engine_name == "mpv" else "Qt Multimedia"
+                embed = getattr(self.engine, "has_embedded_video", False) if hasattr(self, "engine") else False
+                label = "libmpv (embedded)" if embed else "libmpv (audio)"
                 self.now_playing.update_now_playing(
                     file_path, label, thumbnail_path=thumb
                 )
@@ -2687,8 +2674,8 @@ For more information, visit the project repository.
         if cover:
             self._thumb_map[meta.path] = cover
         if hasattr(self, "now_playing"):
-            engine_name = self.engine.backend_name if hasattr(self, "engine") else "qt"
-            label = "libmpv (HW)" if engine_name == "mpv" else "Qt Multimedia"
+            embed = getattr(self.engine, "has_embedded_video", False) if hasattr(self, "engine") else False
+            label = "libmpv (embedded)" if embed else "libmpv (audio)"
             self.now_playing.update_now_playing(
                 meta.path,
                 label,
@@ -2738,16 +2725,11 @@ For more information, visit the project repository.
         self.load_media(file_path)
         if hasattr(self, "engine") and self.app_state.last_file:
             QTimer.singleShot(200, self._start_playback_with_gain)
-        elif self.media_player.source().isValid():
-            QTimer.singleShot(200, self._start_playback_with_gain)
 
     def _start_playback_with_gain(self):
-        """Start playback then re-apply volume (Pulse sink-input appears after play)."""
-        if hasattr(self, "engine"):
+        """Start playback then re-apply libmpv volume after the stream opens."""
+        if hasattr(self, "engine") and self.engine is not None:
             self.engine.play()
-        else:
-            self.media_player.play()
-        # Re-apply logical volume once the audio stream exists
         QTimer.singleShot(400, self._apply_output_gain_from_state)
         QTimer.singleShot(1200, self._apply_output_gain_from_state)
         if self._preview_timer and not self._preview_timer.isActive():
@@ -2810,41 +2792,32 @@ For more information, visit the project repository.
 
     def toggle_playback(self):
         """Toggle play/pause"""
-        if hasattr(self, "engine"):
+        if hasattr(self, "engine") and self.engine is not None:
             self.engine.toggle()
-            return
-        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self.media_player.pause()
-        else:
-            self.media_player.play()
 
     def stop_playback(self):
         """Stop playback"""
-        if hasattr(self, "engine"):
+        if hasattr(self, "engine") and self.engine is not None:
             self.engine.stop()
-            return
-        self.media_player.stop()
 
     def toggle_mute(self):
-        """Toggle mute"""
-        if hasattr(self, "engine"):
-            muted = not self.engine.is_muted()
-            self.engine.set_muted(muted)
-            self.controls.btn_mute.setText("🔇" if muted else "🔊")
+        """Toggle mute via libmpv without fighting the volume slider."""
+        if not hasattr(self, "engine") or self.engine is None:
             return
-        self.audio_output.setMuted(not self.audio_output.isMuted())
-        self.controls.btn_mute.setText("🔇" if self.audio_output.isMuted() else "🔊")
+        muted = not self.engine.is_muted()
+        self.engine.set_muted(muted)
+        self.controls.btn_mute.setText("🔇" if muted else "🔊")
+        self.controls.btn_mute.setToolTip("Unmute" if muted else "Mute")
+        # Keep audible volume property intact while muted
+        self._apply_output_gain_from_state()
 
     def _apply_output_gain_from_state(self):
-        """Apply persisted 0..200 user volume with real gain (mpv / Pulse / Qt)."""
-        if hasattr(self, "engine"):
+        """Apply persisted 0..200 user volume via libmpv only."""
+        if hasattr(self, "engine") and self.engine is not None:
             self.engine.set_volume_percent(int(self.app_state.volume))
-            return
-        gain = max(0.0, min(1.0, float(self.app_state.volume) / 100.0))
-        self.audio_output.setVolume(gain)
 
     def set_volume(self, volume):
-        """Set volume (0-200) using linear gain; Media Info reports the same %."""
+        """Set volume (0-200) via libmpv; Media Info reports the same %."""
         volume = max(0, min(200, int(volume)))
         gain = volume / 100.0
 
@@ -2863,7 +2836,7 @@ For more information, visit the project repository.
 
         if volume > 100:
             self.status_bar.showMessage(
-                f"Volume: {volume}% (boost active — clipping may occur)",
+                f"Volume: {volume}% (libmpv boost — clipping may occur)",
                 2500,
             )
 
@@ -2877,23 +2850,15 @@ For more information, visit the project repository.
 
     def seek_to_position(self, position):
         """Seek to position (0.0-1.0)"""
-        if hasattr(self, "engine"):
+        if hasattr(self, "engine") and self.engine is not None:
             dur = self.engine.duration()
             if dur > 0:
                 self.engine.set_position(int(position * dur))
-            return
-        if self.media_player.duration() > 0:
-            pos = int(position * self.media_player.duration())
-            self.media_player.setPosition(pos)
 
     def seek_relative(self, seconds):
         """Seek relative to current position"""
-        if hasattr(self, "engine"):
+        if hasattr(self, "engine") and self.engine is not None:
             self.engine.seek_relative(seconds)
-            return
-        current_pos = self.media_player.position()
-        new_pos = max(0, current_pos + seconds * 1000)
-        self.media_player.setPosition(new_pos)
 
     def take_snapshot(self):
         """Take a snapshot of the current frame"""
@@ -2938,17 +2903,19 @@ For more information, visit the project repository.
 
     def show_timeline_preview(self, show):
         """Show or hide timeline preview"""
-        if show and self.media_player.duration() > 0:
+        duration = self.engine.duration() if hasattr(self, "engine") and self.engine else 0
+        if show and duration > 0:
             self.timeline_preview.show()
         else:
             self.timeline_preview.hide()
 
     def update_timeline_preview(self, position):
         """Update timeline preview with time information"""
-        if self.media_player.duration() > 0:
+        duration = self.engine.duration() if hasattr(self, "engine") and self.engine else 0
+        if duration > 0:
             # Calculate time at this position
-            time_ms = int(position * self.media_player.duration())
-            total_ms = self.media_player.duration()
+            time_ms = int(position * duration)
+            total_ms = duration
 
             # Format current time
             current_seconds = time_ms // 1000
@@ -2993,25 +2960,39 @@ For more information, visit the project repository.
         self.controls.update_time(0, duration)
 
     def playback_state_changed(self, state):
-        """Handle playback state changes"""
-        if state == QMediaPlayer.PlaybackState.PlayingState:
+        """Handle playback state changes (libmpv string or legacy Qt enum)."""
+        playing = False
+        paused = False
+        stopped = False
+        if isinstance(state, str):
+            playing = state == "playing"
+            paused = state == "paused"
+            stopped = state == "stopped"
+        elif state is None and hasattr(self, "engine") and self.engine is not None:
+            playing = self.engine.is_playing()
+            paused = not playing and bool(self.engine.source_path())
+            stopped = not playing and not paused
+        elif state == QMediaPlayer.PlaybackState.PlayingState:
+            playing = True
+        elif state == QMediaPlayer.PlaybackState.PausedState:
+            paused = True
+        else:
+            stopped = True
+
+        if playing:
             self.controls.btn_play.setText("⏸")
             self.status_bar.showMessage("Playing")
-            # Hide logo when playing
             self.show_logo(False)
-        elif state == QMediaPlayer.PlaybackState.PausedState:
+        elif paused:
             self.controls.btn_play.setText("▶")
             self.status_bar.showMessage("Paused")
-            # Show logo when paused
             self.show_logo(True)
         else:
             self.controls.btn_play.setText("▶")
             self.status_bar.showMessage("Stopped")
-            # Show logo when stopped
             self.show_logo(True)
 
-        # Auto-play next item when current media ends
-        if state == QMediaPlayer.PlaybackState.StoppedState:
+        if stopped:
             self.auto_play_next()
 
     def auto_play_next(self):
@@ -3027,8 +3008,7 @@ For more information, visit the project repository.
                     if next_file:
                         self.load_media(next_file)
                         self.status_bar.showMessage(f"Auto-playing: {os.path.basename(next_file)}")
-                        # Auto-start playback
-                        QTimer.singleShot(100, self.media_player.play)
+                        QTimer.singleShot(100, self._engine_play)
 
     def media_error(self, error, error_string):
         """Handle media errors"""
@@ -3046,9 +3026,11 @@ For more information, visit the project repository.
 
     def update_ui(self):
         """Update UI elements"""
-        duration = self.engine.duration() if hasattr(self, "engine") else self.media_player.duration()
+        if not hasattr(self, "engine") or self.engine is None:
+            return
+        duration = self.engine.duration()
         if duration > 0:
-            current_pos = self.engine.position() if hasattr(self, "engine") else self.media_player.position()
+            current_pos = self.engine.position()
             self.controls.update_time(current_pos, duration)
 
     def show_media_info(self):
@@ -3063,22 +3045,19 @@ For more information, visit the project repository.
             file_size_mb = file_size / (1024 * 1024)
             file_ext = os.path.splitext(file_path)[1].upper()
 
-            if hasattr(self, "engine"):
+            if hasattr(self, "engine") and self.engine is not None:
                 duration = self.engine.duration()
                 position = self.engine.position()
-                state = "Playing" if self.engine.is_playing() else (
-                    "Paused" if self.engine.backend_name else "Stopped"
-                )
-                if self.engine.backend_name == "qt":
-                    state = self.media_player.playbackState().name
+                state = "Playing" if self.engine.is_playing() else "Paused/Stopped"
                 muted = self.engine.is_muted()
-                engine_label = "libmpv" if self.engine.backend_name == "mpv" else "Qt Multimedia"
+                embed = "embedded video" if self.engine.has_embedded_video else "audio path"
+                engine_label = f"libmpv ({embed})"
             else:
-                duration = self.media_player.duration()
-                position = self.media_player.position()
-                state = self.media_player.playbackState().name
-                muted = self.audio_output.isMuted()
-                engine_label = "Qt Multimedia"
+                duration = 0
+                position = 0
+                state = "Stopped"
+                muted = False
+                engine_label = "unavailable"
 
             duration_min = duration // 60000
             duration_sec = (duration % 60000) // 1000
@@ -3199,16 +3178,16 @@ Position: {position // 1000}s
         event.accept()
 
 def main():
-    # Prefer X11/XWayland so libmpv WID embed works; volume 0–200% without env hacks.
+    # Prefer X11/XWayland so libmpv WID embed works; volume 0–200% via engine-native API.
     prefer_xcb_for_mpv_embed()
     # Suppress verbose console output
     os.environ['QT_LOGGING_RULES'] = 'qt.multimedia.ffmpeg.debug=false'
-    # Default engine is libmpv when available (override with VOXPLAYER_ENGINE=qt)
-    os.environ.setdefault("VOXPLAYER_ENGINE", "mpv")
+    # libmpv is the only playback engine (no Qt Multimedia playback fallback)
+    os.environ["VOXPLAYER_ENGINE"] = "mpv"
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.2.0")
+    app.setApplicationVersion("1.3.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties
@@ -3248,7 +3227,11 @@ def main():
             print(f"Warning: File not found: {file_to_open}")
             file_to_open = None
 
-    window = VoxPlayerMainWindow(file_to_open)
+    try:
+        window = VoxPlayerMainWindow(file_to_open)
+    except NativeEngineError as exc:
+        show_native_engine_failure(str(exc))
+        sys.exit(1)
     window.show()
 
     sys.exit(app.exec())

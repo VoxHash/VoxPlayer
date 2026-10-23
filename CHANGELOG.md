@@ -10,6 +10,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Playlist shuffle and repeat modes
 - Persist library roots across sessions
 - Broader subtitle format support where maintainable
+- Skin/theme packs; optional local control daemon; Android / GrapheneOS companion phase
+
+## [1.3.0] - 2026-10-23
+
+### Added
+- **Zone-aware drag-and-drop**: drop on Home/library grid → **index only**; drop on Now Playing / Up next / bottom transport → **add and play immediately**
+- **Rust `vox_scan` native scanner** (`native/vox_scan`) with Python ctypes loader for parallel folder walks; Python walker remains if the `.so` is not built
+- Clear **libmpv install guidance** on Linux / Windows / macOS when python-mpv or system libmpv is missing (`run.py` preflight + startup dialog)
+
+### Changed
+- **libmpv is the only playback engine** — Qt Multimedia is no longer a playback fallback (PyQt6 remains the UI shell; `QVideoWidget` is an embed surface only)
+- Volume **0–200%** and mute use engine-native libmpv properties only (no Pulse/`pactl` design path)
+- Filter tabs **All / Video / Audio / Recent** use understated icon+text controls instead of heavy filled chips
+- Home library and Up next **scrollbars** are wider, higher-contrast, and easier to grab on the dark theme
+- Default logical volume for new installs is **100%**; engine label always reports libmpv (embedded or audio path)
+- ROADMAP expanded: native Rust/Zig/C phases, skin/daemon/podcast-like feeds, portable-player concepts, Android/GrapheneOS — without third-party brand names
+
+### Fixed
+- Volume slider and speaker mute fighting each other when the engine was on the old Qt path
+- `run.py` ensuring the project `.venv` (with `python-mpv`) is the interpreter users actually launch
+
+### Removed
+- Silent fallback from libmpv failures to Qt Multimedia playback
+- Recursive “accept drops everywhere” behavior that broke zone-specific drop routing
 
 ## [1.2.1] - 2026-10-23
 

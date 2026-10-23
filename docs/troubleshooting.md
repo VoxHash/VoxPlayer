@@ -9,11 +9,28 @@ python -c "from PyQt6.QtWidgets import QApplication; print('ok')"
 
 On Linux CI-like hosts, install OpenGL/EGL packages listed in `.github/workflows/ci.yml`.
 
+## App exits: native engine / libmpv required
+
+```bash
+.venv/bin/pip install python-mpv
+# Arch: sudo pacman -S mpv
+# Debian/Ubuntu: sudo apt install libmpv2
+# macOS: brew install mpv
+python run.py
+```
+
+## Volume or mute does nothing
+
+- Confirm the Now Playing engine label shows **libmpv** (not a missing-engine error)
+- Volume is 0–200 via libmpv; mute toggles `mute` without zeroing the slider
+- Prefer X11/XWayland for video embed; audio volume still works on pure Wayland
+
 ## Black window or no video
 
-- Confirm the file plays in another desktop media client or `ffplay`
-- Ensure codecs are available to Qt Multimedia / FFmpeg
-- Try another container (MP4 H.264 + AAC is the most reliable baseline)
+- Confirm the file plays with `mpv` or `ffplay`
+- Prefer a session with `DISPLAY` (X11/XWayland) for embedded video
+- Try another container (MP4 H.264 + AAC is a reliable baseline)
+- On pure Wayland, audio may still play when embed is limited
 
 ## File not found
 

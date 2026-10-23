@@ -48,19 +48,19 @@ Never commit `.env` files or real Web UI passwords. `.gitignore` already exclude
 
 ## Playback engine
 
-libmpv is the **default** when `python-mpv` and system libmpv are available (shipped in the base `pip install voxplayer`). The app prefers X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) so WID embedding and 0–200% volume work without manual engine env vars. Qt Multimedia remains the fallback.
+**libmpv is the only playback engine** (`python-mpv` + system libmpv). Volume 0–200% and mute use libmpv properties. There is no Qt Multimedia playback path — missing libmpv exits with install instructions.
+
+Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video embed. On pure Wayland, audio volume still works; embed may be limited.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VOXPLAYER_FORCE_QT` | unset | Set to `1` to always use Qt Multimedia |
-| `VOXPLAYER_ENGINE` | `mpv` | `mpv`, `qt`, or `auto` (treat as prefer mpv) |
 | `VOXPLAYER_FORCE_WAYLAND` | unset | Set to `1` to skip X11 preference under Wayland |
 | `VOXPLAYER_KEEP_QPA` | unset | Set to `1` to leave `QT_QPA_PLATFORM` unchanged |
 | `ACOUSTID_API_KEY` | unset | Optional AcoustID client key for audio fingerprint lookup |
 | `TMDB_API_KEY` | unset | Optional TMDB key for video title/poster enrichment |
 | `FPCALC` | `fpcalc` | Path to AcoustID `fpcalc` binary when using fingerprinting |
 
-System package (only if libmpv is missing): install `mpv` / `libmpv` from your distro.
+System package: install `mpv` / `libmpv` from your distro (see [installation.md](installation.md)).
 
 ### Metadata enrichment (offline-first)
 

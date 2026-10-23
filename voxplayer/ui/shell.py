@@ -9,7 +9,7 @@ import os
 from typing import Dict, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -32,6 +32,42 @@ from ..theme import COLORS
 
 
 VIDEO_EXT = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
+
+
+class _MediaDropMixin:
+    """Accept external file/folder URL drops; subclasses set drop_mode and files_dropped."""
+
+    drop_mode = "play"  # "play" | "index"
+
+    def _enable_drops(self) -> None:
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event: QDropEvent):
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            return
+        paths = []
+        for url in event.mimeData().urls():
+            local = url.toLocalFile()
+            if local:
+                paths.append(local)
+        if paths and hasattr(self, "files_dropped"):
+            self.files_dropped.emit(paths, getattr(self, "drop_mode", "play"))
+            event.acceptProposedAction()
+            return
+        event.ignore()
 
 
 class MediaCard(QFrame):
@@ -181,7 +217,7 @@ class LeftRail(QWidget):
             btn.style().polish(btn)
 
 
-class HomeView(QWidget):
+class HomeView(_MediaDropMixin, QWidget):
     media_activated = pyqtSignal(str)
     filter_changed = pyqtSignal(str)
     search_changed = pyqtSignal(str)
@@ -189,13 +225,16 @@ class HomeView(QWidget):
     media_context = pyqtSignal(str, object)  # path, QPoint
     facet_selected = pyqtSignal(str, str)  # facet_key, bucket
     collection_selected = pyqtSignal(str)  # playlist name
+    files_dropped = pyqtSignal(list, str)
 
     _AUDIO_FACETS = ("year", "genre", "artist")
     _VIDEO_FACETS = ("movies", "tv")
+    drop_mode = "index"
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("CenterStage")
+        self._enable_drops()
         self._view_mode = "grid"
         self._paths: List[str] = []
         self._thumbnails: Dict[str, str] = {}
@@ -217,28 +256,36 @@ class HomeView(QWidget):
         top.addWidget(self.search, 1)
 
         self.btn_grid = QPushButton("▦")
-        self.btn_grid.setObjectName("Chip")
+        self.btn_grid.setObjectName("FilterIcon")
         self.btn_grid.setToolTip("Grid view")
-        self.btn_grid.setFixedWidth(40)
+        self.btn_grid.setFixedSize(36, 32)
         self.btn_grid.setProperty("active", "true")
         self.btn_grid.clicked.connect(lambda: self.set_view_mode("grid"))
         self.btn_list = QPushButton("☰")
-        self.btn_list.setObjectName("Chip")
+        self.btn_list.setObjectName("FilterIcon")
         self.btn_list.setToolTip("List view")
-        self.btn_list.setFixedWidth(40)
+        self.btn_list.setFixedSize(36, 32)
         self.btn_list.setProperty("active", "false")
         self.btn_list.clicked.connect(lambda: self.set_view_mode("list"))
         top.addWidget(self.btn_grid)
         top.addWidget(self.btn_list)
         root.addLayout(top)
 
+        # Understated icon + label filter tabs (no heavy filled chips)
         chips = QHBoxLayout()
-        chips.setSpacing(8)
+        chips.setSpacing(4)
         self._chip_buttons = {}
-        for name in ("All", "Video", "Audio", "Recent"):
-            btn = QPushButton(name)
-            btn.setObjectName("Chip")
+        filter_defs = (
+            ("All", "▣", "All media"),
+            ("Video", "▶", "Video only"),
+            ("Audio", "♪", "Audio only"),
+            ("Recent", "◷", "Recently added"),
+        )
+        for name, glyph, tip in filter_defs:
+            btn = QPushButton(f"{glyph}  {name}")
+            btn.setObjectName("FilterTab")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setToolTip(tip)
             btn.setProperty("active", "true" if name == "All" else "false")
             btn.clicked.connect(lambda _=False, n=name: self._select_chip(n))
             chips.addWidget(btn)
@@ -297,11 +344,15 @@ class HomeView(QWidget):
 
         self.content_stack = QStackedWidget()
         self.scroll = QScrollArea()
+        self.scroll.setObjectName("LibraryScroll")
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll.setAcceptDrops(True)
         self.grid_host = QWidget()
+        self.grid_host.setAcceptDrops(True)
         self.grid = QGridLayout(self.grid_host)
-        self.grid.setContentsMargins(0, 0, 8, 8)
+        self.grid.setContentsMargins(0, 0, 12, 8)
         self.grid.setSpacing(14)
         self.grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.scroll.setWidget(self.grid_host)
@@ -309,6 +360,7 @@ class HomeView(QWidget):
 
         self.list_widget = QListWidget()
         self.list_widget.setObjectName("LibraryList")
+        self.list_widget.setAcceptDrops(True)
         self.list_widget.itemActivated.connect(self._on_list_activated)
         self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list_widget.customContextMenuRequested.connect(self._on_list_context)
@@ -519,7 +571,7 @@ class ClickableArt(QLabel):
         super().mousePressEvent(event)
 
 
-class NowPlayingPanel(QWidget):
+class NowPlayingPanel(_MediaDropMixin, QWidget):
     art_clicked = pyqtSignal()
     expand_requested = pyqtSignal()
     minimize_requested = pyqtSignal()
@@ -528,11 +580,15 @@ class NowPlayingPanel(QWidget):
     queue_remove_requested = pyqtSignal(str)
     queue_clear_requested = pyqtSignal()
     add_to_playlist_requested = pyqtSignal(str, str)  # path, playlist_name
+    files_dropped = pyqtSignal(list, str)
+
+    drop_mode = "play"
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("NowPlayingPanel")
         self.setFixedWidth(300)
+        self._enable_drops()
         self._current_path: Optional[str] = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
@@ -604,6 +660,7 @@ class NowPlayingPanel(QWidget):
 
         self.queue = QListWidget()
         self.queue.setObjectName("QueueList")
+        self.queue.setAcceptDrops(True)
         self.queue.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.queue.itemClicked.connect(self._on_queue_click)
         self.queue.customContextMenuRequested.connect(self._on_queue_context)
@@ -788,14 +845,18 @@ class AboutDialog(QDialog):
         root.addWidget(card)
 
 
-class TransportBar(QWidget):
+class TransportBar(_MediaDropMixin, QWidget):
     """Bottom persistent transport — API compatible with legacy PlayerControls callers."""
+
+    files_dropped = pyqtSignal(list, str)
+    drop_mode = "play"
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
         self.setObjectName("TransportBar")
         self.setFixedHeight(76)
+        self._enable_drops()
         self.setup_ui()
 
     def setup_ui(self):

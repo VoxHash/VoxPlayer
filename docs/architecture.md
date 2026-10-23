@@ -3,16 +3,15 @@
 ```
 QApplication
 └── VoxPlayerMainWindow (four-pane shell)
-    ├── LeftRail (home / library / queue / open / torrent)
+    ├── LeftRail (home / library / browse / favorites / open / torrent)
     ├── Center stack
-    │   ├── HomeView (library grid + filters)
-    │   └── Stage (QVideoWidget)
-    ├── NowPlayingPanel (metadata + up-next)
-    ├── TransportBar (seek, volume, prev/next)
-    ├── PlaybackEngine
-    │   ├── Qt Multimedia (QMediaPlayer + QAudioOutput) — default
-    │   └── Optional libmpv embed (C) when VOXPLAYER_ENGINE=mpv / X11
-    ├── PlaylistWidget (queue dock)
+    │   ├── HomeView (library grid + filters)  ← drop = index only
+    │   └── Stage (QVideoWidget embed surface)
+    ├── NowPlayingPanel (+ Up next)           ← drop = play immediately
+    ├── TransportBar (seek, volume, mute)     ← drop = play immediately
+    ├── PlaybackEngine → libmpv only (python-mpv + system libmpv)
+    ├── PlaylistWidget (internal Up next model)
+    ├── native_scan (optional Rust vox_scan cdylib)
     ├── Settings (QSettings wrapper)
     ├── Subtitle manager
     ├── TorrentStreamer (QThread → qbittorrent-api → qBittorrent Web UI)
@@ -24,27 +23,33 @@ QApplication
 | Path | Role |
 |------|------|
 | `app.py` | Thin launcher re-exporting `voxplayer.app` |
-| `voxplayer/app.py` | Main window, torrent, settings, playlists |
+| `voxplayer/app.py` | Main window, torrent, settings, playlists, zone drops |
 | `voxplayer/theme.py` | VoxPlayer visual identity / stylesheet |
 | `voxplayer/ui/shell.py` | Shell widgets (rail, home, now playing, transport) |
-| `voxplayer/engine/playback.py` | Playback backend abstraction |
-| `run.py` | Thin launcher with Qt logging defaults |
-| `test.py` | Smoke tests (imports, window create, torrent classes) |
+| `voxplayer/engine/playback.py` | libmpv-only playback (volume 0–200, mute) |
+| `voxplayer/native_scan.py` | ctypes loader for Rust `vox_scan` |
+| `native/` | Cargo workspace (`vox_scan` parallel folder scanner) |
+| `run.py` | Launcher: prefer `.venv`, preflight libmpv |
+| `test.py` | Smoke tests |
 | `docs/` | User and integrator documentation |
 
 ## Design notes
 
-- UI language: **Python + PyQt6** (same Qt family used by major desktop media shells)
-- Decode path: **Qt Multimedia / FFmpeg** always; optional **libmpv (C)** for hardware-oriented decode when widget embedding works
-- Phased native migration is tracked in `ROADMAP.md` — no big-bang C++ rewrite required for day-to-day use
-- Torrent mode does not embed a BitTorrent stack; it drives an external qBittorrent instance
+- UI language: **Python + PyQt6** (shell only — not a second playback engine)
+- Decode / volume path: **libmpv only**. Missing python-mpv or system libmpv → clear install error (no silent Qt Multimedia playback)
+- Prefer **X11 / XWayland** for WID video embed; on pure Wayland audio volume still works via libmpv
+- Optional **Rust** hot path: `cargo build --release --manifest-path native/Cargo.toml` → `libvox_scan.so` for parallel library walks
+- Further native phases (metadata workers, Zig experiments) are tracked in `ROADMAP.md`
+- Torrent mode drives an external qBittorrent instance
 - Window geometry, volume, and resume data live in platform `QSettings` storage
 
 ## Environment knobs
 
 | Variable | Effect |
 |----------|--------|
-| `VOXPLAYER_FORCE_QT=1` | Always use Qt Multimedia |
-| `VOXPLAYER_ENGINE=mpv` | Prefer libmpv embed (including Wayland opt-in) |
-| `VOXPLAYER_ENGINE=qt` | Prefer Qt Multimedia |
+| `VOXPLAYER_FORCE_WAYLAND=1` | Do not force `QT_QPA_PLATFORM=xcb` |
+| `VOXPLAYER_KEEP_QPA=1` | Leave existing Qt platform plugin unchanged |
+| `DISPLAY` | When set, default to xcb for more reliable video embed |
 | `QB_HOST` / `QB_USERNAME` / `QB_PASSWORD` | qBittorrent Web UI |
+
+`VOXPLAYER_ENGINE=qt` / `VOXPLAYER_FORCE_QT` are **no longer supported** for playback.

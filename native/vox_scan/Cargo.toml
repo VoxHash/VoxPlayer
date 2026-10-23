@@ -1,0 +1,15 @@
+[package]
+name = "vox_scan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Parallel media-folder scanner for VoxPlayer (C ABI for Python ctypes)"
+
+[lib]
+name = "vox_scan"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+walkdir = "2.5"
+rayon = "1.10"

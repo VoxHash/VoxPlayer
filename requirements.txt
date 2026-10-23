@@ -3,5 +3,7 @@ PyQt6>=6.0.0
 requests>=2.25.0
 qbittorrent-api>=2024.1.0
 python-mpv>=1.0.0
-# System: libmpv (e.g. pacman -S mpv / apt install libmpv1) for native decode + 0–200% volume
+# REQUIRED system libmpv — only playback engine (no Qt Multimedia fallback):
+#   Arch: pacman -S mpv | Debian/Ubuntu: apt install libmpv2 | macOS: brew install mpv
+# Optional faster folder scan: cargo build --release --manifest-path native/Cargo.toml
 # Optional metadata: mutagen, pyacoustid — pip install "voxplayer[metadata]"

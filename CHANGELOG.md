@@ -7,9 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- USB/portable sync of playlists and podcast episodes
 - Multi-room / cast-style outputs without a second media stack
 - Android / GrapheneOS companion phase
+- Hardware / open-firmware portable-player companion concepts
+
+## [1.14.0] - 2026-10-23
+
+### Added
+- Portable / USB device detection (`/proc/mounts` + removable sysfs; `/run/media/$USER` / `/media/$USER`) via Media → Portable Devices → List Detected Devices
+- One-action sync of Favorites, named playlists, Up next, or downloaded podcast episodes onto a mounted volume under `VoxPlayer/` with an M3U playlist
+
+### Changed
+- ROADMAP portable / USB sync item marked done
 
 ## [1.13.0] - 2026-10-23
 

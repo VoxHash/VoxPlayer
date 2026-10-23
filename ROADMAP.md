@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.13.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.14.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -92,7 +92,7 @@ Build Phase 3 (optional lighter scanner): `native/vox_scan_zig/build.sh` → `na
 
 ### Podcast-like feeds & sync ideas
 - Subscribe to RSS/Atom audio feeds; download episodes into the library (**Done 1.13.0**)
-- Detect portable / USB media devices and sync playlists or podcast episodes with one action
+- Detect portable / USB media devices and sync playlists or podcast episodes with one action (**Done 1.14.0** — Media → Portable Devices)
 - Hardware / open-firmware portable-player concepts: gapless queues, bookmark resume, simple on-device library views (desktop companion first)
 
 ### Library UX (streaming-style shells)

@@ -60,6 +60,7 @@ from .mpris import MprisController
 from .control_daemon import ControlDaemon
 from .podcasts import PodcastStore, download_episode, podcasts_dir
 from .subtitles import companion_subtitle_paths
+from .portable_sync import list_portable_volumes, sync_files_to_volume
 
 
 class MetadataEnrichWorker(QThread):
@@ -1987,6 +1988,15 @@ class VoxPlayerMainWindow(QMainWindow):
         open_pod_dir_action = QAction("Open Downloads &Folder", self)
         open_pod_dir_action.triggered.connect(lambda: webbrowser.open(QUrl.fromLocalFile(podcasts_dir()).toString()))
         podcast_menu.addAction(open_pod_dir_action)
+
+        # Portable / USB sync
+        portable_menu = media_menu.addMenu("Portable &Devices")
+        list_portable_action = QAction("&List Detected Devices…", self)
+        list_portable_action.triggered.connect(self.list_portable_devices)
+        portable_menu.addAction(list_portable_action)
+        sync_portable_action = QAction("&Sync Playlist or Podcasts…", self)
+        sync_portable_action.triggered.connect(self.sync_to_portable_device)
+        portable_menu.addAction(sync_portable_action)
 
         media_menu.addSeparator()
 
@@ -4325,6 +4335,126 @@ Position: {position // 1000}s
         except Exception as exc:
             QMessageBox.warning(self, "Download failed", str(exc))
 
+    def _downloaded_podcast_paths(self) -> List[str]:
+        paths: List[str] = []
+        seen: Set[str] = set()
+        for feed in self.podcast_store.feeds.values():
+            for ep in feed.episodes:
+                p = (ep.local_path or "").strip()
+                if p and os.path.isfile(p) and p not in seen:
+                    seen.add(p)
+                    paths.append(p)
+        return paths
+
+    def _portable_source_choices(self) -> Dict[str, Tuple[str, List[str]]]:
+        """Map dialog label → (playlist_name_for_m3u, file paths)."""
+        choices: Dict[str, Tuple[str, List[str]]] = {}
+        for name in self.playlist_store.names():
+            paths = [p for p in self.playlist_store.get(name) if os.path.isfile(p)]
+            label = f"Playlist: {name} ({len(paths)})"
+            choices[label] = (name, paths)
+        up_next: List[str] = []
+        if hasattr(self, "playlist"):
+            for i in range(self.playlist.count()):
+                p = self.playlist.get_file_at_index(i)
+                if p and os.path.isfile(p):
+                    up_next.append(p)
+        choices[f"Up next ({len(up_next)})"] = ("Up next", up_next)
+        pods = self._downloaded_podcast_paths()
+        choices[f"Downloaded podcasts ({len(pods)})"] = ("Podcasts", pods)
+        return choices
+
+    def list_portable_devices(self) -> None:
+        volumes = list_portable_volumes()
+        if not volumes:
+            QMessageBox.information(
+                self,
+                "Portable devices",
+                "No removable / portable volumes detected.\n"
+                "Mount a USB drive (e.g. under /run/media/$USER) and try again.",
+            )
+            return
+        lines = [f"• {v.label}\n  {v.path}" + (f"  ({v.device})" if v.device else "") for v in volumes]
+        QMessageBox.information(
+            self,
+            "Portable devices",
+            f"Detected {len(volumes)} volume(s):\n\n" + "\n\n".join(lines),
+        )
+
+    def sync_to_portable_device(self) -> None:
+        volumes = list_portable_volumes()
+        if not volumes:
+            QMessageBox.information(
+                self,
+                "Sync to device",
+                "No removable / portable volumes detected.\n"
+                "Mount a USB drive and try again.",
+            )
+            return
+        vol_labels = {f"{v.label} — {v.path}": v for v in volumes}
+        vol_pick, ok = QInputDialog.getItem(
+            self,
+            "Sync to device",
+            "Destination volume:",
+            list(vol_labels.keys()),
+            0,
+            False,
+        )
+        if not ok or vol_pick not in vol_labels:
+            return
+        volume = vol_labels[vol_pick]
+        sources = self._portable_source_choices()
+        src_pick, ok = QInputDialog.getItem(
+            self,
+            "Sync to device",
+            "What to copy:",
+            list(sources.keys()),
+            0,
+            False,
+        )
+        if not ok or src_pick not in sources:
+            return
+        playlist_name, files = sources[src_pick]
+        if not files:
+            QMessageBox.information(
+                self,
+                "Sync to device",
+                f"“{src_pick}” has no local files to copy.",
+            )
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Confirm sync",
+            f"Copy {len(files)} file(s) from “{src_pick}” to:\n"
+            f"{os.path.join(volume.path, 'VoxPlayer')}\n\n"
+            "Existing same-size files are skipped. An M3U playlist will be written.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self.status_bar.showMessage(f"Syncing to {volume.label}…", 0)
+        QApplication.processEvents()
+        try:
+            copied, skipped, dest = sync_files_to_volume(
+                volume.path,
+                files,
+                subdir="VoxPlayer",
+                playlist_name=playlist_name,
+            )
+        except OSError as exc:
+            QMessageBox.warning(self, "Sync failed", str(exc))
+            self.status_bar.showMessage("Sync failed", 4000)
+            return
+        QMessageBox.information(
+            self,
+            "Sync complete",
+            f"Copied {copied}, skipped {skipped}.\nDestination:\n{dest}",
+        )
+        self.status_bar.showMessage(
+            f"Synced {copied} file(s) to {volume.label}", 5000
+        )
+
     def closeEvent(self, event):
         """Close-to-tray while playing; otherwise persist state and quit."""
         playing = False
@@ -4358,7 +4488,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.13.0")
+    app.setApplicationVersion("1.14.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

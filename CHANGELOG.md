@@ -7,8 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Broader subtitle format support where maintainable
-- Optional local control daemon; Android / GrapheneOS companion phase
+- USB/portable sync of playlists and podcast episodes
+- Multi-room / cast-style outputs without a second media stack
+- Android / GrapheneOS companion phase
+
+## [1.13.0] - 2026-10-23
+
+### Added
+- MPRIS2 desktop integration (Linux session bus) for media keys / shell widgets (`VOXPLAYER_DISABLE_MPRIS=1` to opt out)
+- Localhost HTTP control daemon on `127.0.0.1:17890` (`/status`, `/play`, `/pause`, `/next`, `/volume`, `/seek`, `/open`); LAN bind requires `VOXPLAYER_DAEMON_ALLOW_LAN=1`
+- Podcasts: subscribe to RSS/Atom feeds, refresh, download episodes into `~/.cache/voxplayer/podcasts/` (Media → Podcasts)
+- Subtitle expansion: WebVTT + ASS/SSA sidecars (native libvlc file bind preferred for ASS; overlay for SRT/VTT)
+
+### Changed
+- ROADMAP Next items for daemon/MPRIS, podcast subscribe/download, and subtitle expansion marked done
 
 ## [1.12.0] - 2026-10-23
 

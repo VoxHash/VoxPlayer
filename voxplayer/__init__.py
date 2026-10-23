@@ -10,15 +10,15 @@ A professional media player with advanced features including:
 - Torrent streaming support
 - Auto-update system
 - Fullscreen mode with auto-hiding controls
-- SRT subtitle support
+- SRT / WebVTT / ASS-SSA subtitle support; MPRIS2 + localhost control daemon; podcast feeds
 - Timeline preview and keyboard shortcuts
 
 Author: VoxHash
 License: MIT
-Version: 1.12.0
+Version: 1.13.0
 """
 
-__version__ = "1.12.0"
+__version__ = "1.13.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

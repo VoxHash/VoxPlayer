@@ -56,6 +56,10 @@ from .native_scan import scan_media_dir, backend_name as scan_backend_name
 from .native_workers import NativeMediaWorkers
 from .library_index import LibraryIndex, DEFAULT_EXTS
 from .ui.torrent_picker import TorrentFilePickerDialog, media_paths_only
+from .mpris import MprisController
+from .control_daemon import ControlDaemon
+from .podcasts import PodcastStore, download_episode, podcasts_dir
+from .subtitles import companion_subtitle_paths
 
 
 class MetadataEnrichWorker(QThread):
@@ -1104,6 +1108,8 @@ class PlaylistWidget(QListWidget):
 
 
 class SubtitleManager:
+    """Overlay cues for SRT/VTT/ASS; prefer native libvlc for ASS/SSA when available."""
+
     def __init__(self, video_widget, parent=None):
         self.video_widget = video_widget
         self.parent_window = parent
@@ -1123,87 +1129,66 @@ class SubtitleManager:
         self.subtitle_label.hide()
         self.current_subtitles = []
         self.current_position = 0
+        self._native_path = ""
+        self._overlay_disabled = False
 
-    def load_subtitles(self, file_path):
-        """Load SRT subtitle file"""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            self.current_subtitles = self.parse_srt(content)
+    def clear(self) -> None:
+        self.current_subtitles = []
+        self._native_path = ""
+        self._overlay_disabled = False
+        self.subtitle_label.hide()
+
+    def load_subtitles(self, file_path: str) -> bool:
+        """Load SRT / WebVTT / ASS / SSA sidecar."""
+        from .subtitles import load_subtitle_file
+
+        if not file_path or not os.path.isfile(file_path):
+            return False
+        ext = os.path.splitext(file_path)[1].lower()
+        # Prefer native engine rendering for ASS/SSA (full styling).
+        if ext in {".ass", ".ssa"} and self._try_native_subtitle(file_path):
+            self._overlay_disabled = True
+            self.current_subtitles = []
+            self._native_path = file_path
+            self.subtitle_label.hide()
             return True
+        try:
+            self.current_subtitles = load_subtitle_file(file_path)
+            self._overlay_disabled = False
+            self._native_path = ""
+            # Also hand the file to libvlc when possible (SRT/VTT).
+            self._try_native_subtitle(file_path)
+            return bool(self.current_subtitles)
         except Exception as e:
             print(f"Error loading subtitles: {e}")
             return False
 
-    def parse_srt(self, content):
-        """Parse SRT subtitle content"""
-        # Clean line endings
-        content = content.replace('\r\n', '\n').replace('\r', '\n')
-
-        # Split into blocks
-        blocks = content.strip().split('\n\n')
-        subtitles = []
-
-        for block in blocks:
-            lines = block.strip().split('\n')
-            if len(lines) >= 3:
-                try:
-                    # Parse time
-                    time_line = lines[1]
-                    start_time, end_time = self.parse_time_range(time_line)
-
-                    # Parse text
-                    text = '\n'.join(lines[2:])
-
-                    subtitles.append({
-                        'start': start_time,
-                        'end': end_time,
-                        'text': text
-                    })
-                except Exception as e:
-                    print(f"Error parsing subtitle block: {e}")
-                    continue
-
-        return subtitles
-
-    def parse_time_range(self, time_str):
-        """Parse SRT time format (HH:MM:SS,mmm --> HH:MM:SS,mmm)"""
+    def _try_native_subtitle(self, file_path: str) -> bool:
+        win = self.parent_window
+        engine = getattr(win, "engine", None) if win is not None else None
+        player = getattr(engine, "_player", None) if engine is not None else None
+        if player is None:
+            return False
         try:
-            start_str, end_str = time_str.split(' --> ')
-            start_time = self.parse_time(start_str.strip())
-            end_time = self.parse_time(end_str.strip())
-            return start_time, end_time
-        except Exception as e:
-            print(f"Error parsing time range: {e}")
-            return 0, 0
-
-    def parse_time(self, time_str):
-        """Parse SRT time format (HH:MM:SS,mmm) to milliseconds"""
-        try:
-            # Remove milliseconds part
-            time_part, ms_part = time_str.split(',')
-            hours, minutes, seconds = map(int, time_part.split(':'))
-            milliseconds = int(ms_part)
-
-            total_ms = (hours * 3600 + minutes * 60 + seconds) * 1000 + milliseconds
-            return total_ms
-        except Exception as e:
-            print(f"Error parsing time: {e}")
-            return 0
+            player.video_set_subtitle_file(file_path)
+            return True
+        except Exception:
+            return False
 
     def update_position(self, position_ms):
-        """Update subtitle display based on current position"""
+        """Update overlay subtitle display based on current position."""
         self.current_position = position_ms
-
-        # Find current subtitle
+        if self._overlay_disabled or not self.current_subtitles:
+            if not self._overlay_disabled:
+                self.subtitle_label.hide()
+            return
         current_subtitle = None
         for subtitle in self.current_subtitles:
-            if subtitle['start'] <= position_ms <= subtitle['end']:
+            if subtitle["start"] <= position_ms <= subtitle["end"]:
                 current_subtitle = subtitle
                 break
-
         if current_subtitle:
-            self.subtitle_label.setText(current_subtitle['text'])
+            self.subtitle_label.setText(str(current_subtitle["text"]))
             self.subtitle_label.show()
         else:
             self.subtitle_label.hide()
@@ -1233,7 +1218,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self._torrent_active_paths = set()  # local paths belonging to the active torrent session
         self._pending_torrent_rel_paths: List[str] = []
         self.update_checker = None
-        self.current_version = "1.12.0"
+        self.current_version = "1.13.0"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
@@ -1243,6 +1228,9 @@ class VoxPlayerMainWindow(QMainWindow):
         self._library_watcher: Optional[QFileSystemWatcher] = None
         self._watch_debounce: Optional[QTimer] = None
         self._watch_dirty_roots: Set[str] = set()
+        self.podcast_store = PodcastStore()
+        self.mpris = MprisController(self)
+        self.control_daemon = ControlDaemon()
         # Phase 2: Rust metadata + thumbnail worker pool (optional; falls back to sync Python).
         self.native_workers = NativeMediaWorkers(self)
         if self.native_workers.available:
@@ -1412,6 +1400,7 @@ class VoxPlayerMainWindow(QMainWindow):
                 bool(self.app_state.shuffle_enabled),
                 str(self.app_state.repeat_mode or "off"),
             )
+        self._setup_mpris_and_daemon()
 
     def show_shell_page(self, page: str):
         self._shell_page = page
@@ -1984,6 +1973,21 @@ class VoxPlayerMainWindow(QMainWindow):
         stop_torrent_action.triggered.connect(self.stop_torrent)
         torrent_menu.addAction(stop_torrent_action)
 
+        # Podcasts submenu
+        podcast_menu = media_menu.addMenu("&Podcasts")
+        sub_pod_action = QAction("&Subscribe to Feed…", self)
+        sub_pod_action.triggered.connect(self.subscribe_podcast_feed)
+        podcast_menu.addAction(sub_pod_action)
+        refresh_pod_action = QAction("&Refresh Feeds", self)
+        refresh_pod_action.triggered.connect(self.refresh_podcast_feeds)
+        podcast_menu.addAction(refresh_pod_action)
+        browse_pod_action = QAction("&Browse / Download Episodes…", self)
+        browse_pod_action.triggered.connect(self.browse_podcast_episodes)
+        podcast_menu.addAction(browse_pod_action)
+        open_pod_dir_action = QAction("Open Downloads &Folder", self)
+        open_pod_dir_action.triggered.connect(lambda: webbrowser.open(QUrl.fromLocalFile(podcasts_dir()).toString()))
+        podcast_menu.addAction(open_pod_dir_action)
+
         media_menu.addSeparator()
 
         # Playlists submenu
@@ -2227,6 +2231,8 @@ class VoxPlayerMainWindow(QMainWindow):
             if state == "stopped" and self._preview_timer:
                 self._preview_timer.stop()
         self.playback_state_changed(state)
+        if hasattr(self, "mpris") and self.mpris is not None:
+            self.mpris.notify_properties()
 
     def setup_shortcuts(self):
         # Space bar for play/pause
@@ -3279,11 +3285,17 @@ For more information, visit the project repository.
 
             self.status_bar.showMessage(f"Loaded: {filename} ({file_size_mb:.1f}MB, {file_ext})")
 
-            # Try to load subtitles
-            subtitle_path = os.path.splitext(file_path)[0] + ".srt"
-            if os.path.exists(subtitle_path):
-                self.subtitle_manager.load_subtitles(subtitle_path)
-                self.status_bar.showMessage(f"Loaded: {filename} + Subtitles ({file_size_mb:.1f}MB, {file_ext})")
+            # Sidecar subtitles: SRT / WebVTT / ASS / SSA
+            if hasattr(self, "subtitle_manager"):
+                self.subtitle_manager.clear()
+            subs = companion_subtitle_paths(file_path)
+            if subs and hasattr(self, "subtitle_manager"):
+                if self.subtitle_manager.load_subtitles(subs[0]):
+                    self.status_bar.showMessage(
+                        f"Loaded: {filename} + {os.path.basename(subs[0])} "
+                        f"({file_size_mb:.1f}MB, {file_ext})",
+                        4000,
+                    )
 
             # Local tags immediately; network only if online and not yet cached
             try:
@@ -4082,6 +4094,237 @@ Position: {position // 1000}s
         if getattr(self.home_view, "_browse_mode", False):
             self.refresh_facets()
 
+    def _setup_mpris_and_daemon(self) -> None:
+        """Start MPRIS2 (Linux) and optional localhost control daemon."""
+        def _raise_window():
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+
+        def _set_shuffle(value: bool):
+            self.app_state.shuffle_enabled = bool(value)
+            self.settings.save_state(self.app_state)
+            if hasattr(self, "controls"):
+                self.controls.sync_playback_modes(
+                    self.app_state.shuffle_enabled, self.app_state.repeat_mode
+                )
+
+        self.mpris.set_callbacks(
+            raise_window=_raise_window,
+            quit_app=self.close,
+            play=self._engine_play,
+            pause=lambda: self.engine.pause() if hasattr(self, "engine") else None,
+            play_pause=self.toggle_playback,
+            stop=self.stop_playback,
+            next=self.next_media,
+            previous=self.previous_media,
+            open_uri=lambda uri: self.load_and_play_media(
+                QUrl(uri).toLocalFile() or uri
+            ),
+            playback_status=self._mpris_playback_status,
+            loop_status=self._mpris_loop_status,
+            set_loop_status=self._mpris_set_loop_status,
+            shuffle=lambda: bool(self.app_state.shuffle_enabled),
+            set_shuffle=_set_shuffle,
+            metadata=self._mpris_metadata,
+            volume=lambda: (self.engine.volume_percent() / 100.0)
+            if hasattr(self, "engine") and self.engine
+            else 1.0,
+            set_volume=lambda v: self.set_volume(int(max(0.0, min(2.0, float(v))) * 100)),
+            position_us=lambda: int(self.engine.position() * 1000)
+            if hasattr(self, "engine") and self.engine
+            else 0,
+            seek_us=lambda off: self.engine.seek_relative(off / 1_000_000.0)
+            if hasattr(self, "engine") and self.engine
+            else None,
+            set_position_us=lambda pos: self.engine.set_position(int(pos / 1000), exact=True)
+            if hasattr(self, "engine") and self.engine
+            else None,
+        )
+        if self.mpris.start():
+            self.status_bar.showMessage("MPRIS2 desktop controls enabled", 3000)
+
+        def _ok(fn):
+            def _wrap(*a, **k):
+                fn(*a, **k)
+                return {"ok": True}
+
+            return _wrap
+
+        self.control_daemon.set_callbacks(
+            status=self._daemon_status,
+            play=_ok(self._engine_play),
+            pause=_ok(lambda: self.engine.pause() if hasattr(self, "engine") else None),
+            play_pause=_ok(self.toggle_playback),
+            stop=_ok(self.stop_playback),
+            next=_ok(self.next_media),
+            previous=_ok(self.previous_media),
+            volume=self._daemon_set_volume,
+            seek=self._daemon_seek,
+            open=self._daemon_open,
+        )
+        if self.control_daemon.start():
+            self.status_bar.showMessage(
+                f"Control daemon http://{self.control_daemon.host}:{self.control_daemon.port}/",
+                4000,
+            )
+
+    def _mpris_playback_status(self) -> str:
+        if not hasattr(self, "engine") or self.engine is None:
+            return "Stopped"
+        if self.engine.is_playing():
+            return "Playing"
+        # paused vs stopped
+        st = getattr(self.engine, "_last_state", "") or ""
+        if st == "paused":
+            return "Paused"
+        return "Stopped"
+
+    def _mpris_loop_status(self) -> str:
+        mode = self.app_state.repeat_mode or "off"
+        return {"off": "None", "all": "Playlist", "one": "Track"}.get(mode, "None")
+
+    def _mpris_set_loop_status(self, value: str) -> None:
+        mapping = {"None": "off", "Playlist": "all", "Track": "one"}
+        self.app_state.repeat_mode = mapping.get(value, "off")
+        self.settings.save_state(self.app_state)
+        if hasattr(self, "controls"):
+            self.controls.sync_playback_modes(
+                self.app_state.shuffle_enabled, self.app_state.repeat_mode
+            )
+
+    def _mpris_metadata(self) -> dict:
+        path = self.app_state.last_file or ""
+        meta = self._meta_cache.get(path)
+        title = (meta.title if meta and meta.title else None) or (
+            os.path.basename(path) if path else "VoxPlayer"
+        )
+        artist = (meta.artist if meta and meta.artist else "") or ""
+        album = (meta.album if meta and meta.album else "") or ""
+        length = 0
+        if hasattr(self, "engine") and self.engine is not None:
+            length = int(self.engine.duration() * 1000)  # microseconds
+        track_id = f"/org/voxplayer/track/{abs(hash(path)) & 0xFFFFFFFF}"
+        out = {
+            "mpris:trackid": track_id,
+            "xesam:title": title,
+            "mpris:length": length,
+        }
+        if artist:
+            out["xesam:artist"] = [artist]
+        if album:
+            out["xesam:album"] = album
+        if path:
+            out["xesam:url"] = QUrl.fromLocalFile(os.path.abspath(path)).toString()
+        return out
+
+    def _daemon_status(self) -> dict:
+        path = self.app_state.last_file or ""
+        return {
+            "playing": bool(hasattr(self, "engine") and self.engine and self.engine.is_playing()),
+            "path": path,
+            "position_ms": int(self.engine.position())
+            if hasattr(self, "engine") and self.engine
+            else 0,
+            "duration_ms": int(self.engine.duration())
+            if hasattr(self, "engine") and self.engine
+            else 0,
+            "volume_percent": int(self.engine.volume_percent())
+            if hasattr(self, "engine") and self.engine
+            else int(self.app_state.volume),
+            "shuffle": bool(self.app_state.shuffle_enabled),
+            "repeat": self.app_state.repeat_mode,
+            "version": self.current_version,
+        }
+
+    def _daemon_set_volume(self, body: dict) -> dict:
+        pct = int(body.get("percent", self.app_state.volume))
+        self.set_volume(pct)
+        return {"ok": True, "percent": pct}
+
+    def _daemon_seek(self, body: dict) -> dict:
+        if not hasattr(self, "engine") or self.engine is None:
+            return {"ok": False}
+        if "relative_ms" in body:
+            self.engine.seek_relative(float(body["relative_ms"]) / 1000.0)
+        elif "ms" in body:
+            self.engine.set_position(int(body["ms"]), exact=True)
+        return {"ok": True, "position_ms": int(self.engine.position())}
+
+    def _daemon_open(self, body: dict) -> dict:
+        path = str(body.get("path") or "")
+        if not path:
+            return {"ok": False, "error": "path required"}
+        self.load_and_play_media(path)
+        return {"ok": True, "path": path}
+
+    def subscribe_podcast_feed(self) -> None:
+        url, ok = QInputDialog.getText(
+            self, "Subscribe to podcast", "RSS / Atom feed URL:"
+        )
+        if not ok or not (url or "").strip():
+            return
+        try:
+            feed = self.podcast_store.subscribe(url.strip())
+            QMessageBox.information(
+                self,
+                "Podcast subscribed",
+                f"{feed.title}\n{len(feed.episodes)} episode(s) listed.\n"
+                "Use Podcasts → Browse / Download Episodes to fetch audio.",
+            )
+            self.status_bar.showMessage(f"Subscribed: {feed.title}", 4000)
+        except Exception as exc:
+            QMessageBox.warning(self, "Subscribe failed", str(exc))
+
+    def refresh_podcast_feeds(self) -> None:
+        if not self.podcast_store.feeds:
+            QMessageBox.information(self, "Podcasts", "No feeds subscribed yet.")
+            return
+        feeds = self.podcast_store.refresh()
+        self.status_bar.showMessage(f"Refreshed {len(feeds)} podcast feed(s)", 4000)
+
+    def browse_podcast_episodes(self) -> None:
+        if not self.podcast_store.feeds:
+            QMessageBox.information(
+                self,
+                "Podcasts",
+                "No feeds yet. Use Podcasts → Subscribe to Feed… first.",
+            )
+            return
+        feed_titles = {f"{f.title} ({f.url})": f for f in self.podcast_store.feeds.values()}
+        label, ok = QInputDialog.getItem(
+            self, "Podcast feed", "Select feed:", list(feed_titles.keys()), 0, False
+        )
+        if not ok or label not in feed_titles:
+            return
+        feed = feed_titles[label]
+        if not feed.episodes:
+            QMessageBox.information(self, "Podcasts", "No episodes with audio enclosures.")
+            return
+        choices = [
+            f"{i+1}. {ep.title}" + (" ✓" if ep.local_path and os.path.isfile(ep.local_path) else "")
+            for i, ep in enumerate(feed.episodes[:80])
+        ]
+        pick, ok = QInputDialog.getItem(
+            self, feed.title, "Download & play episode:", choices, 0, False
+        )
+        if not ok or not pick:
+            return
+        idx = choices.index(pick)
+        ep = feed.episodes[idx]
+        try:
+            self.status_bar.showMessage(f"Downloading: {ep.title}", 0)
+            QApplication.processEvents()
+            path = download_episode(ep, feed.title)
+            self.podcast_store.save()
+            self._register_library_path(path)
+            self._remember_library_root(podcasts_dir())
+            self.refresh_home_grid()
+            self.load_and_play_media(path)
+            self.status_bar.showMessage(f"Playing podcast: {ep.title}", 5000)
+        except Exception as exc:
+            QMessageBox.warning(self, "Download failed", str(exc))
+
     def closeEvent(self, event):
         """Close-to-tray while playing; otherwise persist state and quit."""
         playing = False
@@ -4093,6 +4336,10 @@ Position: {position // 1000}s
             return
         self.app_state.window_geometry = self.saveGeometry()
         self.settings.save_state(self.app_state)
+        if hasattr(self, "mpris") and self.mpris is not None:
+            self.mpris.stop()
+        if hasattr(self, "control_daemon") and self.control_daemon is not None:
+            self.control_daemon.stop()
         if hasattr(self, "native_workers") and self.native_workers is not None:
             self.native_workers.shutdown()
         if hasattr(self, "engine"):
@@ -4111,7 +4358,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.12.0")
+    app.setApplicationVersion("1.13.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

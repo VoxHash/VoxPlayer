@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.12.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.13.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -86,12 +86,12 @@ Build Phase 3 (optional lighter scanner): `native/vox_scan_zig/build.sh` → `na
 ## Next (H1–H2 2027)
 
 ### Daemon / remote control
-- Optional local control daemon (HTTP/gRPC-style or MPD-compatible surface) so phones and scripts can drive playback on a trusted LAN
-- Desktop media-key / MPRIS integration where the OS expects it
+- Optional local control daemon (HTTP/gRPC-style or MPD-compatible surface) so phones and scripts can drive playback on a trusted LAN (**Done 1.13.0** — localhost HTTP; LAN opt-in via `VOXPLAYER_DAEMON_ALLOW_LAN`)
+- Desktop media-key / MPRIS integration where the OS expects it (**Done 1.13.0**)
 - Multi-room / cast-style outputs only if maintainable without a second media stack
 
 ### Podcast-like feeds & sync ideas
-- Subscribe to RSS/Atom audio feeds; download episodes into the library
+- Subscribe to RSS/Atom audio feeds; download episodes into the library (**Done 1.13.0**)
 - Detect portable / USB media devices and sync playlists or podcast episodes with one action
 - Hardware / open-firmware portable-player concepts: gapless queues, bookmark resume, simple on-device library views (desktop companion first)
 
@@ -102,7 +102,7 @@ Build Phase 3 (optional lighter scanner): `native/vox_scan_zig/build.sh` → `na
 
 ### Playback quality
 - Broader codec coverage (HEVC, AV1, Opus) as the native C core allows
-- Subtitle expansion (ASS/SSA/VTT) if maintainable on the single engine
+- Subtitle expansion (ASS/SSA/VTT) if maintainable on the single engine (**Done 1.13.0**)
 - Accessibility contrast pass on the dark shell
 
 ---

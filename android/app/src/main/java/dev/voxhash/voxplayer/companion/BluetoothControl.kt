@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
+import android.util.Log
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -17,9 +18,13 @@ import kotlin.concurrent.withLock
 /**
  * RFCOMM client for the desktop [voxplayer.bt_control] profile.
  * GrapheneOS-friendly — classic Bluetooth only, no Google Nearby.
+ *
+ * Prefers channel [FALLBACK_CHANNEL] (desktop default) because many hosts
+ * lack ``sdptool`` SDP registration for the SPP UUID.
  */
 class BluetoothControl(private val context: Context) {
     companion object {
+        private const val TAG = "VoxPlayerBT"
         val SERVICE_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb")
         const val FALLBACK_CHANNEL = 5
     }
@@ -60,33 +65,62 @@ class BluetoothControl(private val context: Context) {
         if (!adapter.isEnabled) throw IllegalStateException("Bluetooth is off — enable it to Connect")
         val device = adapter.getRemoteDevice(address)
         adapter.cancelDiscovery()
-        val sock = openSocket(device)
-        sock.connect()
-        // Wait briefly for hello line
-        val r = BufferedReader(InputStreamReader(sock.inputStream, Charsets.UTF_8))
-        val w = OutputStreamWriter(sock.outputStream, Charsets.UTF_8)
-        lock.withLock {
-            socket = sock
-            reader = r
-            writer = w
+
+        val errors = mutableListOf<String>()
+        for ((label, factory) in socketFactories(device)) {
+            var sock: BluetoothSocket? = null
+            try {
+                sock = factory()
+                Log.i(TAG, "BT trying $label → $address")
+                sock.connect()
+                val r = BufferedReader(InputStreamReader(sock.inputStream, Charsets.UTF_8))
+                val w = OutputStreamWriter(sock.outputStream, Charsets.UTF_8)
+                lock.withLock {
+                    socket = sock
+                    reader = r
+                    writer = w
+                }
+                val hello = readLine(timeoutMs) ?: JSONObject().put("ok", true)
+                Log.i(TAG, "BT $label connected hello=$hello")
+                return hello
+            } catch (e: Exception) {
+                errors.add("$label: ${e.message}")
+                Log.w(TAG, "BT $label failed: ${e.message}")
+                try {
+                    sock?.close()
+                } catch (_: Exception) {
+                }
+                lock.withLock {
+                    socket = null
+                    reader = null
+                    writer = null
+                }
+            }
         }
-        return readLine(timeoutMs) ?: JSONObject().put("ok", true)
+        throw IllegalStateException(errors.joinToString(" | ").ifBlank { "Bluetooth connect failed" })
     }
 
     @SuppressLint("MissingPermission")
-    private fun openSocket(device: BluetoothDevice): BluetoothSocket {
-        return try {
-            device.createRfcommSocketToServiceRecord(SERVICE_UUID)
-        } catch (_: Exception) {
-            // Fallback: insecure channel bind used by desktop AF_BLUETOOTH server
-            try {
+    private fun socketFactories(device: BluetoothDevice): List<Pair<String, () -> BluetoothSocket>> {
+        val list = mutableListOf<Pair<String, () -> BluetoothSocket>>()
+        // Channel-first: desktop binds RFCOMM channel 5 without requiring SDP
+        list.add(
+            "rfcomm-ch$FALLBACK_CHANNEL" to {
                 val m = device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
                 @Suppress("UNCHECKED_CAST")
                 m.invoke(device, FALLBACK_CHANNEL) as BluetoothSocket
-            } catch (e: Exception) {
-                device.createInsecureRfcommSocketToServiceRecord(SERVICE_UUID)
-            }
-        }
+            },
+        )
+        list.add(
+            "insecure-rfcomm-ch$FALLBACK_CHANNEL" to {
+                val m = device.javaClass.getMethod("createInsecureRfcommSocket", Int::class.javaPrimitiveType)
+                @Suppress("UNCHECKED_CAST")
+                m.invoke(device, FALLBACK_CHANNEL) as BluetoothSocket
+            },
+        )
+        list.add("insecure-spp-uuid" to { device.createInsecureRfcommSocketToServiceRecord(SERVICE_UUID) })
+        list.add("spp-uuid" to { device.createRfcommSocketToServiceRecord(SERVICE_UUID) })
+        return list
     }
 
     fun disconnect() {

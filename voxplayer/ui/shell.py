@@ -1074,6 +1074,14 @@ class TransportBar(_MediaDropMixin, QWidget):
         self.volume_label.setStyleSheet(f"color:{COLORS['text_muted']}; font-size:11px; min-width:36px;")
         right.addWidget(self.volume_slider)
         right.addWidget(self.volume_label)
+        # Far bottom-right: companion Connect (Wi‑Fi discovery + Bluetooth RFCOMM)
+        self.btn_connect = QPushButton("Connect")
+        self.btn_connect.setObjectName("TransportGhost")
+        self.btn_connect.setToolTip(
+            "Phone / Quest companion — Wi‑Fi discovery and Bluetooth RFCOMM control"
+        )
+        self.btn_connect.setMinimumWidth(72)
+        right.addWidget(self.btn_connect)
         root.addLayout(right, 2)
 
         self.seek_slider.setMouseTracking(True)
@@ -1087,6 +1095,7 @@ class TransportBar(_MediaDropMixin, QWidget):
         self.btn_next.clicked.connect(self.next_media)
         self.btn_shuffle.clicked.connect(self.toggle_shuffle)
         self.btn_repeat.clicked.connect(self.cycle_repeat)
+        self.btn_connect.clicked.connect(self._on_connect_clicked)
         # Do not seek on every valueChanged (playback poll updates the slider).
         self.seek_slider.sliderPressed.connect(self._seek_pressed)
         self.seek_slider.sliderMoved.connect(self._seek_moved)
@@ -1144,6 +1153,20 @@ class TransportBar(_MediaDropMixin, QWidget):
     def cycle_repeat(self):
         if hasattr(self.parent_window, "cycle_repeat_mode"):
             self.parent_window.cycle_repeat_mode()
+
+    def _on_connect_clicked(self) -> None:
+        if hasattr(self.parent_window, "show_companion_connect"):
+            self.parent_window.show_companion_connect()
+
+    def set_connect_status(self, active: bool, detail: str = "") -> None:
+        """Highlight Connect when a companion path (LAN / Bluetooth) is live."""
+        tip = detail or (
+            "Phone / Quest companion — Wi‑Fi discovery and Bluetooth RFCOMM control"
+        )
+        self.btn_connect.setToolTip(tip)
+        self.btn_connect.setProperty("active", "true" if active else "false")
+        self.btn_connect.style().unpolish(self.btn_connect)
+        self.btn_connect.style().polish(self.btn_connect)
 
     def sync_playback_modes(self, shuffle: bool, repeat_mode: str) -> None:
         """Reflect persisted shuffle / repeat on the transport chrome."""

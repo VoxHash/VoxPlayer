@@ -84,19 +84,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleViewIntent(intent)
-        val extras = intent?.extras
-        if (extras != null) {
-            val host = extras.getString("host").orEmpty()
-            val port = extras.getString("port").orEmpty()
-            val autoconnect = extras.getBoolean("autoconnect", false) ||
-                extras.getString("autoconnect").equals("1", true) ||
-                extras.getString("autoconnect").equals("true", true)
-            if (host.isNotBlank() || port.isNotBlank() || autoconnect) {
-                if (host.isNotBlank()) vm.updateRemoteHost(host)
-                if (port.isNotBlank()) vm.updateRemotePort(port)
-                if (autoconnect) vm.connectManual()
-            }
-        }
+        applyConnectExtras(intent)
         enableEdgeToEdge()
         setContent {
             MaterialTheme(
@@ -116,6 +104,29 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleViewIntent(intent)
+        applyConnectExtras(intent)
+    }
+
+    private fun applyConnectExtras(intent: Intent?) {
+        val extras = intent?.extras ?: return
+        val host = extras.getString("host").orEmpty()
+        val port = extras.getString("port").orEmpty()
+        val autoconnect = extras.getBoolean("autoconnect", false) ||
+            extras.getString("autoconnect").equals("1", true) ||
+            extras.getString("autoconnect").equals("true", true)
+        if (host.isNotBlank() || port.isNotBlank() || autoconnect) {
+            if (host.isNotBlank()) vm.updateRemoteHost(host)
+            if (port.isNotBlank()) vm.updateRemotePort(port)
+            if (autoconnect) vm.connectManual()
+        }
+        val btAddress = extras.getString("bt_address").orEmpty()
+        val btName = extras.getString("bt_name").orEmpty().ifBlank { "Desktop" }
+        val btConnect = extras.getBoolean("bt_connect", false) ||
+            extras.getString("bt_connect").equals("1", true) ||
+            extras.getString("bt_connect").equals("true", true)
+        if (btAddress.isNotBlank() && btConnect) {
+            vm.connectBluetooth(btAddress, btName)
+        }
     }
 
     private fun handleViewIntent(intent: Intent?) {
@@ -288,12 +299,16 @@ private fun TransportBar(
         IconButton(onClick = onPlayPause) {
             Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play/Pause")
         }
-        IconButton(onClick = onConnect) {
-            Icon(
-                Icons.Default.Devices,
-                contentDescription = "Connect",
-                tint = if (state.activeOutput.startsWith("Desktop")) ActiveGreen else Color.White,
-            )
+        // Far bottom-right labeled Connect (devices icon alone was easy to miss)
+        Button(
+            onClick = onConnect,
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = if (state.activeOutput.startsWith("Desktop")) ActiveGreen else Accent,
+            ),
+        ) {
+            Icon(Icons.Default.Devices, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.size(6.dp))
+            Text("Connect")
         }
     }
 }

@@ -4580,9 +4580,23 @@ Position: {position // 1000}s
         if self.control_daemon.start():
             msg = f"Control daemon http://{self.control_daemon.host}:{self.control_daemon.port}/"
             bt = getattr(self.control_daemon, "_bt", None)
-            if bt is not None and getattr(bt, "active", False):
+            # RFCOMM bind is async; give the server a moment before reporting status
+            if bt is not None:
+                import time as _time
+
+                for _ in range(20):
+                    if getattr(bt, "active", False) or getattr(bt, "last_error", ""):
+                        break
+                    _time.sleep(0.05)
+            bt_on = bool(bt is not None and getattr(bt, "active", False))
+            if bt_on:
                 msg += f" · Bluetooth RFCOMM ch{bt.channel}"
+            elif bt is not None and getattr(bt, "last_error", ""):
+                msg += f" · Bluetooth off ({bt.last_error})"
             self.status_bar.showMessage(msg, 5000)
+            if hasattr(self, "controls") and hasattr(self.controls, "set_connect_status"):
+                detail = msg
+                self.controls.set_connect_status(bt_on or self.control_daemon.host != "127.0.0.1", detail)
 
     def _mpris_playback_status(self) -> str:
         if not hasattr(self, "engine") or self.engine is None:
@@ -5273,6 +5287,71 @@ Position: {position // 1000}s
             "Open/path sync needs the same file path on each room "
             "(shared mount or identical library layout).",
         )
+
+    def show_companion_connect(self) -> None:
+        """Bottom-right Connect — how phones/Quest reach this desktop (Wi‑Fi + BT)."""
+        host = getattr(self.control_daemon, "host", "127.0.0.1")
+        port = getattr(self.control_daemon, "port", 17890)
+        bt = getattr(self.control_daemon, "_bt", None)
+        bt_on = bool(bt is not None and getattr(bt, "active", False))
+        bt_ch = getattr(bt, "channel", 5) if bt else 5
+        bt_err = (getattr(bt, "last_error", "") or "") if bt else "not started"
+        bt_addr = ""
+        paired = []
+        try:
+            import subprocess
+
+            out = subprocess.check_output(
+                ["bluetoothctl", "show"], text=True, stderr=subprocess.DEVNULL, timeout=3
+            )
+            for line in out.splitlines():
+                if line.startswith("Controller") and ":" in line:
+                    parts = line.split()
+                    if len(parts) >= 2 and ":" in parts[1]:
+                        bt_addr = parts[1]
+                        break
+            out = subprocess.check_output(
+                ["bluetoothctl", "devices", "Paired"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+            )
+            for line in out.splitlines():
+                bits = line.split(None, 2)
+                if len(bits) >= 3 and bits[0] == "Device":
+                    paired.append(f"  • {bits[2]} ({bits[1]})")
+        except Exception:
+            pass
+        lan_note = (
+            f"http://{host}:{port}/"
+            if host not in {"127.0.0.1", "localhost", "::1"}
+            else f"localhost-only ({host}:{port}) — set VOXPLAYER_DAEMON_ALLOW_LAN=1 "
+            "and VOXPLAYER_DAEMON_HOST=0.0.0.0 for Wi‑Fi companions"
+        )
+        bt_line = (
+            f"Bluetooth RFCOMM: ON · channel {bt_ch}"
+            + (f" · adapter {bt_addr}" if bt_addr else "")
+            if bt_on
+            else f"Bluetooth RFCOMM: OFF ({bt_err or 'disabled'}) — VOXPLAYER_BT=1"
+        )
+        body = (
+            "Connect phone / Quest companions to this PC.\n\n"
+            f"Wi‑Fi control daemon:\n  {lan_note}\n"
+            f"  UDP discovery port 17891\n\n"
+            f"{bt_line}\n"
+            "  SPP UUID 00001101-0000-1000-8000-00805f9b34fb\n\n"
+            "On the companion app: tap Connect (devices) → pick this PC on Wi‑Fi, "
+            "or tap a paired Bluetooth device for RFCOMM control "
+            "(GrapheneOS — no Google Nearby).\n"
+        )
+        if paired:
+            body += "\nPaired Bluetooth devices (hints):\n" + "\n".join(paired[:12])
+        QMessageBox.information(self, "Connect", body)
+        if hasattr(self, "controls") and hasattr(self.controls, "set_connect_status"):
+            self.controls.set_connect_status(
+                bt_on or host not in {"127.0.0.1", "localhost", "::1"},
+                f"{lan_note} · {bt_line}",
+            )
 
     def manage_multiroom_peers(self) -> None:
         while True:

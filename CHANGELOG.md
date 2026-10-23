@@ -9,6 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Further Android companion polish (background playback limits, Quest UX)
 
+## [1.28.1] - 2026-10-23
+
+### Added
+- Desktop transport **Connect** button (far bottom-right) with companion Wi‑Fi / Bluetooth RFCOMM status dialog
+- Android transport labeled **Connect** button (bottom-right) so the control is visible on phone and Quest
+
+### Fixed
+- Bluetooth RFCOMM server bind on BlueZ (`bad bluetooth address` when binding `""`) — bind the real adapter BDADDR
+- Android RFCOMM client prefers channel 5 before SPP UUID SDP lookup (hosts without `sdptool`)
+
 ## [1.28.0] - 2026-10-23
 
 ### Added

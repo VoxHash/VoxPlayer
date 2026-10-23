@@ -88,6 +88,25 @@ def _make_connectable() -> None:
             pass
 
 
+def _local_adapter_address() -> str:
+    """BlueZ RFCOMM bind needs a real BDADDR — empty string fails with EADDRNOTAVAIL."""
+    try:
+        out = subprocess.check_output(
+            ["bluetoothctl", "list"], text=True, stderr=subprocess.DEVNULL, timeout=3
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        out = ""
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0] == "Controller" and ":" in parts[1]:
+            return parts[1]
+    try:
+        with open("/sys/class/bluetooth/hci0/address", encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return "00:00:00:00:00:00"
+
+
 def _register_sdp(channel: int) -> None:
     """Best-effort Serial Port SDP record so phones can resolve the UUID."""
     sdptool = shutil.which("sdptool")
@@ -150,9 +169,26 @@ class BluetoothControlServer:
         except OSError as exc:
             self.last_error = str(exc)
             return
+        bdaddr = _local_adapter_address()
+        bind_errs: list[str] = []
+        bound = False
+        for candidate in (bdaddr, "00:00:00:00:00:00"):
+            if not candidate:
+                continue
+            try:
+                server.bind((candidate, channel))
+                bound = True
+                break
+            except OSError as exc:
+                bind_errs.append(f"{candidate}: {exc}")
+        if not bound:
+            self.last_error = "; ".join(bind_errs) or "bind failed"
+            try:
+                server.close()
+            except OSError:
+                pass
+            return
         try:
-            # "" / zeros = local adapter
-            server.bind(("", channel))
             server.listen(1)
             server.settimeout(1.0)
             self.address = server.getsockname()[0]

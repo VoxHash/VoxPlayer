@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -263,15 +264,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun connectBluetooth(address: String, name: String) {
         if (!hasBluetoothPermission()) {
             _state.update { it.copy(error = "Bluetooth permission required") }
+            Log.e(TAG, "BT connect denied: permission")
             return
         }
         viewModelScope.launch {
             _state.update { it.copy(error = "", syncMessage = "Connecting Bluetooth…") }
             try {
                 remotePoll?.cancel()
-                withContext(Dispatchers.IO) {
+                val hello = withContext(Dispatchers.IO) {
                     bt.connect(address)
                 }
+                Log.i(TAG, "BT connected to $address hello=$hello")
                 if (player.isPlaying) player.pause()
                 _state.update {
                     it.copy(
@@ -284,8 +287,16 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         error = "",
                     )
                 }
+                // Smoke: status + playlists over RFCOMM
+                withContext(Dispatchers.IO) {
+                    val st = bt.status()
+                    Log.i(TAG, "BT status ok playing=${st.optBoolean("playing")} v=${st.optString("version")}")
+                    val pl = bt.playlists()
+                    Log.i(TAG, "BT playlists ok count=${pl.optJSONArray("playlists")?.length() ?: 0}")
+                }
                 startRemotePoll()
             } catch (e: Exception) {
+                Log.e(TAG, "BT connect failed to $address", e)
                 bt.disconnect()
                 _state.update {
                     it.copy(
@@ -297,6 +308,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    companion object {
+        private const val TAG = "VoxPlayerBT"
     }
 
     fun disconnectRemote() {

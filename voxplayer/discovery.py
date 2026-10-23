@@ -4,9 +4,10 @@ Broadcasts a small JSON announce on UDP ``17891`` (override with
 ``VOXPLAYER_DISCOVERY_PORT``). Companions listen and may send a probe
 ``VOXPLAYER_DISCOVER?``; the desktop replies with a unicast announce.
 
-Wi‑Fi is the supported Connect transport (same LAN). Bluetooth does not carry
-the HTTP control API without a custom profile — the Connect UI steers users to
-Wi‑Fi / LAN (and ``voxplayer-lan-bypass`` when a VPN steals RFC1918 routes).
+Wi‑Fi is the primary Connect transport (same LAN; use ``voxplayer-lan-bypass``
+when a VPN steals RFC1918 routes). Bluetooth RFCOMM (``voxplayer.bt_control``)
+carries the same JSON command surface when the phone is paired — GrapheneOS has
+no Google Nearby.
 """
 
 from __future__ import annotations

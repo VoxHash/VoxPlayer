@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://python.org/)
 [![PyQt6](https://img.shields.io/badge/pyqt6-6.0+-blue.svg)](https://pypi.org/project/PyQt6/)
 
-> A modern desktop media player for Windows, macOS, and Linux. Four-pane shell (library rail, home/stage, now playing, transport), PyQt6 UI, optional native libmpv decode, and qBittorrent streaming.
+> A modern desktop media player for Windows, macOS, and Linux. Library rail, responsive home grid, streaming-style now playing, transport bar, libmpv-first decode, and qBittorrent streaming.
 
 Maintained by **VoxHash Technologies** · contact@voxhash.dev
 
@@ -17,14 +17,15 @@ voxplayer
 
 ## Features
 
-- **Modern shell**: Left library rail, home/library grid, now-playing panel, bottom transport
+- **Modern shell**: Left library rail, responsive grid/list library, now-playing panel, bottom transport — video stage only when needed
 - **Universal format support**: MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MP3, FLAC, WAV, OGG, M4A, AAC, WMA
-- **Hybrid playback**: Qt Multimedia by default; optional libmpv via `pip install "voxplayer[native]"`
-- **True volume amplification**: Up to 200% (mpv native / Pulse-boosted Qt path); Media Info matches the slider
-- **Thumbnails & live preview**: ffmpeg-cached posters on library cards; live frame grabs in Now Playing / transport
-- **Metadata enrichment**: offline-first local tags; optional online MusicBrainz / AcoustID / TMDB once per file with disk cache and manual refresh (see docs/configuration.md)
-- **Queue / playlists**: Search, filtering, import/export
-- **Torrent streaming**: qBittorrent Web UI integration with media-library gating
+- **libmpv by default**: Reliable 0–200% volume when system libmpv is present; Qt Multimedia remains the fallback
+- **True volume amplification**: Up to 200% without manual engine env vars for the default path
+- **Thumbnails & live preview**: Smart ffmpeg posters (skips black frames); live frame grabs in Now Playing / transport
+- **Metadata enrichment**: Offline-first local tags; browse by year, genre, type, artist, movies, TV seasons
+- **Queue / playlists**: Click Up next to play; add/remove/clear; Favorites and local playlists by file path
+- **Torrent streaming**: qBittorrent API client included in main install deps, with media-library gating
+- **Tray background**: Minimize / close-to-tray while playback continues
 - **File associations**: Double-click media to open with VoxPlayer
 - **Cross-platform**: Windows, macOS, and Linux
 
@@ -46,16 +47,12 @@ pip install voxplayer
 voxplayer "path/to/video.mp4"
 ```
 
-Optional torrent streaming extras:
+Torrent and native decode clients ship in the base install. System **libmpv** is still required for the preferred engine (e.g. `pacman -S mpv` / `apt install libmpv1` / `brew install mpv`).
+
+Optional metadata extras:
 
 ```bash
-pip install "voxplayer[torrent]"
-```
-
-Optional native decode (requires system libmpv):
-
-```bash
-pip install "voxplayer[native]"
+pip install "voxplayer[metadata]"
 ```
 
 ## Installation
@@ -65,12 +62,6 @@ pip install "voxplayer[native]"
 ```bash
 pip install voxplayer
 voxplayer
-```
-
-With torrent support:
-
-```bash
-pip install "voxplayer[torrent]"
 ```
 
 Package page: [https://pypi.org/project/voxplayer/](https://pypi.org/project/voxplayer/)

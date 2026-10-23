@@ -1,4 +1,7 @@
 # VoxPlayer Core Dependencies
 PyQt6>=6.0.0
 requests>=2.25.0
-# Optional native decode (libmpv): pip install python-mpv
+qbittorrent-api>=2024.1.0
+python-mpv>=1.0.0
+# System: libmpv (e.g. pacman -S mpv / apt install libmpv1) for native decode + 0–200% volume
+# Optional metadata: mutagen, pyacoustid — pip install "voxplayer[metadata]"

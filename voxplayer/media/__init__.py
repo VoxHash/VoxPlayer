@@ -1,4 +1,4 @@
-"""Media helpers: thumbnails, metadata enrichment, torrent gating."""
+"""Media helpers: thumbnails, metadata enrichment, torrent gating, playlists."""
 
 from .thumbnails import ThumbnailCache, get_thumbnail_path
 from .metadata import (
@@ -16,6 +16,8 @@ from .torrent_gate import (
     validate_torrent_file,
     validate_torrent_file_list,
 )
+from .playlists import PlaylistStore
+from .library_facets import group_library
 
 __all__ = [
     "ThumbnailCache",
@@ -31,4 +33,6 @@ __all__ = [
     "is_media_library_torrent",
     "validate_torrent_file",
     "validate_torrent_file_list",
+    "PlaylistStore",
+    "group_library",
 ]

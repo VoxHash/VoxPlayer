@@ -11,6 +11,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Persist library roots across sessions
 - Broader subtitle format support where maintainable
 
+## [1.2.0] - 2026-10-23
+
+### Added
+- **Streaming-style Now Playing**: header with More / Expand / Minimize (Esc), large rounded cover, click art to expand
+- **Grid / List toggle** with responsive grid columns that reflow on resize
+- **Library browse facets**: year, genre, type, artist, movies (chronological), TV by season
+- **Favorites & local playlists** persisted under `~/.local/share/voxplayer/playlists/` (file paths)
+- **System tray**: minimize / close-to-tray keeps audio and video playing; restore from tray
+- **Modern About modal** with VoxPlayer branding, version, and copyright
+- Up next: click to play, right-click remove, Clear Up next and stop, Add to queue from library
+
+### Changed
+- **libmpv is the default engine** when available — reliable 0–200% volume without requiring `VOXPLAYER_ENGINE` or Pulse-only workarounds for the happy path
+- **Audio no longer opens the empty center stage**; video stage shows for video playback or when the user expands Now Playing
+- `qbittorrent-api` and `python-mpv` moved into **main install dependencies**
+- Redundant dock “Queue Panel” path de-emphasized; Up next lives in the Now Playing rail
+
+### Fixed
+- Video poster/thumbnail capture skips near-black frames and retries multiple seek points
+- Torrent import no longer fails with “qbittorrent-api not available” on a normal `pip install voxplayer`
+
 ## [1.1.1] - 2026-10-22
 
 ### Fixed

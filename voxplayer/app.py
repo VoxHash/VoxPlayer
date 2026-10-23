@@ -20,15 +20,16 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QHBoxLayout, QPushButton, QSlider, QLabel,
                             QFileDialog, QDockWidget, QListWidget, QListWidgetItem,
                             QMenuBar, QMenu, QStatusBar, QMessageBox, QInputDialog,
-                            QLineEdit, QStackedWidget, QSizePolicy)
+                            QLineEdit, QStackedWidget, QSizePolicy, QSystemTrayIcon,
+                            QStyle)
 from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QIcon, QPixmap
 
 from .theme import app_stylesheet, COLORS
-from .ui.shell import LeftRail, HomeView, NowPlayingPanel, TransportBar
-from .engine.playback import PlaybackEngine
+from .ui.shell import LeftRail, HomeView, NowPlayingPanel, TransportBar, AboutDialog
+from .engine.playback import PlaybackEngine, prefer_xcb_for_mpv_embed
 from .media.thumbnails import ThumbnailCache, get_thumbnail_path
 from .media.metadata import (
     MediaMetadata,
@@ -37,6 +38,8 @@ from .media.metadata import (
     load_local_metadata,
 )
 from .media.torrent_gate import validate_torrent_file, validate_torrent_file_list
+from .media.playlists import PlaylistStore
+from .media.library_facets import group_library, VIDEO_EXT as FACET_VIDEO_EXT, AUDIO_EXT as FACET_AUDIO_EXT
 
 
 class MetadataEnrichWorker(QThread):
@@ -948,12 +951,16 @@ class VoxPlayerMainWindow(QMainWindow):
         # Torrent and update functionality
         self.torrent_streamer = None
         self.update_checker = None
-        self.current_version = "1.1.1"
+        self.current_version = "1.2.0"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
         self._preview_timer = None
         self._enrich_thread = None
+        self.playlist_store = PlaylistStore()
+        self._stage_expanded = False
+        self._close_to_tray = True
+        self.tray_icon = None
 
         # Audio device detection
         self.current_audio_device = None
@@ -969,6 +976,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.setup_auto_update()
         self.apply_theme()
         self.setup_icon()
+        self.setup_system_tray()
 
         # Initialize audio device
         self.update_audio_device()
@@ -1008,7 +1016,8 @@ class VoxPlayerMainWindow(QMainWindow):
         self.left_rail = LeftRail(self)
         self.left_rail.home_requested.connect(lambda: self.show_shell_page("home"))
         self.left_rail.library_requested.connect(lambda: self.show_shell_page("library"))
-        self.left_rail.queue_requested.connect(self.focus_queue_panel)
+        self.left_rail.browse_requested.connect(lambda: self.show_shell_page("browse"))
+        self.left_rail.favorites_requested.connect(lambda: self.show_shell_page("favorites"))
         self.left_rail.open_file_requested.connect(self.open_file)
         self.left_rail.open_folder_requested.connect(self.open_folder)
         self.left_rail.torrent_requested.connect(self.open_torrent_file)
@@ -1025,6 +1034,8 @@ class VoxPlayerMainWindow(QMainWindow):
         self.home_view.media_activated.connect(self.load_and_play_media)
         self.home_view.filter_changed.connect(self.apply_home_filter)
         self.home_view.search_changed.connect(self.apply_home_search)
+        self.home_view.media_context.connect(self.show_library_context_menu)
+        self.home_view.facet_selected.connect(self.apply_facet_bucket)
 
         self.stage_page = QWidget()
         stage_layout = QVBoxLayout(self.stage_page)
@@ -1042,6 +1053,14 @@ class VoxPlayerMainWindow(QMainWindow):
         body_layout.addWidget(center, 1)
 
         self.now_playing = NowPlayingPanel(self)
+        self.now_playing.art_clicked.connect(self.expand_now_playing_view)
+        self.now_playing.expand_requested.connect(self.expand_now_playing_view)
+        self.now_playing.minimize_requested.connect(self.minimize_now_playing_view)
+        self.now_playing.more_requested.connect(self.show_now_playing_more_menu)
+        self.now_playing.queue_play_requested.connect(self.load_and_play_media)
+        self.now_playing.queue_remove_requested.connect(self.remove_from_up_next)
+        self.now_playing.queue_clear_requested.connect(self.clear_up_next_and_stop)
+        self.now_playing.add_to_playlist_requested.connect(self.add_path_to_named_playlist)
         body_layout.addWidget(self.now_playing)
 
         shell_layout.addWidget(body, 1)
@@ -1100,19 +1119,60 @@ class VoxPlayerMainWindow(QMainWindow):
             self.refresh_home_grid()
 
     def show_shell_page(self, page: str):
-        if page in ("home", "library"):
-            self.shell_mode = "home"
-            self.center_stack.setCurrentWidget(self.home_view)
+        if page == "stage":
+            self.shell_mode = "stage"
+            self._stage_expanded = True
+            self.center_stack.setCurrentWidget(self.stage_page)
+            if hasattr(self, "engine"):
+                QTimer.singleShot(50, self.engine.rebind_video_widget)
+            return
+        self._stage_expanded = False
+        self.shell_mode = "home"
+        self.center_stack.setCurrentWidget(self.home_view)
+        if page == "browse":
+            self.left_rail.set_active("browse")
+            self.home_view.set_browse_mode(True)
+            self.refresh_home_grid()
+            self.refresh_facets()
+        elif page == "favorites":
+            self.left_rail.set_active("favorites")
+            self.home_view.set_browse_mode(False)
+            self.show_favorites_library()
+        elif page in ("home", "library"):
             self.left_rail.set_active("library" if page == "library" else "home")
+            self.home_view.set_browse_mode(False)
             self.refresh_home_grid()
         else:
-            self.shell_mode = "stage"
-            self.center_stack.setCurrentWidget(self.stage_page)
+            self.left_rail.set_active("home")
+            self.home_view.set_browse_mode(False)
+            self.refresh_home_grid()
+
+    def is_video_path(self, path: str) -> bool:
+        if not path:
+            return False
+        return os.path.splitext(path)[1].lower() in FACET_VIDEO_EXT
+
+    def expand_now_playing_view(self):
+        """Show center stage for video (or any media when user expands via art)."""
+        path = getattr(self.app_state, "last_file", "") or ""
+        if not path:
+            self.status_bar.showMessage("Nothing playing to expand.", 2500)
+            return
+        self.show_shell_page("stage")
+        self.toggle_now_playing(True)
+        self.status_bar.showMessage("Now Playing expanded — Esc to minimize", 3000)
+
+    def minimize_now_playing_view(self):
+        """Return to library; keep playback running."""
+        self._stage_expanded = False
+        if self.isFullScreen():
+            self.showNormal()
+        self.show_shell_page("home")
+        self.toggle_now_playing(True)
 
     def focus_queue_panel(self):
-        self.left_rail.set_active("queue")
         self.toggle_now_playing(True)
-        self.show_playlist()
+        self.left_rail.set_active("home")
 
     def toggle_now_playing(self, force=None):
         visible = (not self.now_playing_visible) if force is None else bool(force)
@@ -1130,8 +1190,8 @@ class VoxPlayerMainWindow(QMainWindow):
         query = (query if query is not None else getattr(self, "_home_query", "")).lower()
         self._home_filter = filter_name
         self._home_query = query
-        video_ext = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v"}
-        audio_ext = {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma"}
+        video_ext = FACET_VIDEO_EXT
+        audio_ext = FACET_AUDIO_EXT
         items = list(self.library_paths)
         if hasattr(self, "playlist"):
             for i in range(self.playlist.count()):
@@ -1151,13 +1211,12 @@ class VoxPlayerMainWindow(QMainWindow):
         if filter_name == "recent":
             filtered = filtered[:24]
         thumbs = {}
-        for path in filtered[:48]:
+        for path in filtered[:64]:
             cached = self._thumb_map.get(path) or get_thumbnail_path(path)
             if cached:
                 thumbs[path] = cached
                 self._thumb_map[path] = cached
             else:
-                # Generate asynchronously-ish for first batch (fast ffmpeg seeks)
                 try:
                     generated = self.thumb_cache.ensure(path)
                     if generated:
@@ -1167,12 +1226,140 @@ class VoxPlayerMainWindow(QMainWindow):
                     pass
         self.home_view.set_items(filtered, thumbnails=thumbs)
         self.home_view.hint.setText(f"{len(filtered)} items")
+        if getattr(self.home_view, "_browse_mode", False):
+            self.refresh_facets()
 
     def apply_home_filter(self, name: str):
         self.refresh_home_grid(filter_name=name)
 
     def apply_home_search(self, text: str):
         self.refresh_home_grid(query=text)
+
+    def refresh_facets(self):
+        items = list(getattr(self, "library_paths", []) or [])
+        facets = group_library(items, self._meta_cache)
+        self.home_view.set_facets(facets)
+
+    def apply_facet_bucket(self, facet_key: str, bucket: str):
+        facets = group_library(list(getattr(self, "library_paths", []) or []), self._meta_cache)
+        paths = facets.get(facet_key, {}).get(bucket, [])
+        thumbs = {}
+        for path in paths[:64]:
+            cached = self._thumb_map.get(path) or get_thumbnail_path(path)
+            if cached:
+                thumbs[path] = cached
+            else:
+                try:
+                    generated = self.thumb_cache.ensure(path)
+                    if generated:
+                        thumbs[path] = generated
+                        self._thumb_map[path] = generated
+                except Exception:
+                    pass
+        self.home_view.set_items(paths, thumbnails=thumbs)
+        self.home_view.hint.setText(f"{bucket}: {len(paths)} items")
+        self.home_view.title_label.setText(f"Browse · {facet_key.title()}")
+
+    def show_favorites_library(self):
+        names = self.playlist_store.names()
+        # Flatten Favorites first, then other playlists
+        paths = []
+        for name in names:
+            for p in self.playlist_store.get(name):
+                if p not in paths and os.path.isfile(p):
+                    paths.append(p)
+        thumbs = {p: self._thumb_map.get(p) or get_thumbnail_path(p) for p in paths if get_thumbnail_path(p) or self._thumb_map.get(p)}
+        self.home_view.set_items(paths, thumbnails={k: v for k, v in thumbs.items() if v})
+        self.home_view.title_label.setText("Favorites & playlists")
+        self.home_view.hint.setText(f"{len(paths)} saved items")
+
+    def show_library_context_menu(self, path: str, global_pos):
+        if not path:
+            return
+        menu = QMenu(self)
+        play = menu.addAction("Play")
+        add_q = menu.addAction("Add to Up next")
+        fav = menu.addAction("Add to Favorites")
+        create = menu.addAction("Save to playlist…")
+        chosen = menu.exec(global_pos)
+        if chosen == play:
+            self.load_and_play_media(path)
+        elif chosen == add_q:
+            self.add_to_up_next(path)
+        elif chosen == fav:
+            self.add_path_to_named_playlist(path, PlaylistStore.FAVORITES)
+        elif chosen == create:
+            name, ok = QInputDialog.getText(self, "Save to playlist", "Playlist name:")
+            if ok and name.strip():
+                self.add_path_to_named_playlist(path, name.strip())
+
+    def add_to_up_next(self, path: str):
+        if not path or not os.path.exists(path):
+            return
+        existing = [self.playlist.get_file_at_index(i) for i in range(self.playlist.count())]
+        if path not in existing:
+            self.playlist.add_media_file(path)
+        self._sync_now_playing_queue()
+        self.status_bar.showMessage(f"Added to Up next: {os.path.basename(path)}", 2500)
+
+    def remove_from_up_next(self, path: str):
+        if hasattr(self, "playlist"):
+            self.playlist.remove_item_by_file(path)
+        self._sync_now_playing_queue()
+        self.status_bar.showMessage(f"Removed from queue: {os.path.basename(path)}", 2500)
+
+    def clear_up_next_and_stop(self):
+        self.stop_playback()
+        if hasattr(self, "playlist"):
+            self.playlist.clear()
+        self.app_state.last_file = ""
+        if hasattr(self, "now_playing"):
+            self.now_playing.update_now_playing(None)
+            self.now_playing.set_queue([])
+        if hasattr(self, "controls"):
+            self.controls.set_track_meta("VoxPlayer", "Ready")
+            self.controls.set_track_art()
+        self.setWindowTitle("VoxPlayer")
+        self.minimize_now_playing_view()
+        self.status_bar.showMessage("Cleared Up next and stopped playback.", 3000)
+
+    def _sync_now_playing_queue(self):
+        if not hasattr(self, "now_playing") or not hasattr(self, "playlist"):
+            return
+        paths = [self.playlist.get_file_at_index(i) for i in range(self.playlist.count())]
+        self.now_playing.set_queue([p for p in paths if p], getattr(self.app_state, "last_file", None))
+
+    def add_path_to_named_playlist(self, path: str, playlist_name: str):
+        if not path:
+            return
+        added = self.playlist_store.add(playlist_name, path)
+        msg = "Added" if added else "Already in"
+        self.status_bar.showMessage(f"{msg} {os.path.basename(path)} → {playlist_name}", 3000)
+
+    def show_now_playing_more_menu(self, global_pos):
+        path = getattr(self.app_state, "last_file", "") or ""
+        menu = QMenu(self)
+        expand = menu.addAction("Expand Now Playing")
+        minimize = menu.addAction("Minimize Now Playing")
+        menu.addSeparator()
+        fav = menu.addAction("Add current to Favorites")
+        add_q = menu.addAction("Add current to Up next")
+        clear = menu.addAction("Clear Up next and stop")
+        menu.addSeparator()
+        tray = menu.addAction("Minimize to tray")
+        chosen = menu.exec(global_pos)
+        if chosen == expand:
+            self.expand_now_playing_view()
+        elif chosen == minimize:
+            self.minimize_now_playing_view()
+        elif chosen == fav and path:
+            self.add_path_to_named_playlist(path, PlaylistStore.FAVORITES)
+        elif chosen == add_q and path:
+            self.add_to_up_next(path)
+        elif chosen == clear:
+            self.clear_up_next_and_stop()
+        elif chosen == tray:
+            self.hide_to_tray()
 
     def create_menu_bar(self):
         menubar = self.menuBar()
@@ -1234,8 +1421,16 @@ class VoxPlayerMainWindow(QMainWindow):
 
         clear_playlist_action = QAction("&Clear Playlist", self)
         clear_playlist_action.setShortcut("Ctrl+Shift+C")
-        clear_playlist_action.triggered.connect(self.clear_playlist)
+        clear_playlist_action.triggered.connect(self.clear_up_next_and_stop)
         playlists_menu.addAction(clear_playlist_action)
+
+        fav_action = QAction("Add Current to &Favorites", self)
+        fav_action.triggered.connect(
+            lambda: self.add_path_to_named_playlist(
+                getattr(self.app_state, "last_file", "") or "", PlaylistStore.FAVORITES
+            )
+        )
+        playlists_menu.addAction(fav_action)
 
         media_menu.addSeparator()
 
@@ -1277,20 +1472,31 @@ class VoxPlayerMainWindow(QMainWindow):
         fullscreen_action.triggered.connect(self.toggle_fullscreen)
         view_menu.addAction(fullscreen_action)
 
-        # View menu - add playlist toggle
-        playlist_action = QAction("&Queue Panel", self)
-        playlist_action.setShortcut("Ctrl+L")
-        playlist_action.setCheckable(True)
-        playlist_action.setChecked(False)
-        playlist_action.triggered.connect(self.toggle_playlist)
-        view_menu.addAction(playlist_action)
+        expand_action = QAction("&Expand Now Playing", self)
+        expand_action.setShortcut("Ctrl+Shift+E")
+        expand_action.triggered.connect(self.expand_now_playing_view)
+        view_menu.addAction(expand_action)
 
-        now_playing_action = QAction("&Now Playing", self)
+        minimize_action = QAction("&Minimize Now Playing", self)
+        minimize_action.setShortcut("Ctrl+Shift+M")
+        minimize_action.triggered.connect(self.minimize_now_playing_view)
+        view_menu.addAction(minimize_action)
+
+        now_playing_action = QAction("&Now Playing Panel", self)
         now_playing_action.setShortcut("Ctrl+Shift+N")
         now_playing_action.setCheckable(True)
         now_playing_action.setChecked(True)
         now_playing_action.triggered.connect(lambda: self.toggle_now_playing())
         view_menu.addAction(now_playing_action)
+
+        tray_action = QAction("Minimize to &Tray", self)
+        tray_action.setShortcut("Ctrl+Shift+T")
+        tray_action.triggered.connect(self.hide_to_tray)
+        view_menu.addAction(tray_action)
+
+        clear_queue_action = QAction("Clear &Up Next and Stop", self)
+        clear_queue_action.triggered.connect(self.clear_up_next_and_stop)
+        view_menu.addAction(clear_queue_action)
 
         home_action = QAction("&Home", self)
         home_action.setShortcut("Ctrl+H")
@@ -1402,7 +1608,17 @@ class VoxPlayerMainWindow(QMainWindow):
         # Mute toggle
         QShortcut(QKeySequence("M"), self, self.toggle_mute)
 
+        # Minimize expanded now-playing / exit fullscreen
+        QShortcut(QKeySequence("Esc"), self, self._escape_pressed)
+
         # Playlist toggle (handled by menu action)
+
+    def _escape_pressed(self):
+        if self.isFullScreen():
+            self.toggle_fullscreen()
+            return
+        if self._stage_expanded or self.shell_mode == "stage":
+            self.minimize_now_playing_view()
 
     def setup_timers(self):
         # Timer for updating UI
@@ -2178,10 +2394,22 @@ For more information, visit the project repository.
                 self.media_player.setSource(url)
             self.app_state.last_file = file_path
             self._register_library_path(file_path)
+            if file_path not in [self.playlist.get_file_at_index(i) for i in range(self.playlist.count())]:
+                self.playlist.add_media_file(file_path)
             self.refresh_home_grid()
 
             self.show_logo(False)
-            self.show_shell_page("stage")
+            # Audio keeps the library visible; video expands the stage automatically.
+            if self.is_video_path(file_path):
+                self.show_shell_page("stage")
+                if hasattr(self, "engine") and not self.engine.has_embedded_video:
+                    # Re-bind libmpv into the visible stage, else Qt owns video frames.
+                    rebound = self.engine.rebind_video_widget()
+                    if not rebound and self.engine.backend_name == "mpv":
+                        self.engine._fallback_to_qt()
+                        self.engine.set_source(file_path)
+            else:
+                self.minimize_now_playing_view()
 
             if hasattr(self, 'playlist') and self.playlist:
                 current_index = self.playlist.find_file_index(file_path)
@@ -2817,28 +3045,94 @@ Position: {position // 1000}s
             QMessageBox.warning(self, "Media Info Error", f"Could not retrieve media information:\n{str(e)}")
 
     def show_about(self):
-        """Show about dialog"""
-        QMessageBox.about(self, "About VoxPlayer",
-                         "VoxPlayer — modern desktop media shell\n\n"
-                         "PyQt6 UI + optional libmpv native decode\n"
-                         "Local library, queue, torrent streaming\n\n"
-                         f"Version {self.current_version}")
+        """Show modern About modal."""
+        dlg = AboutDialog(self.current_version, self)
+        dlg.exec()
+
+    def setup_system_tray(self):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        icon = self.windowIcon()
+        if icon.isNull():
+            icon = self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
+        self.tray_icon = QSystemTrayIcon(icon, self)
+        self.tray_icon.setToolTip("VoxPlayer")
+        menu = QMenu()
+        show_act = menu.addAction("Show VoxPlayer")
+        show_act.triggered.connect(self.restore_from_tray)
+        play_act = menu.addAction("Play / Pause")
+        play_act.triggered.connect(self.toggle_playback)
+        menu.addSeparator()
+        quit_act = menu.addAction("Quit")
+        quit_act.triggered.connect(self.quit_application)
+        self.tray_icon.setContextMenu(menu)
+        self.tray_icon.activated.connect(self._tray_activated)
+        self.tray_icon.show()
+
+    def _tray_activated(self, reason):
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self.restore_from_tray()
+
+    def hide_to_tray(self):
+        if self.tray_icon is None:
+            self.showMinimized()
+            return
+        self.hide()
+        self.tray_icon.showMessage(
+            "VoxPlayer",
+            "Playing in the background. Click the tray icon to restore.",
+            QSystemTrayIcon.MessageIcon.Information,
+            2500,
+        )
+        self.status_bar.showMessage("Minimized to tray — playback continues.", 3000)
+
+    def restore_from_tray(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def quit_application(self):
+        self._close_to_tray = False
+        self.close()
+
+    def changeEvent(self, event):
+        if event.type() == event.Type.WindowStateChange:
+            if self.isMinimized() and self._close_to_tray and self.tray_icon is not None:
+                QTimer.singleShot(0, self.hide_to_tray)
+        super().changeEvent(event)
 
     def closeEvent(self, event):
-        """Handle application close"""
+        """Close-to-tray while playing; otherwise persist state and quit."""
+        playing = False
+        if hasattr(self, "engine"):
+            playing = self.engine.is_playing()
+        if self._close_to_tray and self.tray_icon is not None and playing:
+            event.ignore()
+            self.hide_to_tray()
+            return
         self.app_state.window_geometry = self.saveGeometry()
         self.settings.save_state(self.app_state)
         if hasattr(self, "engine"):
             self.engine.shutdown()
+        if self.tray_icon is not None:
+            self.tray_icon.hide()
         event.accept()
 
 def main():
+    # Prefer X11/XWayland so libmpv WID embed works; volume 0–200% without env hacks.
+    prefer_xcb_for_mpv_embed()
     # Suppress verbose console output
     os.environ['QT_LOGGING_RULES'] = 'qt.multimedia.ffmpeg.debug=false'
+    # Default engine is libmpv when available (override with VOXPLAYER_ENGINE=qt)
+    os.environ.setdefault("VOXPLAYER_ENGINE", "mpv")
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.1.0")
+    app.setApplicationVersion("1.2.0")
+    app.setQuitOnLastWindowClosed(False)
 
     # Set application properties
     app.setOrganizationName("VoxHash")

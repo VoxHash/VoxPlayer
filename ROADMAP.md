@@ -1,15 +1,21 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (v1.1.0). Hybrid stack: **PyQt6 shell** + **Qt Multimedia** (always) with optional **libmpv** native decode when the window system allows embedding.
+Status as of October 2026 (v1.2.0). Hybrid stack: **PyQt6 shell** + **libmpv preferred** (when system libmpv is present) with **Qt Multimedia** fallback.
 
-## Shipped in 1.1.0
+## Shipped in 1.2.0
 
-- Modern four-pane desktop shell: left library rail, center home/stage, now-playing rail, bottom transport
-- Unique VoxPlayer visual identity (ember accent on charcoal — not a clone of any streaming brand)
-- Local file/folder library grid with search and type filters
-- Playback path via Qt Multimedia; optional `voxplayer[native]` (python-mpv / libmpv) for hardware-oriented decode on X11
-- Queue / playlist, seek, volume amplification, fullscreen, keyboard shortcuts retained
-- qBittorrent Web UI torrent streaming retained
+- Audio keeps the library visible; video stage only for video or explicit expand
+- Responsive grid/list library, metadata facet browse, Favorites/local playlists
+- Streaming-style Now Playing header (expand / minimize / more) and tray background playback
+- libmpv default for 0–200% volume; qbittorrent-api in main deps
+- Smarter video posters (reject black frames)
+
+## Shipped in 1.1.x
+
+- Modern desktop shell with ember-on-charcoal VoxPlayer identity
+- Offline-first metadata cache and enrichment extras
+- Volume amplification path and thumbnail pipeline foundations
+- qBittorrent Web UI torrent streaming with media-library gating
 
 ## Now (Q4 2026)
 
@@ -19,7 +25,7 @@ Status as of October 2026 (v1.1.0). Hybrid stack: **PyQt6 shell** + **Qt Multime
 - Stronger empty-state and unsupported-format messaging
 
 ### Playback
-- Document and harden libmpv embed on Wayland (today defaults to Qt Multimedia under Wayland unless `VOXPLAYER_ENGINE=mpv`)
+- Harden libmpv embed on pure Wayland (today prefers X11/XWayland when `DISPLAY` exists)
 - Prefer zero-copy / hardware video surfaces where the platform compositor allows
 - Clearer codec error surfacing when FFmpeg/Qt cannot open a stream
 

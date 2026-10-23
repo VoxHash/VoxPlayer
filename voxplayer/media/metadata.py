@@ -28,7 +28,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import requests
 
-USER_AGENT = "VoxPlayer/1.1.1 (https://github.com/VoxHash/VoxPlayer; contact@voxhash.dev)"
+USER_AGENT = "VoxPlayer/1.2.0 (https://github.com/VoxHash/VoxPlayer; contact@voxhash.dev)"
 MB_BASE = "https://musicbrainz.org/ws/2"
 CAA_BASE = "https://coverartarchive.org"
 ACOUSTID_LOOKUP = "https://api.acoustid.org/v2/lookup"

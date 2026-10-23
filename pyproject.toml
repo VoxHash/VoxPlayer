@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxplayer"
-version = "1.1.1"
+version = "1.2.0"
 description = "A modern multimedia player built with PyQt6"
 readme = "README.md"
 license = {text = "MIT"}
@@ -43,6 +43,8 @@ requires-python = ">=3.8"
 dependencies = [
     "PyQt6>=6.0.0",
     "requests>=2.25.0",
+    "qbittorrent-api>=2024.1.0",
+    "python-mpv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -53,7 +55,7 @@ dev = [
     "mypy>=0.800",
 ]
 torrent = [
-    "qbittorrent-api>=0.4.0",
+    "qbittorrent-api>=2024.1.0",
 ]
 native = [
     "python-mpv>=1.0.0",

@@ -10,7 +10,7 @@
 System utilities that help but are not required to launch the app:
 
 - `ffmpeg` / `ffprobe` — inspect and convert media
-- `vlc` — alternate playback for debugging problem files
+- `ffplay` / another media client — alternate playback for debugging problem files
 
 ## First run
 

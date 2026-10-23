@@ -18,7 +18,7 @@ def read_requirements():
 
 setup(
     name="voxplayer",
-    version="1.0.4",
+    version="1.1.0",
     author="VoxHash Technologies",
     author_email="contact@voxhash.dev",
     description="A modern multimedia player built with PyQt6",

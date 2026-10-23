@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.8+-green.svg)](https://python.org/)
 [![PyQt6](https://img.shields.io/badge/pyqt6-6.0+-blue.svg)](https://pypi.org/project/PyQt6/)
 
-> A modern, ultra-compact media player for Windows, macOS, and Linux with professional file association support. Built with PyQt6 and designed for simplicity and performance.
+> A modern desktop media player for Windows, macOS, and Linux. Four-pane shell (library rail, home/stage, now playing, transport), PyQt6 UI, optional native libmpv decode, and qBittorrent streaming.
 
 Maintained by **VoxHash Technologies** · contact@voxhash.dev
 
@@ -17,14 +17,14 @@ voxplayer
 
 ## Features
 
-- **Universal Format Support**: MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MP3, FLAC, WAV, OGG, M4A, AAC, WMA
-- **Ultra-Compact Design**: Minimalist interface with maximum functionality
-- **True Volume Amplification**: Up to 200% volume boost for quiet media
-- **Professional File Associations**: Double-click any media file to open with VoxPlayer
-- **Advanced Playlist Management**: Smart playlist behavior with search, filtering, and import/export
-- **Torrent Streaming**: qBittorrent Web UI integration for streaming media
-- **Auto-Update System**: GitHub-based update checking
-- **Cross-Platform**: Windows, macOS, and Linux support
+- **Modern shell**: Left library rail, home/library grid, now-playing panel, bottom transport
+- **Universal format support**: MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MP3, FLAC, WAV, OGG, M4A, AAC, WMA
+- **Hybrid playback**: Qt Multimedia by default; optional libmpv via `pip install "voxplayer[native]"`
+- **True volume amplification**: Up to 200% for quiet media
+- **Queue / playlists**: Search, filtering, import/export
+- **Torrent streaming**: qBittorrent Web UI integration
+- **File associations**: Double-click media to open with VoxPlayer
+- **Cross-platform**: Windows, macOS, and Linux
 
 ## Table of Contents
 
@@ -48,6 +48,12 @@ Optional torrent streaming extras:
 
 ```bash
 pip install "voxplayer[torrent]"
+```
+
+Optional native decode (requires system libmpv):
+
+```bash
+pip install "voxplayer[native]"
 ```
 
 ## Installation
@@ -111,7 +117,7 @@ voxplayer
 | PyQt6 | Yes | Installed via `requirements.txt` |
 | FFmpeg (Qt backend / system) | Recommended | Playback codecs; `ffmpeg` CLI useful for debugging |
 | qBittorrent Web UI | Optional | Torrent streaming only |
-| VLC | Optional | Useful to compare problem files |
+| Alternate media client | Optional | Useful to compare problem files |
 
 ## Usage
 

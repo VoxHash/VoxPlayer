@@ -20,11 +20,15 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QHBoxLayout, QPushButton, QSlider, QLabel,
                             QFileDialog, QDockWidget, QListWidget, QListWidgetItem,
                             QMenuBar, QMenu, QStatusBar, QMessageBox, QInputDialog,
-                            QLineEdit)
+                            QLineEdit, QStackedWidget, QSizePolicy)
 from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QIcon, QPixmap
+
+from .theme import app_stylesheet, COLORS
+from .ui.shell import LeftRail, HomeView, NowPlayingPanel, TransportBar
+from .engine.playback import PlaybackEngine
 
 # Data classes for state management
 @dataclass
@@ -572,279 +576,10 @@ class Settings:
             selected_audio_device=self.settings.value("selected_audio_device", "")
         )
 
-class PlayerControls(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.parent_window = parent
-        self.setup_ui()
+class PlayerControls(TransportBar):
+    """Backward-compatible name for the modern bottom transport bar."""
+    pass
 
-    def setup_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 2, 4, 2)  # Even more compact
-        layout.setSpacing(4)  # Reduced spacing
-
-        # Control buttons (micro-compact design)
-        self.btn_play = QPushButton("▶")
-        self.btn_play.setObjectName("playButton")
-        self.btn_play.setFixedSize(18, 18)  # Much smaller
-        self.btn_play.setStyleSheet("""
-            QPushButton#playButton {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #00BFFF, stop: 1 #0099CC);
-                border: 1px solid #00BFFF;
-                border-radius: 9px;
-                color: white;
-                font-size: 8px;
-                font-weight: bold;
-            }
-            QPushButton#playButton:hover {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #00CCFF, stop: 1 #00BFFF);
-                border-color: #00CCFF;
-            }
-            QPushButton#playButton:pressed {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                    stop: 0 #0088BB, stop: 1 #006699);
-            }
-        """)
-
-        self.btn_stop = QPushButton("⏹")
-        self.btn_stop.setFixedSize(16, 16)  # Much smaller
-        self.btn_stop.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 8px;
-                color: white;
-                font-size: 6px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.15);
-                border-color: rgba(255, 255, 255, 0.25);
-            }
-        """)
-
-        self.btn_mute = QPushButton("🔊")
-        self.btn_mute.setFixedSize(16, 16)  # Much smaller
-        self.btn_mute.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 8px;
-                color: white;
-                font-size: 6px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.15);
-                border-color: rgba(255, 255, 255, 0.25);
-            }
-        """)
-
-        # Seek bar (micro-compact design) with timeline preview
-        self.seek_slider = QSlider(Qt.Orientation.Horizontal)
-        self.seek_slider.setRange(0, 1000)
-        self.seek_slider.setValue(0)
-        self.seek_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                border: none;
-                height: 1px;
-                background: rgba(255, 255, 255, 0.15);
-                border-radius: 1px;
-            }
-            QSlider::handle:horizontal {
-                background: #00BFFF;
-                border: 1px solid #FFFFFF;
-                width: 8px;
-                margin: -3px 0;
-                border-radius: 4px;
-            }
-            QSlider::handle:horizontal:hover {
-                background: #00CCFF;
-                width: 10px;
-                margin: -4px 0;
-            }
-        """)
-
-        # Enable mouse tracking for timeline preview
-        self.seek_slider.setMouseTracking(True)
-        self.seek_slider.enterEvent = self.on_seek_hover
-        self.seek_slider.leaveEvent = self.on_seek_leave
-        self.seek_slider.mouseMoveEvent = self.on_seek_mouse_move
-
-        # Time labels (micro-compact)
-        self.time_label = QLabel("00:00")
-        self.time_label.setObjectName("timeLabel")
-        self.time_label.setStyleSheet("""
-            QLabel#timeLabel {
-                color: white;
-                font-family: "Consolas", "Monaco", monospace;
-                font-size: 7px;
-                font-weight: bold;
-                background: transparent;
-                border: none;
-                padding: 0px 2px;
-                min-width: 35px;
-            }
-        """)
-
-        # Volume control (micro-compact)
-        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
-        self.volume_slider.setRange(0, 200)
-        self.volume_slider.setValue(100)
-        self.volume_slider.setMaximumWidth(40)  # Much smaller
-        self.volume_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                border: none;
-                height: 1px;
-                background: rgba(255, 255, 255, 0.15);
-                border-radius: 1px;
-            }
-            QSlider::handle:horizontal {
-                background: #00BFFF;
-                border: 1px solid #FFFFFF;
-                width: 6px;
-                margin: -2px 0;
-                border-radius: 3px;
-            }
-        """)
-
-        self.volume_label = QLabel("100%")
-        self.volume_label.setObjectName("volumeLabel")
-        self.volume_label.setStyleSheet("""
-            QLabel#volumeLabel {
-                color: white;
-                font-family: "Consolas", "Monaco", monospace;
-                font-size: 6px;
-                background: transparent;
-                border: none;
-                padding: 0px 2px;
-                min-width: 22px;
-            }
-        """)
-
-        # Previous/Next buttons
-        self.btn_prev = QPushButton("⏮")
-        self.btn_prev.setFixedSize(16, 16)
-        self.btn_prev.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 8px;
-                color: white;
-                font-size: 6px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.15);
-                border-color: rgba(255, 255, 255, 0.25);
-            }
-        """)
-
-        self.btn_next = QPushButton("⏭")
-        self.btn_next.setFixedSize(16, 16)
-        self.btn_next.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 8px;
-                color: white;
-                font-size: 6px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.15);
-                border-color: rgba(255, 255, 255, 0.25);
-            }
-        """)
-
-        # Add widgets to layout (micro-compact arrangement)
-        layout.addWidget(self.btn_prev)
-        layout.addWidget(self.btn_play)
-        layout.addWidget(self.btn_stop)
-        layout.addWidget(self.btn_next)
-        layout.addWidget(QLabel(""))  # Spacer
-        layout.addWidget(self.time_label)
-        layout.addWidget(self.seek_slider)
-        layout.addWidget(QLabel(""))  # Spacer
-        layout.addWidget(self.btn_mute)
-        layout.addWidget(self.volume_slider)
-        layout.addWidget(self.volume_label)
-
-        # Connect signals
-        self.btn_play.clicked.connect(self.toggle_play)
-        self.btn_stop.clicked.connect(self.stop)
-        self.btn_mute.clicked.connect(self.toggle_mute)
-        self.btn_prev.clicked.connect(self.previous_media)
-        self.btn_next.clicked.connect(self.next_media)
-        self.seek_slider.valueChanged.connect(self.seek_changed)
-        self.volume_slider.valueChanged.connect(self.volume_changed)
-
-    def toggle_play(self):
-        if hasattr(self.parent_window, 'toggle_playback'):
-            self.parent_window.toggle_playback()
-
-    def stop(self):
-        if hasattr(self.parent_window, 'stop_playback'):
-            self.parent_window.stop_playback()
-
-    def toggle_mute(self):
-        if hasattr(self.parent_window, 'toggle_mute'):
-            self.parent_window.toggle_mute()
-
-    def previous_media(self):
-        if hasattr(self.parent_window, 'previous_media'):
-            self.parent_window.previous_media()
-
-    def next_media(self):
-        if hasattr(self.parent_window, 'next_media'):
-            self.parent_window.next_media()
-
-    def take_snapshot(self):
-        if hasattr(self.parent_window, 'take_snapshot'):
-            self.parent_window.take_snapshot()
-
-    def seek_changed(self, value):
-        if hasattr(self.parent_window, 'seek_to_position'):
-            self.parent_window.seek_to_position(value / 1000.0)
-
-    def volume_changed(self, value):
-        if hasattr(self.parent_window, 'set_volume'):
-            self.parent_window.set_volume(value)
-        self.volume_label.setText(f"{value}%")
-
-    def on_seek_hover(self, event):
-        """Show timeline preview on hover"""
-        if hasattr(self.parent_window, 'show_timeline_preview'):
-            self.parent_window.show_timeline_preview(True)
-
-    def on_seek_leave(self, event):
-        """Hide timeline preview on leave"""
-        if hasattr(self.parent_window, 'show_timeline_preview'):
-            self.parent_window.show_timeline_preview(False)
-
-    def on_seek_mouse_move(self, event):
-        """Update timeline preview on mouse move"""
-        if hasattr(self.parent_window, 'update_timeline_preview'):
-            # Calculate position based on mouse position
-            pos = event.position().x()
-            width = self.seek_slider.width()
-            if width > 0:
-                position = pos / width
-                self.parent_window.update_timeline_preview(position)
-
-    def update_time(self, current, total):
-        """Update time display"""
-        def format_time(ms):
-            seconds = ms // 1000
-            minutes = seconds // 60
-            seconds = seconds % 60
-            return f"{minutes:02d}:{seconds:02d}"
-
-        self.time_label.setText(f"{format_time(current)} / {format_time(total)}")
-
-    def update_seek_position(self, position):
-        """Update seek slider position"""
-        self.seek_slider.blockSignals(True)
-        self.seek_slider.setValue(int(position * 1000))
-        self.seek_slider.blockSignals(False)
 
 class PlaylistWidget(QListWidget):
     def __init__(self, parent=None):
@@ -1159,7 +894,7 @@ class VoxPlayerMainWindow(QMainWindow):
         # Torrent and update functionality
         self.torrent_streamer = None
         self.update_checker = None
-        self.current_version = "1.0.1"
+        self.current_version = "1.1.0"
 
         # Audio device detection
         self.current_audio_device = None
@@ -1186,142 +921,184 @@ class VoxPlayerMainWindow(QMainWindow):
 
     def setup_ui(self):
         self.setWindowTitle("VoxPlayer")
-        self.setMinimumSize(400, 200)  # Ultra-compact minimum size
+        self.setMinimumSize(960, 600)
 
-        # Set window geometry
         if self.app_state.window_geometry:
             self.restoreGeometry(self.app_state.window_geometry)
         else:
-            self.resize(600, 400)  # Ultra-compact default size
+            self.resize(1280, 800)
 
-        # Create central widget
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        self.library_paths = []
+        self.shell_mode = "home"
+        self.now_playing_visible = True
+        self._home_filter = "all"
+        self._home_query = ""
 
-        # Video widget
+        shell = QWidget()
+        shell.setObjectName("ShellRoot")
+        self.setCentralWidget(shell)
+        shell_layout = QVBoxLayout(shell)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.setSpacing(0)
+
+        body = QWidget()
+        body_layout = QHBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+
+        self.left_rail = LeftRail(self)
+        self.left_rail.home_requested.connect(lambda: self.show_shell_page("home"))
+        self.left_rail.library_requested.connect(lambda: self.show_shell_page("library"))
+        self.left_rail.queue_requested.connect(self.focus_queue_panel)
+        self.left_rail.open_file_requested.connect(self.open_file)
+        self.left_rail.open_folder_requested.connect(self.open_folder)
+        self.left_rail.torrent_requested.connect(self.open_torrent_file)
+        body_layout.addWidget(self.left_rail)
+
+        center = QWidget()
+        center.setObjectName("CenterStage")
+        center_layout = QVBoxLayout(center)
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        center_layout.setSpacing(0)
+
+        self.center_stack = QStackedWidget()
+        self.home_view = HomeView(self)
+        self.home_view.media_activated.connect(self.load_and_play_media)
+        self.home_view.filter_changed.connect(self.apply_home_filter)
+        self.home_view.search_changed.connect(self.apply_home_search)
+
+        self.stage_page = QWidget()
+        stage_layout = QVBoxLayout(self.stage_page)
+        stage_layout.setContentsMargins(12, 12, 12, 8)
+        stage_layout.setSpacing(0)
         self.video_widget = QVideoWidget()
-        self.video_widget.setStyleSheet("""
-            QVideoWidget {
-                background-color: #000000;
-                border: none;
-            }
-        """)
+        self.video_widget.setStyleSheet("QVideoWidget { background-color: #000000; border-radius: 10px; }")
         self.video_widget.setAcceptDrops(True)
         self.video_widget.mouseDoubleClickEvent = lambda event: self.toggle_fullscreen()
-        layout.addWidget(self.video_widget)
+        self.video_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        stage_layout.addWidget(self.video_widget)
+        self.center_stack.addWidget(self.home_view)
+        self.center_stack.addWidget(self.stage_page)
+        center_layout.addWidget(self.center_stack, 1)
+        body_layout.addWidget(center, 1)
 
-        # Player controls (initially visible)
-        self.controls = PlayerControls(self)
-        self.controls.setStyleSheet("""
-            QWidget {
-                background-color: rgba(0, 0, 0, 240);
-                border: none;
-                padding: 1px;
-            }
-        """)
-        layout.addWidget(self.controls)
+        self.now_playing = NowPlayingPanel(self)
+        body_layout.addWidget(self.now_playing)
 
-        # Playlist dock with search bar
+        shell_layout.addWidget(body, 1)
+
+        self.controls = TransportBar(self)
+        shell_layout.addWidget(self.controls)
+
         self.playlist = PlaylistWidget(self)
-        self.playlist_dock = QDockWidget("Playlist")
-
-        # Create a container widget for playlist and search bar
+        self.playlist_dock = QDockWidget("Queue")
         playlist_container = QWidget()
         playlist_layout = QVBoxLayout(playlist_container)
         playlist_layout.setContentsMargins(0, 0, 0, 0)
         playlist_layout.setSpacing(2)
-
-        # Search bar
         self.playlist_search = QLineEdit()
-        self.playlist_search.setPlaceholderText("Search playlist...")
-        self.playlist_search.setStyleSheet("""
-            QLineEdit {
-                background-color: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 3px;
-                padding: 4px 8px;
-                color: white;
-                font-size: 10px;
-            }
-            QLineEdit:focus {
-                border-color: #00BFFF;
-                background-color: rgba(255, 255, 255, 0.15);
-            }
-        """)
+        self.playlist_search.setPlaceholderText("Search queue...")
+        self.playlist_search.setObjectName("SearchField")
         self.playlist_search.textChanged.connect(self.filter_playlist)
-
-        # Search bar container with clear button
         search_container = QWidget()
         search_layout = QHBoxLayout(search_container)
-        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setContentsMargins(4, 4, 4, 0)
         search_layout.setSpacing(2)
-
         search_layout.addWidget(self.playlist_search)
-
-        # Clear button
         self.clear_search_btn = QPushButton("✕")
-        self.clear_search_btn.setFixedSize(20, 20)
-        self.clear_search_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                border-radius: 3px;
-                color: white;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.2);
-                border-color: #00BFFF;
-            }
-        """)
+        self.clear_search_btn.setFixedSize(24, 24)
         self.clear_search_btn.clicked.connect(self.clear_playlist_search)
         search_layout.addWidget(self.clear_search_btn)
-
         playlist_layout.addWidget(search_container)
-
-        # Playlist widget
         playlist_layout.addWidget(self.playlist)
-
         self.playlist_dock.setWidget(playlist_container)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.playlist_dock)
-        self.playlist_dock.hide()  # Hide playlist by default
+        self.playlist_dock.hide()
+        self.playlist_visible = False
 
-        # Subtitle manager
         self.subtitle_manager = SubtitleManager(self.video_widget, self)
 
-        # Timeline preview
         self.timeline_preview = QLabel("")
         self.timeline_preview.setParent(self.video_widget)
-        self.timeline_preview.setStyleSheet("""
-            QLabel {
-                background-color: rgba(0, 0, 0, 200);
-                border: 2px solid #00BFFF;
-                border-radius: 8px;
-                color: white;
-                font-size: 12px;
-                font-weight: bold;
-                padding: 8px;
-            }
-        """)
+        self.timeline_preview.setStyleSheet(
+            f"QLabel {{ background-color: rgba(11,15,20,220); border: 1px solid {COLORS['accent']};"
+            f" border-radius: 8px; color: white; font-size: 12px; font-weight: bold; padding: 8px; }}"
+        )
         self.timeline_preview.hide()
         self.timeline_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
 
-        # Create menu bar
         self.create_menu_bar()
-
-        # Enable mouse tracking for auto-hide controls
         self.setMouseTracking(True)
         self.video_widget.setMouseTracking(True)
         self.controls.setMouseTracking(True)
+
+        if self.app_state.last_file and os.path.exists(self.app_state.last_file):
+            self._register_library_path(self.app_state.last_file)
+            self.refresh_home_grid()
+
+    def show_shell_page(self, page: str):
+        if page in ("home", "library"):
+            self.shell_mode = "home"
+            self.center_stack.setCurrentWidget(self.home_view)
+            self.left_rail.set_active("library" if page == "library" else "home")
+            self.refresh_home_grid()
+        else:
+            self.shell_mode = "stage"
+            self.center_stack.setCurrentWidget(self.stage_page)
+
+    def focus_queue_panel(self):
+        self.left_rail.set_active("queue")
+        self.toggle_now_playing(True)
+        self.show_playlist()
+
+    def toggle_now_playing(self, force=None):
+        visible = (not self.now_playing_visible) if force is None else bool(force)
+        self.now_playing.setVisible(visible)
+        self.now_playing_visible = visible
+
+    def _register_library_path(self, file_path: str):
+        if not file_path or not os.path.exists(file_path):
+            return
+        if file_path not in self.library_paths:
+            self.library_paths.insert(0, file_path)
+
+    def refresh_home_grid(self, filter_name: str = None, query: str = None):
+        filter_name = (filter_name or getattr(self, "_home_filter", "all")).lower()
+        query = (query if query is not None else getattr(self, "_home_query", "")).lower()
+        self._home_filter = filter_name
+        self._home_query = query
+        video_ext = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v"}
+        audio_ext = {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma"}
+        items = list(self.library_paths)
+        if hasattr(self, "playlist"):
+            for i in range(self.playlist.count()):
+                p = self.playlist.get_file_at_index(i)
+                if p and p not in items:
+                    items.append(p)
+        filtered = []
+        for path in items:
+            ext = os.path.splitext(path)[1].lower()
+            if filter_name == "video" and ext not in video_ext:
+                continue
+            if filter_name == "audio" and ext not in audio_ext:
+                continue
+            if query and query not in os.path.basename(path).lower():
+                continue
+            filtered.append(path)
+        if filter_name == "recent":
+            filtered = filtered[:24]
+        self.home_view.set_items(filtered)
+        self.home_view.hint.setText(f"{len(filtered)} items")
+
+    def apply_home_filter(self, name: str):
+        self.refresh_home_grid(filter_name=name)
+
+    def apply_home_search(self, text: str):
+        self.refresh_home_grid(query=text)
 
     def create_menu_bar(self):
         menubar = self.menuBar()
@@ -1427,12 +1204,24 @@ class VoxPlayerMainWindow(QMainWindow):
         view_menu.addAction(fullscreen_action)
 
         # View menu - add playlist toggle
-        playlist_action = QAction("&Playlist", self)
+        playlist_action = QAction("&Queue Panel", self)
         playlist_action.setShortcut("Ctrl+L")
         playlist_action.setCheckable(True)
-        playlist_action.setChecked(True)
+        playlist_action.setChecked(False)
         playlist_action.triggered.connect(self.toggle_playlist)
         view_menu.addAction(playlist_action)
+
+        now_playing_action = QAction("&Now Playing", self)
+        now_playing_action.setShortcut("Ctrl+Shift+N")
+        now_playing_action.setCheckable(True)
+        now_playing_action.setChecked(True)
+        now_playing_action.triggered.connect(lambda: self.toggle_now_playing())
+        view_menu.addAction(now_playing_action)
+
+        home_action = QAction("&Home", self)
+        home_action.setShortcut("Ctrl+H")
+        home_action.triggered.connect(lambda: self.show_shell_page("home"))
+        view_menu.addAction(home_action)
 
         # View menu - add media info
         view_menu.addSeparator()
@@ -1468,30 +1257,40 @@ class VoxPlayerMainWindow(QMainWindow):
         help_menu.addAction(about_action)
 
     def setup_media_player(self):
-        self.media_player = QMediaPlayer()
-        self.audio_output = QAudioOutput()
-        self.media_player.setAudioOutput(self.audio_output)
-
-        # Initialize current audio device (simplified approach)
         self.current_audio_device = None
-
-        # Volume amplification system
         self.volume_amplification = 1.0
         self.base_volume = 1.0
 
-        # Initialize backend to neutral gain, then apply persisted user gain.
-        self.audio_output.setVolume(1.0)
-        self.media_player.setVideoOutput(self.video_widget)
+        self.video_widget.show()
+        self.video_widget.winId()
 
-        # Connect media player signals
-        self.media_player.positionChanged.connect(self.position_changed)
-        self.media_player.durationChanged.connect(self.duration_changed)
+        self.engine = PlaybackEngine(self.video_widget, self)
+        self.media_player = self.engine.media_player
+        self.audio_output = self.engine.audio_output
+
+        self.engine.position_changed.connect(self.position_changed)
+        self.engine.duration_changed.connect(self.duration_changed)
+        self.engine.state_changed.connect(self._engine_state_changed)
+        self.engine.error_occurred.connect(lambda msg: self.media_error(None, msg))
+        self.engine.backend_ready.connect(self._on_backend_ready)
         self.media_player.playbackStateChanged.connect(self.playback_state_changed)
-        self.media_player.errorOccurred.connect(self.media_error)
 
-        # Set initial volume
         self._apply_output_gain_from_state()
         self.controls.volume_slider.setValue(self.app_state.volume)
+        self._on_backend_ready(self.engine.backend_name)
+
+    def _on_backend_ready(self, name: str):
+        label = "libmpv (HW)" if name == "mpv" else "Qt Multimedia"
+        if hasattr(self, "now_playing"):
+            self.now_playing.engine_label.setText(f"Engine: {label}")
+        if hasattr(self, "status_bar"):
+            self.status_bar.showMessage(f"Playback engine: {label}", 4000)
+
+    def _engine_state_changed(self, state: str):
+        if state == "playing":
+            self.controls.btn_play.setText("⏸")
+        else:
+            self.controls.btn_play.setText("▶")
 
     def setup_shortcuts(self):
         # Space bar for play/pause
@@ -2118,106 +1917,8 @@ For more information, visit the project repository.
             self.mouse_timer.stop()
 
     def apply_theme(self):
-        """Apply voxplayer dark theme"""
-        voxplayer_style = """
-        QMainWindow {
-            background-color: #2b2b2b;
-            color: #ffffff;
-            border: none;
-        }
-
-        QWidget {
-            background-color: #2b2b2b;
-            color: #ffffff;
-        }
-
-        /* voxplayer-style Menu Bar */
-        QMenuBar {
-            background-color: #404040;
-            border-bottom: 1px solid #555555;
-            color: #ffffff;
-            padding: 2px;
-        }
-
-        QMenuBar::item {
-            background-color: transparent;
-            padding: 6px 12px;
-            border-radius: 3px;
-        }
-
-        QMenuBar::item:selected {
-            background-color: #00BFFF;
-        }
-
-        QMenu {
-            background-color: #404040;
-            border: 1px solid #555555;
-            color: #ffffff;
-            padding: 4px;
-        }
-
-        QMenu::item {
-            padding: 6px 20px;
-            border-radius: 3px;
-        }
-
-        QMenu::item:selected {
-            background-color: #00BFFF;
-        }
-
-        /* voxplayer-style List Widget */
-        QListWidget {
-            background-color: #2d2d2d;
-            border: 1px solid #555555;
-            selection-background-color: #00BFFF;
-            padding: 4px;
-            font-size: 12px;
-        }
-
-        QListWidget::item {
-            padding: 6px;
-            border-radius: 3px;
-            margin: 1px;
-        }
-
-        QListWidget::item:hover {
-            background-color: #3d3d3d;
-        }
-
-        QListWidget::item:selected {
-            background-color: #00BFFF;
-            color: white;
-        }
-
-        /* voxplayer-style Dock Widget */
-        QDockWidget {
-            background-color: #2b2b2b;
-            border: 1px solid #555555;
-        }
-
-        QDockWidget::title {
-            background-color: #404040;
-            padding: 6px;
-            font-weight: bold;
-            color: #ffffff;
-        }
-
-        /* voxplayer-style Status Bar */
-        QStatusBar {
-            background-color: #404040;
-            border-top: 1px solid #555555;
-            padding: 4px;
-            font-size: 11px;
-            color: #ffffff;
-        }
-
-        /* Video Widget Styling */
-        QVideoWidget {
-            background-color: #000000;
-            border: none;
-        }
-        """
-        self.setStyleSheet(voxplayer_style)
+        """Apply VoxPlayer unique dark shell stylesheet."""
+        self.setStyleSheet(app_stylesheet())
 
     def setup_icon(self):
         """Setup application and window icons"""
@@ -2299,6 +2000,8 @@ For more information, visit the project repository.
             self.load_media(file_path)
             self.playlist.add_media_file(file_path)
             self.playlist.setCurrentRow(self.playlist.count() - 1)
+            self._register_library_path(file_path)
+            self.refresh_home_grid()
 
     def open_files(self):
         """Open multiple files dialog and load media"""
@@ -2310,11 +2013,12 @@ For more information, visit the project repository.
         )
 
         if file_paths:
-            # Load the first file and add all to playlist
-            self.load_media(file_paths[0])
             for file_path in file_paths:
                 self.playlist.add_media_file(file_path)
+                self._register_library_path(file_path)
+            self.load_media(file_paths[0])
             self.playlist.setCurrentRow(0)
+            self.refresh_home_grid()
 
     def open_folder(self):
         """Open folder dialog and load all media files from folder"""
@@ -2332,13 +2036,13 @@ For more information, visit the project repository.
                         media_files.append(file_path)
 
             if media_files:
-                # Sort files naturally
                 media_files.sort()
-                # Load the first file and add all to playlist
-                self.load_media(media_files[0])
                 for file_path in media_files:
                     self.playlist.add_media_file(file_path)
+                    self._register_library_path(file_path)
+                self.load_media(media_files[0])
                 self.playlist.setCurrentRow(0)
+                self.refresh_home_grid()
             else:
                 QMessageBox.information(self, "No Media Files",
                                       "No supported media files found in the selected folder.")
@@ -2356,21 +2060,32 @@ For more information, visit the project repository.
                     return
                 url = QUrl.fromLocalFile(file_path)
 
-            self.media_player.setSource(url)
+            if hasattr(self, "engine"):
+                self.engine.set_source(file_path)
+            else:
+                self.media_player.setSource(url)
             self.app_state.last_file = file_path
+            self._register_library_path(file_path)
+            self.refresh_home_grid()
 
-            # Hide logo when media is loaded
             self.show_logo(False)
+            self.show_shell_page("stage")
 
-            # Update playlist selection to current file
             if hasattr(self, 'playlist') and self.playlist:
                 current_index = self.playlist.find_file_index(file_path)
                 if current_index is not None:
                     self.playlist.setCurrentRow(current_index)
 
-            # Update window title with current file (voxplayer style)
             filename = os.path.basename(file_path)
             self.setWindowTitle(f"{filename} - VoxPlayer")
+            if hasattr(self, "now_playing"):
+                engine_name = self.engine.backend_name if hasattr(self, "engine") else "qt"
+                label = "libmpv (HW)" if engine_name == "mpv" else "Qt Multimedia"
+                self.now_playing.update_now_playing(file_path, label)
+                queue_paths = [self.playlist.get_file_at_index(i) for i in range(self.playlist.count())]
+                self.now_playing.set_queue([p for p in queue_paths if p], file_path)
+            if hasattr(self, "controls"):
+                self.controls.set_track_meta(filename, os.path.dirname(file_path))
 
             # Get file info for status display
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
@@ -2392,8 +2107,9 @@ For more information, visit the project repository.
     def load_and_play_media(self, file_path):
         """Load media file and auto-play it"""
         self.load_media(file_path)
-        # Auto-play the loaded media
-        if self.media_player.source().isValid():
+        if hasattr(self, "engine") and self.app_state.last_file:
+            QTimer.singleShot(200, self.engine.play)
+        elif self.media_player.source().isValid():
             QTimer.singleShot(200, self.media_player.play)
 
     def previous_media(self):
@@ -2453,6 +2169,9 @@ For more information, visit the project repository.
 
     def toggle_playback(self):
         """Toggle play/pause"""
+        if hasattr(self, "engine"):
+            self.engine.toggle()
+            return
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.media_player.pause()
         else:
@@ -2460,15 +2179,26 @@ For more information, visit the project repository.
 
     def stop_playback(self):
         """Stop playback"""
+        if hasattr(self, "engine"):
+            self.engine.stop()
+            return
         self.media_player.stop()
 
     def toggle_mute(self):
         """Toggle mute"""
+        if hasattr(self, "engine"):
+            muted = not self.engine.is_muted()
+            self.engine.set_muted(muted)
+            self.controls.btn_mute.setText("🔇" if muted else "🔊")
+            return
         self.audio_output.setMuted(not self.audio_output.isMuted())
         self.controls.btn_mute.setText("🔇" if self.audio_output.isMuted() else "🔊")
 
     def _apply_output_gain_from_state(self):
         """Apply persisted 0..200 user volume as linear 0.0..2.0 software gain."""
+        if hasattr(self, "engine"):
+            self.engine.set_volume_percent(int(self.app_state.volume))
+            return
         gain = max(0.0, min(2.0, float(self.app_state.volume) / 100.0))
         self.audio_output.setVolume(gain)
 
@@ -2503,12 +2233,20 @@ For more information, visit the project repository.
 
     def seek_to_position(self, position):
         """Seek to position (0.0-1.0)"""
+        if hasattr(self, "engine"):
+            dur = self.engine.duration()
+            if dur > 0:
+                self.engine.set_position(int(position * dur))
+            return
         if self.media_player.duration() > 0:
             pos = int(position * self.media_player.duration())
             self.media_player.setPosition(pos)
 
     def seek_relative(self, seconds):
         """Seek relative to current position"""
+        if hasattr(self, "engine"):
+            self.engine.seek_relative(seconds)
+            return
         current_pos = self.media_player.position()
         new_pos = max(0, current_pos + seconds * 1000)
         self.media_player.setPosition(new_pos)
@@ -2626,7 +2364,8 @@ For more information, visit the project repository.
 
     def position_changed(self, position):
         """Handle position changes"""
-        self.controls.update_seek_position(position / self.media_player.duration() if self.media_player.duration() > 0 else 0)
+        duration = self.engine.duration() if hasattr(self, "engine") else self.media_player.duration()
+        self.controls.update_seek_position(position / duration if duration > 0 else 0)
         self.subtitle_manager.update_position(position)
 
     def duration_changed(self, duration):
@@ -2687,9 +2426,9 @@ For more information, visit the project repository.
 
     def update_ui(self):
         """Update UI elements"""
-        if self.media_player.duration() > 0:
-            current_pos = self.media_player.position()
-            duration = self.media_player.duration()
+        duration = self.engine.duration() if hasattr(self, "engine") else self.media_player.duration()
+        if duration > 0:
+            current_pos = self.engine.position() if hasattr(self, "engine") else self.media_player.position()
             self.controls.update_time(current_pos, duration)
 
     def show_media_info(self):
@@ -2732,16 +2471,17 @@ Position: {self.media_player.position() // 1000}s
     def show_about(self):
         """Show about dialog"""
         QMessageBox.about(self, "About VoxPlayer",
-                         "VoxPlayer - Modern Multimedia Player\n\n"
-                         "Built with PyQt6\n"
-                         "Supports most video and audio formats\n\n"
+                         "VoxPlayer — modern desktop media shell\n\n"
+                         "PyQt6 UI + optional libmpv native decode\n"
+                         "Local library, queue, torrent streaming\n\n"
                          f"Version {self.current_version}")
 
     def closeEvent(self, event):
         """Handle application close"""
-        # Save current state
         self.app_state.window_geometry = self.saveGeometry()
         self.settings.save_state(self.app_state)
+        if hasattr(self, "engine"):
+            self.engine.shutdown()
         event.accept()
 
 def main():
@@ -2750,7 +2490,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.0.3")
+    app.setApplicationVersion("1.1.0")
 
     # Set application properties
     app.setOrganizationName("VoxHash")

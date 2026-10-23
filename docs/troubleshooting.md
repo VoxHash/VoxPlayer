@@ -11,7 +11,7 @@ On Linux CI-like hosts, install OpenGL/EGL packages listed in `.github/workflows
 
 ## Black window or no video
 
-- Confirm the file plays in VLC or `ffplay`
+- Confirm the file plays in another desktop media client or `ffplay`
 - Ensure codecs are available to Qt Multimedia / FFmpeg
 - Try another container (MP4 H.264 + AAC is the most reliable baseline)
 

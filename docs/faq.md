@@ -12,9 +12,9 @@ Windows, macOS, and Linux. Source installs work wherever Python + PyQt6 run; pac
 
 Qt Multimedia ships with an FFmpeg backend on current PyQt6 wheels. A system `ffmpeg` binary is useful for debugging but is not required to launch the app.
 
-## Do I need VLC?
+## Do I need another media player for debugging?
 
-No. VLC is optional for comparing problem files.
+No. An alternate player is optional for comparing problem files.
 
 ## Why does opening a `.torrent` from the CLI not work?
 

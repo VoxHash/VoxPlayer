@@ -45,3 +45,12 @@ python app.py
 ## Secrets
 
 Never commit `.env` files or real Web UI passwords. `.gitignore` already excludes `.env*` and torrent/media caches.
+
+## Playback engine
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VOXPLAYER_FORCE_QT` | unset | Set to `1` to always use Qt Multimedia |
+| `VOXPLAYER_ENGINE` | `auto` | `auto`, `qt`, or `mpv` (libmpv embed when available) |
+
+On Wayland, VoxPlayer defaults to Qt Multimedia unless `VOXPLAYER_ENGINE=mpv` is set.

@@ -8,8 +8,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Playlist shuffle and repeat modes
-- Clearer qBittorrent auth/error messaging in the UI
+- Persist library roots across sessions
 - Broader subtitle format support where maintainable
+
+## [1.1.0] - 2026-10-22
+
+### Added
+- **Modern shell**: left library rail, center home/stage, now-playing panel, bottom transport bar
+- **VoxPlayer identity**: ember-on-charcoal theme (unique product look)
+- **Home library grid** with All / Video / Audio / Recent filters and search
+- **Playback engine abstraction** with Qt Multimedia default and optional libmpv (`pip install "voxplayer[native]"`)
+- Hardware-decode hints for Qt FFmpeg (`QT_FFMPEG_DECODING_HW_DEVICE_TYPES`) and libmpv `hwdec=auto-safe` when embedded
+
+### Changed
+- Root `app.py` is a thin launcher; packaged implementation remains `voxplayer/app.py`
+- Default window size and layout oriented for the four-pane desktop shell
+- ROADMAP updated for phased native-core migration
+
+### Fixed
+- Clearer engine status in the now-playing panel
 
 ## [1.0.4] - 2026-10-05
 

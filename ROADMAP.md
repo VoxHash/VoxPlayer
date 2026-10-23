@@ -1,45 +1,53 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (v1.0.4). Goals are scoped to what the current PyQt6 + qBittorrent architecture can realistically deliver.
+Status as of October 2026 (v1.1.0). Hybrid stack: **PyQt6 shell** + **Qt Multimedia** (always) with optional **libmpv** native decode when the window system allows embedding.
+
+## Shipped in 1.1.0
+
+- Modern four-pane desktop shell: left library rail, center home/stage, now-playing rail, bottom transport
+- Unique VoxPlayer visual identity (ember accent on charcoal — not a clone of any streaming brand)
+- Local file/folder library grid with search and type filters
+- Playback path via Qt Multimedia; optional `voxplayer[native]` (python-mpv / libmpv) for hardware-oriented decode on X11
+- Queue / playlist, seek, volume amplification, fullscreen, keyboard shortcuts retained
+- qBittorrent Web UI torrent streaming retained
 
 ## Now (Q4 2026)
 
-### Stability & packaging
-- Keep CI green across Ubuntu, Windows, and macOS for Python 3.10–3.12
-- Publish consistent release assets when build workflows produce them
-- Harden qBittorrent auth/error messaging (banned IP, wrong credentials)
+### Shell polish
+- Persist home library roots across sessions
+- Shuffle / repeat modes on the transport bar
+- Stronger empty-state and unsupported-format messaging
 
-### Player fundamentals
-- Playlist shuffle / repeat
-- Clearer unsupported-format and missing-file messaging in the UI
-- Keep volume amplification and resume positions reliable
+### Playback
+- Document and harden libmpv embed on Wayland (today defaults to Qt Multimedia under Wayland unless `VOXPLAYER_ENGINE=mpv`)
+- Prefer zero-copy / hardware video surfaces where the platform compositor allows
+- Clearer codec error surfacing when FFmpeg/Qt cannot open a stream
 
-### Documentation & contributor UX
-- Keep the docs kit accurate against real install/run paths
-- Expand automated tests beyond smoke imports when feasible in headless CI
+### Torrent streaming
+- Safer sequential-download defaults and buffer thresholds
+- Multi-file torrent picker UX
+- First-run Web UI setup copy (no embedded secrets)
 
 ## Next (H1 2027)
 
-### Playback quality
-- Broader codec coverage where Qt Multimedia / FFmpeg allows (HEVC, AV1, Opus as available)
-- Subtitle format expansion (ASS/SSA/VTT) if maintainable without a second engine
-- Optional light/dark theme polish and accessibility contrast pass
+### Native core migration (phased)
+Industry media frameworks use C/C++ for demux → decode → output and Qt for the shell. VoxPlayer follows that direction without a big-bang rewrite:
 
-### Torrent streaming
-- Safer defaults for sequential download and buffer thresholds
-- Better multi-file torrent file picker UX
-- Documented first-run Web UI setup wizard copy (no embedded secrets)
+1. Keep PyQt6 shell as the product surface
+2. Expand libmpv (C) as the preferred decode/output path where embedding is stable
+3. Evaluate a thin C++/Qt bridge only if Python bindings become a bottleneck
+4. Retain qBittorrent integration at the Python layer (API client)
+
+### Playback quality
+- Broader codec coverage (HEVC, AV1, Opus) as backends allow
+- Subtitle expansion (ASS/SSA/VTT) if maintainable without a second engine
+- Accessibility contrast pass on the dark shell
 
 ## Later (H2 2027+)
 
-### Extensibility
-- Small plugin hooks only if they stay optional and do not bloat the core player
-- Media library / recent-files improvements
-
-### Stretch (not committed)
-- Mobile companion / remote control
-- Cloud storage browsers
-- Marketplace-style plugin distribution
+- Optional plugin hooks that stay out of the core path
+- Media library indexing / watch folders
+- Stretch only: remote companion control (not committed)
 
 
 

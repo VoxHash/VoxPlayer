@@ -1,12 +1,17 @@
 """
-Load the optional Rust ``vox_scan`` cdylib for parallel library folder walks.
+Load a native folder scanner for parallel library walks.
 
-Build once from the repo root:
+Preference order (Phase 3):
+  1. Zig ``libvox_scan_zig`` (smaller artifact) under ``native/target/zig-release/``
+  2. Rust ``libvox_scan`` under ``native/target/release/``
+  3. ``None`` → caller uses the pure-Python walker
+
+Build::
 
     cargo build --release --manifest-path native/Cargo.toml
-
-The shared library is looked up under ``native/target/release/`` (and
-``debug/``). If it is missing, callers fall back to the pure-Python walker.
+    # optional lighter scanner:
+    zig build -Doptimize=ReleaseFast --build-file native/vox_scan_zig/build.zig
+    # or: native/vox_scan_zig/build.sh
 """
 
 from __future__ import annotations
@@ -14,35 +19,74 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 _LIB: Optional[ctypes.CDLL] = None
+_BACKEND: Optional[str] = None  # "zig" | "rust"
 _LOAD_ERROR: Optional[str] = None
 
 
-def _candidate_paths() -> List[str]:
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "native", "target"))
-    names = {
+def _search_roots() -> List[str]:
+    here = os.path.dirname(os.path.abspath(__file__))
+    roots: List[str] = []
+    env = os.environ.get("VOXPLAYER_NATIVE_DIR", "").strip()
+    if env:
+        roots.extend(
+            [
+                env,
+                os.path.join(env, "target"),
+                os.path.join(env, "release"),
+                os.path.join(env, "zig-release"),
+            ]
+        )
+    roots.append(os.path.abspath(os.path.join(here, "..", "native", "target")))
+    roots.append(
+        os.path.abspath(os.path.join(here, "..", "..", "..", "..", "..", "native", "target"))
+    )
+    seen = set()
+    out: List[str] = []
+    for r in roots:
+        if r and r not in seen:
+            seen.add(r)
+            out.append(r)
+    return out
+
+
+def _candidate_paths() -> List[Tuple[str, str]]:
+    """Return (path, backend) pairs — Zig first (smaller), then Rust."""
+    zig_names = {
+        "linux": ["libvox_scan_zig.so"],
+        "darwin": ["libvox_scan_zig.dylib"],
+        "win32": ["vox_scan_zig.dll", "libvox_scan_zig.dll"],
+    }
+    rust_names = {
         "linux": ["libvox_scan.so"],
         "darwin": ["libvox_scan.dylib"],
         "win32": ["vox_scan.dll", "libvox_scan.dll"],
     }
-    plat = "win32" if sys.platform.startswith("win") else ("darwin" if sys.platform == "darwin" else "linux")
-    out: List[str] = []
-    for build in ("release", "debug"):
-        for name in names[plat]:
-            out.append(os.path.join(root, build, name))
+    plat = (
+        "win32"
+        if sys.platform.startswith("win")
+        else ("darwin" if sys.platform == "darwin" else "linux")
+    )
+    out: List[Tuple[str, str]] = []
+    for root in _search_roots():
+        for build in ("zig-release", "release", "debug", ""):
+            base = os.path.join(root, build) if build else root
+            for name in zig_names[plat]:
+                out.append((os.path.join(base, name), "zig"))
+        for build in ("release", "debug", ""):
+            base = os.path.join(root, build) if build else root
+            for name in rust_names[plat]:
+                out.append((os.path.join(base, name), "rust"))
     return out
 
 
 def load_library() -> Optional[ctypes.CDLL]:
-    global _LIB, _LOAD_ERROR
+    global _LIB, _LOAD_ERROR, _BACKEND
     if _LIB is not None:
         return _LIB
-    if _LOAD_ERROR is not None and _LIB is None:
-        # Already failed once this process
-        pass
-    for path in _candidate_paths():
+    for path, backend in _candidate_paths():
         if not os.path.isfile(path):
             continue
         try:
@@ -52,16 +96,25 @@ def load_library() -> Optional[ctypes.CDLL]:
             lib.vox_scan_free.argtypes = [ctypes.c_void_p]
             lib.vox_scan_free.restype = None
             _LIB = lib
+            _BACKEND = backend
             _LOAD_ERROR = None
             return _LIB
         except OSError as exc:
             _LOAD_ERROR = str(exc)
-    _LOAD_ERROR = _LOAD_ERROR or "vox_scan shared library not found (build native/vox_scan)"
+    _LOAD_ERROR = _LOAD_ERROR or (
+        "vox_scan shared library not found (build native/vox_scan or native/vox_scan_zig)"
+    )
     return None
 
 
 def is_available() -> bool:
     return load_library() is not None
+
+
+def backend_name() -> Optional[str]:
+    """``zig``, ``rust``, or ``None`` if no native scanner loaded."""
+    load_library()
+    return _BACKEND
 
 
 def scan_media_dir(root: str, extensions: Sequence[str]) -> Optional[List[str]]:

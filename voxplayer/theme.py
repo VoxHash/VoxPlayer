@@ -1,7 +1,19 @@
-"""VoxPlayer visual identity — unique dark shell, not a clone of any third-party brand."""
+"""VoxPlayer visual identity — unique dark shell, not a clone of any third-party brand.
+
+Bundled palettes plus optional user theme packs under::
+
+    ~/.config/voxplayer/themes/<id>.json
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from copy import deepcopy
+from typing import Dict, List, Optional, Tuple
 
 # Deep charcoal surfaces with warm ember accent (never industry-green streaming accents).
-COLORS = {
+_EMBER: Dict[str, str] = {
     "bg_app": "#0B0F14",
     "bg_panel": "#121820",
     "bg_elevated": "#1A2330",
@@ -23,10 +35,217 @@ COLORS = {
     "rail": "#0D1219",
 }
 
+# Cool midnight blue with cyan accent (distinct from ember).
+_MIDNIGHT: Dict[str, str] = {
+    "bg_app": "#070B12",
+    "bg_panel": "#0E1520",
+    "bg_elevated": "#162032",
+    "bg_hover": "#1E2C42",
+    "bg_input": "#0A1018",
+    "border": "#2A3A52",
+    "border_soft": "#182433",
+    "text": "#E8EEF7",
+    "text_secondary": "#8FA0B8",
+    "text_muted": "#5E6F86",
+    "accent": "#3DB8FF",
+    "accent_hover": "#7AD0FF",
+    "accent_pressed": "#2A8FCC",
+    "accent_soft": "rgba(61, 184, 255, 0.18)",
+    "focus": "#FFC857",
+    "danger": "#FF6B6B",
+    "success": "#5AD67D",
+    "transport": "#0A1018",
+    "rail": "#090E16",
+}
+
+# Neutral slate with soft gold accent.
+_SLATE: Dict[str, str] = {
+    "bg_app": "#101214",
+    "bg_panel": "#171A1E",
+    "bg_elevated": "#22262C",
+    "bg_hover": "#2C323A",
+    "bg_input": "#14171A",
+    "border": "#3A424C",
+    "border_soft": "#252A30",
+    "text": "#F0F1F3",
+    "text_secondary": "#A0A6B0",
+    "text_muted": "#6E757F",
+    "accent": "#D4A05A",
+    "accent_hover": "#E8C07A",
+    "accent_pressed": "#B8843F",
+    "accent_soft": "rgba(212, 160, 90, 0.18)",
+    "focus": "#7EC8E3",
+    "danger": "#E57373",
+    "success": "#81C784",
+    "transport": "#121518",
+    "rail": "#0E1012",
+}
+
+# Near-black graphite with coral accent (not purple / not cream).
+_GRAPHITE: Dict[str, str] = {
+    "bg_app": "#0A0A0A",
+    "bg_panel": "#141414",
+    "bg_elevated": "#1E1E1E",
+    "bg_hover": "#2A2A2A",
+    "bg_input": "#121212",
+    "border": "#3A3A3A",
+    "border_soft": "#242424",
+    "text": "#F5F5F5",
+    "text_secondary": "#A8A8A8",
+    "text_muted": "#707070",
+    "accent": "#FF6F61",
+    "accent_hover": "#FF948A",
+    "accent_pressed": "#E05548",
+    "accent_soft": "rgba(255, 111, 97, 0.18)",
+    "focus": "#64B5F6",
+    "danger": "#EF5350",
+    "success": "#66BB6A",
+    "transport": "#101010",
+    "rail": "#0C0C0C",
+}
+
+BUNDLED_THEMES: Dict[str, Dict[str, str]] = {
+    "ember": _EMBER,
+    "midnight": _MIDNIGHT,
+    "slate": _SLATE,
+    "graphite": _GRAPHITE,
+}
+
+THEME_LABELS: Dict[str, str] = {
+    "ember": "Ember (default)",
+    "midnight": "Midnight",
+    "slate": "Slate",
+    "graphite": "Graphite",
+}
+
+# Live palette — mutated in place so `from theme import COLORS` stays current.
+COLORS: Dict[str, str] = deepcopy(_EMBER)
+ACTIVE_THEME_ID = "ember"
+
 # Prefer distinctive desktop fonts already common on Linux/Windows/macOS.
 FONT_UI = '"Segoe UI", "Ubuntu", "Noto Sans", "Cantarell", sans-serif'
 FONT_DISPLAY = '"Segoe UI Semibold", "Ubuntu", "Noto Sans", sans-serif'
 FONT_MONO = '"Cascadia Code", "JetBrains Mono", "Consolas", "Ubuntu Mono", monospace'
+
+_COLOR_KEYS = tuple(_EMBER.keys())
+
+
+def user_themes_dir() -> str:
+    """``~/.config/voxplayer/themes`` (XDG) — user JSON packs live here."""
+    xdg = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    base = xdg if xdg else os.path.join(os.path.expanduser("~"), ".config")
+    path = os.path.join(base, "voxplayer", "themes")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def ensure_example_user_theme() -> None:
+    """Write a sample pack once so users see the expected JSON shape."""
+    sample = os.path.join(user_themes_dir(), "example-ocean.json")
+    if os.path.isfile(sample):
+        return
+    ocean = deepcopy(_MIDNIGHT)
+    ocean["accent"] = "#2DD4BF"
+    ocean["accent_hover"] = "#5EEAD4"
+    ocean["accent_pressed"] = "#14B8A6"
+    ocean["accent_soft"] = "rgba(45, 212, 191, 0.18)"
+    payload = {
+        "id": "example-ocean",
+        "name": "Ocean (example user pack)",
+        "colors": ocean,
+    }
+    try:
+        with open(sample, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+            fh.write("\n")
+    except OSError:
+        pass
+
+
+def _normalize_colors(raw: dict) -> Optional[Dict[str, str]]:
+    if not isinstance(raw, dict):
+        return None
+    out = deepcopy(_EMBER)
+    for key in _COLOR_KEYS:
+        val = raw.get(key)
+        if isinstance(val, str) and val.strip():
+            out[key] = val.strip()
+    return out
+
+
+def _load_user_pack(path: str) -> Optional[Tuple[str, str, Dict[str, str]]]:
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    colors = _normalize_colors(data.get("colors") or data)
+    if not colors:
+        return None
+    stem = os.path.splitext(os.path.basename(path))[0]
+    tid = str(data.get("id") or stem).strip() or stem
+    name = str(data.get("name") or tid).strip() or tid
+    return tid, name, colors
+
+
+def list_themes() -> List[Tuple[str, str, str]]:
+    """Return ``(id, label, source)`` — source is ``bundled`` or ``user``."""
+    ensure_example_user_theme()
+    out: List[Tuple[str, str, str]] = []
+    for tid, label in THEME_LABELS.items():
+        out.append((tid, label, "bundled"))
+    for name in sorted(os.listdir(user_themes_dir())):
+        if not name.endswith(".json") or name.startswith("."):
+            continue
+        packed = _load_user_pack(os.path.join(user_themes_dir(), name))
+        if not packed:
+            continue
+        tid, label, _ = packed
+        if tid in BUNDLED_THEMES:
+            tid = f"user-{tid}"
+        out.append((tid, f"{label} (user)", "user"))
+    return out
+
+
+def resolve_palette(theme_id: str) -> Dict[str, str]:
+    tid = (theme_id or "ember").strip() or "ember"
+    if tid in BUNDLED_THEMES:
+        return deepcopy(BUNDLED_THEMES[tid])
+    # user- prefix or raw filename stem
+    raw_id = tid[5:] if tid.startswith("user-") else tid
+    path = os.path.join(user_themes_dir(), f"{raw_id}.json")
+    if not os.path.isfile(path):
+        # try any pack whose id matches
+        for name in os.listdir(user_themes_dir()):
+            if not name.endswith(".json"):
+                continue
+            packed = _load_user_pack(os.path.join(user_themes_dir(), name))
+            if packed and packed[0] == raw_id:
+                return deepcopy(packed[2])
+        return deepcopy(_EMBER)
+    packed = _load_user_pack(path)
+    return deepcopy(packed[2]) if packed else deepcopy(_EMBER)
+
+
+def apply_theme_id(theme_id: str) -> str:
+    """Apply palette into live ``COLORS``. Returns the resolved theme id."""
+    global ACTIVE_THEME_ID
+    tid = (theme_id or "ember").strip() or "ember"
+    if tid not in BUNDLED_THEMES and not tid.startswith("user-"):
+        # Prefer explicit user- prefix when matching a user pack id.
+        for cand_id, _label, source in list_themes():
+            if source == "user" and (
+                cand_id == tid or cand_id == f"user-{tid}" or cand_id.endswith(tid)
+            ):
+                tid = cand_id
+                break
+    palette = resolve_palette(tid)
+    COLORS.clear()
+    COLORS.update(palette)
+    ACTIVE_THEME_ID = tid
+    return ACTIVE_THEME_ID
 
 
 def app_stylesheet() -> str:

@@ -9,6 +9,7 @@ from .playback import (
     native_engine_install_hint,
     show_native_engine_failure,
     require_vlc_module,
+    embed_platform_hint,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "native_engine_install_hint",
     "show_native_engine_failure",
     "require_vlc_module",
+    "embed_platform_hint",
 ]

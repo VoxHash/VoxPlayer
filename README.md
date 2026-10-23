@@ -145,7 +145,7 @@ voxplayer
 |---------|-------------|---------|
 | Audio Output | Default or manual device | Default |
 | Volume | Master volume | 50% |
-| Theme | UI theme | Dark |
+| Theme | View → Theme (Ember / Midnight / Slate / Graphite + user JSON packs) | Ember |
 | Auto-Update | GitHub update checks | Enabled |
 | Update Channel | Stable or Beta | Stable |
 

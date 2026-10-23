@@ -8,7 +8,7 @@ Open **File → Settings** (or `Ctrl+,` when available in your build). Values pe
 |---------|-------------|---------|
 | Audio Output | Default or manual device | Default |
 | Volume | Master volume (amplification up to 200%) | 50% |
-| Theme | UI theme | Dark |
+| Theme | View → Theme (Ember / Midnight / Slate / Graphite + `~/.config/voxplayer/themes/*.json`) | Ember |
 | Auto-Update | Check GitHub for updates | Enabled |
 | Update Channel | Stable or Beta | Stable |
 

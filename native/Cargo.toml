@@ -1,5 +1,5 @@
 [workspace]
-members = ["vox_scan"]
+members = ["vox_scan", "vox_meta"]
 resolver = "2"
 
 [workspace.package]

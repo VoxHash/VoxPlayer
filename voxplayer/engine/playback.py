@@ -1,11 +1,11 @@
 """
 Playback engine: native C media core (libVLC) embedded into the Qt video surface.
 
-The desktop shell stays PyQt6. Video/audio decode and presentation use the
-system C library (libvlc), matching the architecture of major open desktop
-media players (C core + UI toolkit embed via window ID).
-
-Volume: 0–100 via libvlc; 101–200 via media gain so boost still works.
+Phase 5 hardening:
+  - Soft WID rebind on show/resize (no stop) when the window id is unchanged
+  - Hard rebind only when the Qt native window is recreated
+  - Coalesced, non-blocking seeks with bounded retries (scrub vs exact)
+  - Platform-aware drawable (X11 / HWND / NSObject) + embed capability flag
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from __future__ import annotations
 import os
 import sys
 from enum import Enum
-from typing import Optional
+from typing import Optional, Tuple
 
-from PyQt6.QtCore import QObject, pyqtSignal, QTimer
+from PyQt6.QtCore import QObject, QEvent, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QWidget, QMessageBox
 
 
@@ -53,6 +53,24 @@ def prefer_xcb_for_embed() -> None:
 prefer_xcb_for_mpv_embed = prefer_xcb_for_embed
 
 
+def embed_platform_hint() -> str:
+    """Short note about the current session's embed prospects."""
+    qpa = (os.environ.get("QT_QPA_PLATFORM") or "").lower()
+    if sys.platform.startswith("linux"):
+        if "wayland" in qpa and "xcb" not in qpa:
+            return "wayland-limited"
+        if os.environ.get("DISPLAY"):
+            return "x11"
+        if os.environ.get("WAYLAND_DISPLAY"):
+            return "wayland-limited"
+        return "linux-unknown"
+    if sys.platform == "win32":
+        return "win32"
+    if sys.platform == "darwin":
+        return "darwin"
+    return "other"
+
+
 def native_engine_install_hint() -> str:
     """Cross-platform install guidance for the native C media core."""
     lines = [
@@ -72,6 +90,7 @@ def native_engine_install_hint() -> str:
         "  • Windows:            install VLC and ensure libvlc.dll is on PATH",
         "",
         "Wayland note: prefer X11/XWayland for embedded video (DISPLAY set).",
+        "  Pure Wayland may limit WID embed; audio volume still works.",
     ]
     return "\n".join(lines)
 
@@ -86,6 +105,22 @@ def require_vlc_module():
         raise NativeEngineError(native_engine_install_hint()) from exc
 
 
+class _VideoSurfaceFilter(QObject):
+    """Watch the Qt video surface for show/resize so we can soft-rebind WID."""
+
+    def __init__(self, engine: "PlaybackEngine"):
+        super().__init__(engine)
+        self._engine = engine
+
+    def eventFilter(self, obj, event):  # noqa: N802
+        if obj is not self._engine.video_widget:
+            return False
+        et = event.type()
+        if et in (QEvent.Type.Show, QEvent.Type.Resize, QEvent.Type.WinIdChange):
+            self._engine.schedule_soft_rebind()
+        return False
+
+
 class PlaybackEngine(QObject):
     """Play/pause/seek/volume API backed by the native C media core (libvlc)."""
 
@@ -94,6 +129,10 @@ class PlaybackEngine(QObject):
     state_changed = pyqtSignal(str)  # playing|paused|stopped
     error_occurred = pyqtSignal(str)
     backend_ready = pyqtSignal(str)
+    embed_changed = pyqtSignal(bool)  # True when WID bind succeeded
+
+    _SEEK_MAX_RETRIES = 30  # ~1.2s at 40ms
+    _SOFT_REBIND_MS = 30
 
     def __init__(self, video_widget: QWidget, parent=None):
         super().__init__(parent)
@@ -109,17 +148,29 @@ class PlaybackEngine(QObject):
         self._volume_pct = 100  # 0..200 logical
         self._poll = None
         self._video_bound = False
-        self._seek_pending = None
+        self._bound_wid = 0
+        self._seek_pending: Optional[Tuple[int, bool]] = None
+        self._seek_retries = 0
+        self._seek_token = 0
         self._last_state = "stopped"
-        # When True, a deferred pause from set_source/load must not cancel a later play().
         self._pause_after_load = False
+        self._soft_rebind_scheduled = False
+        self._embed_hint = embed_platform_hint()
+        self._surface_filter = None
 
         self.media_player = None
         self.audio_output = None
 
         if not self._try_init_native():
             raise NativeEngineError(native_engine_install_hint())
+        self._install_surface_filter()
         self.backend_ready.emit("native")
+
+    def _install_surface_filter(self) -> None:
+        if self.video_widget is None:
+            return
+        self._surface_filter = _VideoSurfaceFilter(self)
+        self.video_widget.installEventFilter(self._surface_filter)
 
     @staticmethod
     def _looks_like_video(path: str) -> bool:
@@ -142,15 +193,15 @@ class PlaybackEngine(QObject):
 
     def _try_init_native(self) -> bool:
         prefer_xcb_for_embed()
+        self._embed_hint = embed_platform_hint()
         try:
             vlc = require_vlc_module()
         except NativeEngineError:
             return False
         self._vlc = vlc
         try:
-            # Headless C core only — never open the desktop UI. Embed via window ID.
-            # Use --key=value form; a bare "--intf"/"dummy" pair can fall through to Qt UI.
-            self._instance = vlc.Instance(
+            # Headless C core — never open the desktop UI. Embed via window ID.
+            args = [
                 "--intf=dummy",
                 "--no-video-title-show",
                 "--no-stats",
@@ -158,15 +209,18 @@ class PlaybackEngine(QObject):
                 "--quiet",
                 "--no-keyboard-events",
                 "--no-mouse-events",
-                "--no-xlib",
-            )
+            ]
+            # XInitThreads already called; --no-xlib avoids double Xlib init on Linux.
+            if sys.platform.startswith("linux"):
+                args.append("--no-xlib")
+            self._instance = vlc.Instance(*args)
             self._player = self._instance.media_player_new()
             try:
                 self._player.video_set_mouse_input(False)
                 self._player.video_set_key_input(False)
             except Exception:
                 pass
-            self._bind_video_drawable()
+            self._bind_video_drawable(force=True)
             self._start_poll()
             self._apply_volume_to_player()
             return True
@@ -175,19 +229,22 @@ class PlaybackEngine(QObject):
             self._instance = None
             return False
 
-    def _bind_video_drawable(self) -> bool:
-        """Attach the C media core to the Qt video surface window id."""
-        if self._player is None or self.video_widget is None:
-            self._video_bound = False
-            return False
-        from PyQt6.QtCore import Qt as _Qt
+    def _current_wid(self) -> int:
+        if self.video_widget is None:
+            return 0
+        try:
+            from PyQt6.QtCore import Qt as _Qt
 
-        self.video_widget.setAttribute(_Qt.WidgetAttribute.WA_NativeWindow, True)
-        self.video_widget.setAttribute(_Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True)
-        self.video_widget.show()
-        wid = int(self.video_widget.winId())
-        if wid == 0:
-            self._video_bound = False
+            self.video_widget.setAttribute(_Qt.WidgetAttribute.WA_NativeWindow, True)
+            self.video_widget.setAttribute(
+                _Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True
+            )
+            return int(self.video_widget.winId())
+        except Exception:
+            return 0
+
+    def _apply_wid(self, wid: int) -> bool:
+        if self._player is None or wid == 0:
             return False
         try:
             if sys.platform.startswith("linux"):
@@ -198,11 +255,53 @@ class PlaybackEngine(QObject):
                 self._player.set_nsobject(wid)
             else:
                 self._player.set_xwindow(wid)
-            self._video_bound = True
             return True
         except Exception:
-            self._video_bound = False
             return False
+
+    def _bind_video_drawable(self, force: bool = False) -> bool:
+        """Attach the C media core to the Qt video surface window id."""
+        if self._player is None or self.video_widget is None:
+            self._set_bound(False, 0)
+            return False
+        self.video_widget.show()
+        wid = self._current_wid()
+        if wid == 0:
+            self._set_bound(False, 0)
+            return False
+        if not force and wid == self._bound_wid and self._video_bound:
+            return True
+        ok = self._apply_wid(wid)
+        self._set_bound(ok, wid if ok else 0)
+        return ok
+
+    def _set_bound(self, ok: bool, wid: int) -> None:
+        changed = ok != self._video_bound
+        self._video_bound = bool(ok)
+        self._bound_wid = int(wid) if ok else 0
+        if changed:
+            self.embed_changed.emit(self._video_bound)
+
+    def schedule_soft_rebind(self) -> None:
+        """Debounced soft rebind after show/resize/WinIdChange (never blocks)."""
+        if self._soft_rebind_scheduled:
+            return
+        self._soft_rebind_scheduled = True
+        QTimer.singleShot(self._SOFT_REBIND_MS, self._do_soft_rebind)
+
+    def _do_soft_rebind(self) -> None:
+        self._soft_rebind_scheduled = False
+        if self._player is None:
+            return
+        wid = self._current_wid()
+        if wid == 0:
+            return
+        if wid != self._bound_wid:
+            # Native window recreated — soft apply without stop when possible.
+            if self._apply_wid(wid):
+                self._set_bound(True, wid)
+            else:
+                self._set_bound(False, 0)
 
     def _start_poll(self) -> None:
         self._poll = QTimer(self)
@@ -210,19 +309,30 @@ class PlaybackEngine(QObject):
         self._poll.timeout.connect(self._poll_state)
         self._poll.start()
 
-    def rebind_video_widget(self) -> bool:
-        """Re-attach drawable after the stage becomes visible."""
+    def rebind_video_widget(self, hard: bool = False) -> bool:
+        """
+        Re-attach drawable after the stage becomes visible.
+
+        Soft (default): re-apply WID if needed; no stop/reload.
+        Hard: stop → bind → reload media (when the surface was destroyed).
+        """
         if self._player is None:
             return False
+        if not hard:
+            ok = self._bind_video_drawable(force=False)
+            if ok or self._current_wid() == self._bound_wid:
+                return ok
+            # WID changed and soft apply failed — fall through to hard.
+            hard = True
         was_playing = self.is_playing()
         path = self._source_path
         pos = self.position()
-        # Stop briefly so set_xwindow takes effect on next play (libvlc contract).
         try:
             self._player.stop()
         except Exception:
             pass
-        ok = self._bind_video_drawable()
+        self._bound_wid = 0
+        ok = self._bind_video_drawable(force=True)
         if path:
             self._load_media_path(path, start_paused=not was_playing)
             if pos > 0:
@@ -239,11 +349,19 @@ class PlaybackEngine(QObject):
     def has_embedded_video(self) -> bool:
         return bool(self._video_bound)
 
+    @property
+    def embed_limited(self) -> bool:
+        """True when the session is unlikely to host reliable WID video."""
+        return self._embed_hint == "wayland-limited" and not self._video_bound
+
+    @property
+    def embed_platform(self) -> str:
+        return self._embed_hint
+
     def _load_media_path(self, file_path: str, start_paused: bool = True) -> None:
         if self._instance is None or self._player is None:
             return
         media = self._instance.media_new_path(file_path)
-        # Software volume boost above 100% via linear gain (libvlc volume caps at 100).
         if self._volume_pct > 100:
             gain = self._volume_pct / 100.0
             try:
@@ -253,7 +371,7 @@ class PlaybackEngine(QObject):
         self._media = media
         self._player.set_media(media)
         try:
-            media.parse_with_options(0x1, 2000)  # parse local
+            media.parse_with_options(0x1, 2000)
         except Exception:
             try:
                 media.parse()
@@ -266,13 +384,12 @@ class PlaybackEngine(QObject):
                 self.duration_changed.emit(self._duration_ms)
         except Exception:
             pass
-        self._bind_video_drawable()
+        self._bind_video_drawable(force=False)
         self._apply_volume_to_player()
         self.set_muted(self._muted)
         self._pause_after_load = bool(start_paused)
         self._player.play()
         if start_paused:
-            # Pause after open so layout can finish; cancelled if play() runs first.
             QTimer.singleShot(80, self._apply_pause_after_load)
         else:
             self._last_state = "playing"
@@ -294,9 +411,8 @@ class PlaybackEngine(QObject):
         if self._player is None:
             self.error_occurred.emit("Native engine not initialized")
             return
-        # Ensure drawable before starting video so output stays in-app.
         if self._looks_like_video(file_path):
-            self._bind_video_drawable()
+            self._bind_video_drawable(force=False)
         try:
             self._load_media_path(file_path, start_paused=True)
         except Exception as exc:
@@ -305,12 +421,10 @@ class PlaybackEngine(QObject):
     def play(self) -> None:
         if self._player is None:
             return
-        # Cancel any deferred pause from set_source / rebind load.
         self._pause_after_load = False
         if self._looks_like_video(self._source_path):
-            self._bind_video_drawable()
+            self._bind_video_drawable(force=False)
         try:
-            # Resume if already paused; otherwise start.
             if self._state_int(self._player.get_state()) == 4:  # Paused
                 self._player.set_pause(False)
             else:
@@ -371,7 +485,7 @@ class PlaybackEngine(QObject):
         except Exception:
             pass
         try:
-            return self._state_int(self._player.get_state()) == 3  # Playing
+            return self._state_int(self._player.get_state()) == 3
         except Exception:
             return False
 
@@ -379,7 +493,6 @@ class PlaybackEngine(QObject):
         if self._player is None:
             return 0
         try:
-            # get_time is milliseconds
             t = self._player.get_time()
             return max(0, int(t)) if t is not None and t >= 0 else 0
         except Exception:
@@ -397,27 +510,52 @@ class PlaybackEngine(QObject):
         return self._duration_ms
 
     def set_position(self, ms: int, exact: bool = False) -> None:
+        """Queue a non-blocking seek. Scrub (exact=False) coalesces; release uses exact."""
         if self._player is None:
             return
         ms = max(0, int(ms))
         self._seek_pending = (ms, bool(exact))
-        QTimer.singleShot(0, self._flush_pending_seek)
+        self._seek_token += 1
+        token = self._seek_token
+        self._seek_retries = 0
+        # Debounce scrub moves so the UI thread never floods libvlc.
+        delay = 0 if exact else 16
+        QTimer.singleShot(delay, lambda t=token: self._flush_pending_seek(t))
 
-    def _flush_pending_seek(self) -> None:
+    def _flush_pending_seek(self, token: Optional[int] = None) -> None:
         if self._player is None or self._seek_pending is None:
             return
-        ms, _exact = self._seek_pending
-        # libvlc ignores seeks until Opening/Buffering finishes — retry briefly.
+        if token is not None and token != self._seek_token:
+            return  # superseded by a newer scrub/seek
+        ms, exact = self._seek_pending
         st_i = self._state_int(self._player.get_state())
         if st_i in (1, 2):  # Opening, Buffering
-            QTimer.singleShot(40, self._flush_pending_seek)
+            self._seek_retries += 1
+            if self._seek_retries > self._SEEK_MAX_RETRIES:
+                self._seek_pending = None
+                return
+            QTimer.singleShot(40, lambda t=self._seek_token: self._flush_pending_seek(t))
             return
+        # NothingSpecial / Stopped — try once after a short play nudge if we have media.
+        if st_i in (0, 5) and self._source_path:
+            self._seek_retries += 1
+            if self._seek_retries > self._SEEK_MAX_RETRIES:
+                self._seek_pending = None
+                return
+            try:
+                self._player.play()
+            except Exception:
+                pass
+            QTimer.singleShot(40, lambda t=self._seek_token: self._flush_pending_seek(t))
+            return
+
         self._seek_pending = None
         dur = self.duration()
         try:
-            self._player.set_time(ms)
-            if dur > 0:
-                # Also set fractional position (some builds honor one or the other).
+            if exact or dur <= 0:
+                self._player.set_time(ms)
+            else:
+                # Scrub: fractional position is cheaper and non-keyframe-friendly.
                 self._player.set_position(min(1.0, max(0.0, ms / float(dur))))
         except Exception:
             try:
@@ -444,14 +582,11 @@ class PlaybackEngine(QObject):
     def _apply_volume_to_player(self) -> None:
         if self._player is None:
             return
-        # libvlc software volume is 0–100; boost uses :gain= on the media.
-        # Some libvlc builds accept >100; clamp logical boost into audio_set_volume when possible.
         if self._muted:
             core_vol = 0
         elif self._volume_pct <= 100:
             core_vol = int(self._volume_pct)
         else:
-            # Prefer native >100 when the library accepts it; else cap + :gain=.
             core_vol = min(200, int(self._volume_pct))
         try:
             self._player.audio_set_volume(core_vol)
@@ -466,7 +601,6 @@ class PlaybackEngine(QObject):
         prev = self._volume_pct
         self._volume_pct = volume
         self._apply_volume_to_player()
-        # Reload media options when crossing the 100% boost boundary while loaded.
         if self._source_path and (
             (prev <= 100 < volume) or (volume <= 100 < prev)
         ):
@@ -480,8 +614,6 @@ class PlaybackEngine(QObject):
         self._muted = bool(muted)
         if self._player is None:
             return
-        # Prefer audio_set_mute; always fall through to volume=0 because some
-        # libvlc builds leave audio_get_mute() stuck at 0 regardless.
         try:
             self._player.audio_set_mute(self._muted)
         except Exception:
@@ -489,7 +621,6 @@ class PlaybackEngine(QObject):
         self._apply_volume_to_player()
 
     def is_muted(self) -> bool:
-        # Trust local flag — audio_get_mute() is unreliable across libvlc builds.
         return bool(self._muted)
 
     def source_path(self) -> str:
@@ -508,9 +639,7 @@ class PlaybackEngine(QObject):
                 self._last_state = "playing"
                 self.state_changed.emit("playing")
             elif not playing and self._last_state == "playing":
-                # Ended or paused externally
                 try:
-                    # 5 = Stopped, 6 = Ended (libvlc State enum)
                     ended = self._state_int(self._player.get_state()) in (5, 6)
                 except Exception:
                     ended = False
@@ -523,6 +652,12 @@ class PlaybackEngine(QObject):
     def shutdown(self) -> None:
         if self._poll:
             self._poll.stop()
+        if self.video_widget is not None and self._surface_filter is not None:
+            try:
+                self.video_widget.removeEventFilter(self._surface_filter)
+            except Exception:
+                pass
+            self._surface_filter = None
         if self._player is not None:
             try:
                 self._player.stop()

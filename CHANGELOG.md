@@ -4,6 +4,68 @@ All notable changes to VoxPlayer will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Planned
+- Further Wayland compositor video embed without a second media stack
+- Watch-folder / incremental `vox_scan` re-index
+- Deeper library facets (albums, artists, play counts, recently played / never played)
+- Safer torrent sequential-download defaults and buffer thresholds; first-run Web UI setup copy
+- Broader subtitle format support where maintainable
+- Optional local control daemon; Android / GrapheneOS companion phase
+
+## [1.9.0] - 2026-10-23
+
+### Added
+- Bundled theme palettes (Ember, Midnight, Slate, Graphite) via View → Theme
+- User theme packs as JSON under `~/.config/voxplayer/themes/` (example Ocean pack written on first list)
+- Stronger empty-library panel with next actions and supported-format hints
+- Clear unsupported-format dialogs for Open / drop / empty folder, plus codec-oriented engine errors
+
+### Changed
+- Legacy `theme=dark|light` settings migrate to Ember
+- ROADMAP shell-polish theme + empty/unsupported items marked done
+
+### Fixed
+- Theme work no longer breaks window launch (`COLORS` import required by shell chrome)
+
+## [1.8.0] - 2026-10-23
+
+### Added
+- Persist Open Folder library roots across sessions (re-indexed on launch)
+- Transport shuffle + repeat (off / all / one), with wrap and shuffled Up next order
+
+### Changed
+- ROADMAP shell-polish items for roots and shuffle/repeat marked done
+
+## [1.7.0] - 2026-10-23
+
+### Added
+- Native Phase 5: hardened in-app video WID embed (soft rebind on show/resize; hard only when the Qt native window is recreated)
+- Coalesced non-blocking seeks with bounded Opening/Buffering retries; scrub uses fractional position, release uses exact time
+
+### Changed
+- ROADMAP Phase 5 marked done; Phase 4 (PyQt6 shell-only) remains ongoing
+
+## [1.6.0] - 2026-10-23
+
+### Added
+- Native Phase 3: Zig alternate folder scanner (`native/vox_scan_zig`) with the same C ABI as Rust `vox_scan`
+- Python loader prefers the Zig shared library when present (~2.7× smaller than the Rust scanner on Linux)
+
+### Changed
+- ROADMAP Phase 3 marked done; Phase 5 (WID embed harden) is next
+
+## [1.5.0] - 2026-10-23
+
+### Added
+- Native Phase 2: Rust `vox_meta` worker pool for off-UI-thread tags (ffprobe) and thumbnails (ffmpeg), queued from Python with C callbacks
+- Library home/facets/favorites queue missing covers via the pool (non-blocking); sync Python fallback when the cdylib is absent
+- `voxplayer/native_workers.py` bridge for the Python shell
+
+### Changed
+- ROADMAP Phase 2 marked done; Phase 3 (optional Zig) is next
+
 ## [1.4.0] - 2026-10-23
 
 ### Changed
@@ -13,14 +75,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 - Black / missing in-app video stage caused by unreliable prior embed path
 - Play/pause race on load that left media stopped after open
-
-## [Unreleased]
-
-### Planned
-- Playlist shuffle and repeat modes
-- Persist library roots across sessions
-- Broader subtitle format support where maintainable
-- Skin/theme packs; optional local control daemon; Android / GrapheneOS companion phase
 
 ## [1.3.3] - 2026-10-23
 

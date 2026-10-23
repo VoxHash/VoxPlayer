@@ -124,6 +124,11 @@ push-all.sh
 # C extensions
 *.so
 
+# Zig build cache / local artifacts
+**/.zig-cache/
+**/zig-cache/
+native/vox_scan_zig/zig-out/
+
 # Distribution / packaging
 .Python
 build/

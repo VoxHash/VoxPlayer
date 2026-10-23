@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.4.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.9.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -32,27 +32,32 @@ Status as of October 2026 (**v1.4.0**). Stack: **PyQt6 shell** + **native-C-core
 
 ---
 
+## Product milestones (post native Phase 0–5)
+
+Native migration table Phases 0–5 are complete (Phase 4 remains an ongoing shell-only stance). Active work continues under **Now** below.
+
 ## Now (Q4 2026 → H1 2027)
 
 ### Shell polish
-- Persist home library roots across sessions
-- Shuffle / repeat modes on the transport bar
-- Skin / theme variety (bundled palettes + user theme packs under a VoxPlayer config dir)
-- Stronger empty-state and unsupported-format messaging
+- Persist home library roots across sessions (**Done 1.8.0**)
+- Shuffle / repeat modes on the transport bar (**Done 1.8.0**)
+- Skin / theme variety (bundled palettes + user theme packs under a VoxPlayer config dir) (**Done 1.9.0**)
+- Stronger empty-state and unsupported-format messaging (**Done 1.9.0**)
 
 ### Playback (native-C-core-only)
-- Harden WID embed on pure Wayland where compositors allow; keep audio volume correct when embed is limited
-- Prefer zero-copy / hardware video surfaces where the platform compositor allows
+- Soft WID rebind on show/resize; hard rebind only when the native window is recreated (**Done 1.7.0**)
+- Coalesced non-blocking seeks with bounded retries (**Done 1.7.0**)
 - Clearer codec error surfacing from the native engine (no silent engine switches)
+- Further Wayland compositor embed when available without a second media stack
 
 ### Library & indexing
 - Expand Rust `vox_scan` usage (watch folders, incremental re-scan)
-- Metadata workers in native code (tags / covers off the UI thread)
+- Metadata workers in native code (tags / covers off the UI thread) (**Done 1.5.0**)
 - Deeper library facets (albums, artists, play counts, recently played / never played)
 
 ### Torrent streaming
 - Safer sequential-download defaults and buffer thresholds
-- Multi-file torrent picker UX
+- Multi-file torrent picker UX (**Done 1.3.3**)
 - First-run Web UI setup copy (no embedded secrets)
 
 ---
@@ -64,15 +69,17 @@ Industry desktop players keep demux → decode → output in C/native code and r
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
 | **0** | native C media core as the **only** playback engine; volume/mute via engine properties | **Done (1.3.0)** |
-| **1** | Rust `vox_scan` cdylib + ctypes for parallel folder walks | **Done (1.3.0)** — see `native/` |
-| **2** | Rust/C metadata + thumbnail worker pool (queue from Python, results via callbacks) | Next |
-| **3** | Optional Zig experiments for alternate scanners / packagers if Rust artifacts are heavy | Later |
+| **1** | Rust `vox_scan` cdylib + ctypes for parallel folder walks | **Done (1.3.0)** — see `native/vox_scan` |
+| **2** | Rust/C metadata + thumbnail worker pool (queue from Python, results via callbacks) | **Done (1.5.0)** — see `native/vox_meta` |
+| **3** | Optional Zig experiments for alternate scanners / packagers if Rust artifacts are heavy | **Done (1.6.0)** — see `native/vox_scan_zig` |
 | **4** | Keep PyQt6 as the product surface; avoid second playback engines | Ongoing |
-| **5** | Harden in-app video WID embed + non-blocking seeks on all desktop targets | In progress |
+| **5** | Harden in-app video WID embed + non-blocking seeks on all desktop targets | **Done (1.7.0)** |
 
 **Long-run stance:** Keep investing in Rust/C (and Zig where it helps packaging) for hot paths so memory and parallel work stay efficient while the desktop shell remains PyQt6. That is how the project stays robust as library size and features grow.
 
-Build Phase 1 locally: `cargo build --release --manifest-path native/Cargo.toml`.
+Build Phase 1–2: `cargo build --release --manifest-path native/Cargo.toml` (`libvox_scan.so`, `libvox_meta.so`).
+
+Build Phase 3 (optional lighter scanner): `native/vox_scan_zig/build.sh` → `native/target/zig-release/libvox_scan_zig.so` (Python prefers Zig over Rust when both exist).
 
 ---
 

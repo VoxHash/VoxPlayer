@@ -6,6 +6,7 @@ Clean implementation without signal issues
 
 import sys
 import os
+import random
 import tempfile
 import shutil
 import requests
@@ -23,17 +24,24 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QLineEdit, QStackedWidget, QSizePolicy, QSystemTrayIcon,
                             QStyle, QDialog)
 from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal
-from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QIcon, QPixmap
+from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QActionGroup, QIcon, QPixmap
 
-from .theme import app_stylesheet, COLORS
+from .theme import (
+    COLORS,
+    app_stylesheet,
+    apply_theme_id,
+    list_themes,
+    user_themes_dir,
+)
 from .ui.shell import LeftRail, HomeView, NowPlayingPanel, TransportBar, AboutDialog
 from .engine.playback import (
     PlaybackEngine,
     prefer_xcb_for_mpv_embed,
     NativeEngineError,
     show_native_engine_failure,
+    embed_platform_hint,
 )
-from .media.thumbnails import ThumbnailCache, get_thumbnail_path
+from .media.thumbnails import ThumbnailCache, get_thumbnail_path, _cache_root as _thumb_cache_root
 from .media.metadata import (
     MediaMetadata,
     enrich_metadata,
@@ -44,6 +52,7 @@ from .media.torrent_gate import validate_torrent_file, validate_torrent_file_lis
 from .media.playlists import PlaylistStore
 from .media.library_facets import group_library, VIDEO_EXT as FACET_VIDEO_EXT, AUDIO_EXT as FACET_AUDIO_EXT
 from .native_scan import scan_media_dir
+from .native_workers import NativeMediaWorkers
 from .ui.torrent_picker import TorrentFilePickerDialog, media_paths_only
 
 
@@ -86,7 +95,7 @@ class MetadataEnrichWorker(QThread):
 @dataclass
 class AppState:
     window_geometry: Optional[bytes] = None
-    theme: str = "dark"
+    theme: str = "ember"
     volume: int = 100
     last_file: str = ""
     resume_positions: Dict[str, int] = None
@@ -94,10 +103,17 @@ class AppState:
     update_channel: str = "stable"
     audio_output_mode: str = "default"  # "default" or "manual"
     selected_audio_device: str = ""  # Device ID for manual mode
+    library_roots: List[str] = None  # persisted Open Folder roots
+    shuffle_enabled: bool = False
+    repeat_mode: str = "off"  # off | one | all
 
     def __post_init__(self):
         if self.resume_positions is None:
             self.resume_positions = {}
+        if self.library_roots is None:
+            self.library_roots = []
+        if self.repeat_mode not in ("off", "one", "all"):
+            self.repeat_mode = "off"
 
 @dataclass
 class SubtitleTrack:
@@ -775,9 +791,14 @@ class Settings:
         self.settings.setValue("theme", state.theme)
         self.settings.setValue("volume", state.volume)
         self.settings.setValue("last_file", state.last_file)
-        self.settings.setValue("resume_positions", json.dumps(state.resume_positions))
+        self.settings.setValue("resume_positions", json.dumps(state.resume_positions or {}))
         self.settings.setValue("audio_output_mode", state.audio_output_mode)
         self.settings.setValue("selected_audio_device", state.selected_audio_device)
+        roots = [r for r in (state.library_roots or []) if isinstance(r, str) and r]
+        self.settings.setValue("library_roots", json.dumps(roots))
+        self.settings.setValue("shuffle_enabled", bool(state.shuffle_enabled))
+        mode = state.repeat_mode if state.repeat_mode in ("off", "one", "all") else "off"
+        self.settings.setValue("repeat_mode", mode)
 
     def load_state(self) -> AppState:
         """Load application state"""
@@ -788,14 +809,35 @@ class Settings:
                 vol = 100
         else:
             vol = 100  # first launch default
+        try:
+            roots = json.loads(self.settings.value("library_roots", "[]"))
+            if not isinstance(roots, list):
+                roots = []
+        except (TypeError, ValueError, json.JSONDecodeError):
+            roots = []
+        shuffle_raw = self.settings.value("shuffle_enabled", False)
+        if isinstance(shuffle_raw, str):
+            shuffle = shuffle_raw.strip().lower() in {"1", "true", "yes"}
+        else:
+            shuffle = bool(shuffle_raw)
+        repeat = str(self.settings.value("repeat_mode", "off") or "off").lower()
+        if repeat not in ("off", "one", "all"):
+            repeat = "off"
+        raw_theme = str(self.settings.value("theme", "ember") or "ember").strip()
+        # Migrate legacy dark/light keys to the Ember bundled palette.
+        if raw_theme in ("dark", "light", ""):
+            raw_theme = "ember"
         return AppState(
             window_geometry=self.settings.value("window_geometry"),
-            theme=self.settings.value("theme", "dark"),
+            theme=raw_theme,
             volume=vol,
             last_file=self.settings.value("last_file", ""),
             resume_positions=json.loads(self.settings.value("resume_positions", "{}")),
             audio_output_mode=self.settings.value("audio_output_mode", "default"),
-            selected_audio_device=self.settings.value("selected_audio_device", "")
+            selected_audio_device=self.settings.value("selected_audio_device", ""),
+            library_roots=roots,
+            shuffle_enabled=shuffle,
+            repeat_mode=repeat,
         )
 
 class PlayerControls(TransportBar):
@@ -1118,12 +1160,17 @@ class VoxPlayerMainWindow(QMainWindow):
         self._torrent_active_paths = set()  # local paths belonging to the active torrent session
         self._pending_torrent_rel_paths: List[str] = []
         self.update_checker = None
-        self.current_version = "1.3.3"
+        self.current_version = "1.9.0"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
         self._preview_timer = None
         self._enrich_thread = None
+        # Phase 2: Rust metadata + thumbnail worker pool (optional; falls back to sync Python).
+        self.native_workers = NativeMediaWorkers(self)
+        if self.native_workers.available:
+            self.native_workers.thumb_ready.connect(self._on_native_thumb_ready)
+            self.native_workers.tags_ready.connect(self._on_native_tags_ready)
         self.playlist_store = PlaylistStore()
         self._stage_expanded = False
         self._shell_page = "home"
@@ -1137,6 +1184,8 @@ class VoxPlayerMainWindow(QMainWindow):
         self.available_audio_devices = []
         self.audio_device_menu = None
 
+        # Palette must be live before widgets paint (empty-state inline colors, etc.).
+        apply_theme_id(self.app_state.theme or "ember")
         self.setup_ui()
         self.setup_media_player()
         self.setup_shortcuts()
@@ -1165,6 +1214,8 @@ class VoxPlayerMainWindow(QMainWindow):
             self.resize(1280, 800)
 
         self.library_paths = []
+        self._shuffle_order: List[int] = []
+        self._shuffle_pos = 0
         self.shell_mode = "home"
         self.now_playing_visible = True
         self._home_filter = "all"
@@ -1276,7 +1327,13 @@ class VoxPlayerMainWindow(QMainWindow):
 
         if self.app_state.last_file and os.path.exists(self.app_state.last_file):
             self._register_library_path(self.app_state.last_file)
-            self.refresh_home_grid()
+        self._restore_library_roots()
+        self.refresh_home_grid()
+        if hasattr(self, "controls"):
+            self.controls.sync_playback_modes(
+                bool(self.app_state.shuffle_enabled),
+                str(self.app_state.repeat_mode or "off"),
+            )
 
     def show_shell_page(self, page: str):
         self._shell_page = page
@@ -1284,8 +1341,9 @@ class VoxPlayerMainWindow(QMainWindow):
             self.shell_mode = "stage"
             self._stage_expanded = True
             self.center_stack.setCurrentWidget(self.stage_page)
-            if hasattr(self, "engine"):
-                QTimer.singleShot(50, self.engine.rebind_video_widget)
+            if hasattr(self, "engine") and self.engine is not None:
+                # Soft rebind keeps playback; hard only if WID was lost.
+                QTimer.singleShot(50, lambda: self.engine.rebind_video_widget(hard=False))
             return
         self._stage_expanded = False
         self.shell_mode = "home"
@@ -1355,6 +1413,35 @@ class VoxPlayerMainWindow(QMainWindow):
         if file_path not in self.library_paths:
             self.library_paths.insert(0, file_path)
 
+    def _remember_library_root(self, folder_path: str) -> None:
+        """Persist an Open Folder root so the library reloads next launch."""
+        if not folder_path:
+            return
+        root = os.path.abspath(folder_path)
+        if not os.path.isdir(root):
+            return
+        roots = list(self.app_state.library_roots or [])
+        if root in roots:
+            roots.remove(root)
+        roots.insert(0, root)
+        self.app_state.library_roots = roots[:32]
+        self.settings.save_state(self.app_state)
+
+    def _restore_library_roots(self) -> None:
+        """Re-index persisted library folder roots into ``library_paths``."""
+        roots = [r for r in (self.app_state.library_roots or []) if isinstance(r, str)]
+        alive: List[str] = []
+        for root in roots:
+            if not os.path.isdir(root):
+                continue
+            alive.append(root)
+            for path in self.find_media_files_in_folder(root):
+                if path and path not in self.library_paths:
+                    self.library_paths.append(path)
+        if alive != list(self.app_state.library_roots or []):
+            self.app_state.library_roots = alive
+            self.settings.save_state(self.app_state)
+
     def refresh_home_grid(self, filter_name: str = None, query: str = None):
         filter_name = (filter_name or getattr(self, "_home_filter", "all")).lower()
         query = (query if query is not None else getattr(self, "_home_query", "")).lower()
@@ -1387,13 +1474,7 @@ class VoxPlayerMainWindow(QMainWindow):
                 thumbs[path] = cached
                 self._thumb_map[path] = cached
             else:
-                try:
-                    generated = self.thumb_cache.ensure(path)
-                    if generated:
-                        thumbs[path] = generated
-                        self._thumb_map[path] = generated
-                except Exception:
-                    pass
+                self._queue_library_media_work(path)
         self.home_view.set_items(filtered, thumbnails=thumbs)
         self.home_view.hint.setText(f"{len(filtered)} items")
         if getattr(self.home_view, "_browse_mode", False):
@@ -1429,13 +1510,7 @@ class VoxPlayerMainWindow(QMainWindow):
             if cached:
                 thumbs[path] = cached
             else:
-                try:
-                    generated = self.thumb_cache.ensure(path)
-                    if generated:
-                        thumbs[path] = generated
-                        self._thumb_map[path] = generated
-                except Exception:
-                    pass
+                self._queue_library_media_work(path)
         self.home_view.set_items(paths, thumbnails=thumbs)
         self.home_view.hint.setText(f"{bucket}: {len(paths)} items")
         label_map = {
@@ -1466,10 +1541,12 @@ class VoxPlayerMainWindow(QMainWindow):
         if query:
             paths = [p for p in paths if query in os.path.basename(p).lower()]
         thumbs = {}
-        for p in paths:
+        for p in paths[:64]:
             cached = self._thumb_map.get(p) or get_thumbnail_path(p)
             if cached:
                 thumbs[p] = cached
+            else:
+                self._queue_library_media_work(p)
         self.home_view.set_items(paths, thumbnails=thumbs)
         self.home_view.title_label.setText(
             "Favorites & playlists" if selected == PlaylistStore.FAVORITES else selected
@@ -1785,6 +1862,29 @@ class VoxPlayerMainWindow(QMainWindow):
         view_menu.addAction(home_action)
 
         # View menu - add media info
+        view_menu.addSeparator()
+
+        theme_menu = view_menu.addMenu("&Theme")
+        self._theme_action_group = QActionGroup(self)
+        self._theme_action_group.setExclusive(True)
+        self._theme_actions: Dict[str, QAction] = {}
+        for tid, label, _source in list_themes():
+            act = QAction(label, self)
+            act.setCheckable(True)
+            act.setData(tid)
+            if tid == self.app_state.theme or (
+                self.app_state.theme in ("dark", "light") and tid == "ember"
+            ):
+                act.setChecked(True)
+            act.triggered.connect(lambda checked, t=tid: self._on_theme_chosen(t) if checked else None)
+            self._theme_action_group.addAction(act)
+            theme_menu.addAction(act)
+            self._theme_actions[tid] = act
+        theme_menu.addSeparator()
+        open_themes_action = QAction("Open Theme Packs &Folder…", self)
+        open_themes_action.triggered.connect(self._open_user_themes_folder)
+        theme_menu.addAction(open_themes_action)
+
         view_menu.addSeparator()
 
         media_info_action = QAction("&Media Info", self)
@@ -2526,7 +2626,7 @@ For more information, visit the project repository.
         """
         unique = self._collect_dropped_media(list(paths or []))
         if not unique:
-            self.status_bar.showMessage("No supported media in drop", 3000)
+            self._warn_unsupported_paths(list(paths or []), context="drop")
             return
 
         if mode == "index":
@@ -2616,8 +2716,71 @@ For more information, visit the project repository.
             self.mouse_timer.stop()
 
     def apply_theme(self):
-        """Apply VoxPlayer unique dark shell stylesheet."""
+        """Apply selected palette into COLORS and refresh the shell stylesheet."""
+        tid = apply_theme_id(getattr(self.app_state, "theme", None) or "ember")
+        self.app_state.theme = tid
         self.setStyleSheet(app_stylesheet())
+        if hasattr(self, "_theme_actions"):
+            act = self._theme_actions.get(tid)
+            if act is not None:
+                act.setChecked(True)
+
+    def _on_theme_chosen(self, theme_id: str) -> None:
+        self.app_state.theme = theme_id
+        self.apply_theme()
+        self.settings.save_state(self.app_state)
+        if hasattr(self, "home_view"):
+            self.refresh_home_grid()
+        label = theme_id
+        for tid, name, _src in list_themes():
+            if tid == theme_id:
+                label = name
+                break
+        self.status_bar.showMessage(f"Theme: {label}", 3000)
+
+    def _open_user_themes_folder(self) -> None:
+        path = user_themes_dir()
+        try:
+            webbrowser.open(QUrl.fromLocalFile(path).toString())
+        except Exception:
+            QMessageBox.information(
+                self,
+                "Theme Packs",
+                f"Place JSON theme packs in:\n{path}\n\n"
+                "Each file needs a colors object with keys like accent, bg_app, text.",
+            )
+
+    def _supported_formats_hint(self) -> str:
+        return (
+            "Supported formats: MP4, MKV, WebM, AVI, MOV, MP3, FLAC, M4A, Opus, OGG, WAV, and similar.\n"
+            "Archives, disk images, executables, and documents are not playable."
+        )
+
+    def _warn_unsupported_paths(self, paths: List[str], context: str = "open") -> None:
+        """Surface a clear message when nothing in the selection is playable."""
+        samples: List[str] = []
+        for p in paths:
+            if not p:
+                continue
+            if os.path.isdir(p):
+                samples.append(f"{os.path.basename(p)}/ (folder — no media found)")
+            else:
+                ext = os.path.splitext(p)[1].lower() or "(no extension)"
+                samples.append(f"{os.path.basename(p)} ({ext})")
+            if len(samples) >= 5:
+                break
+        detail = "\n".join(f"• {s}" for s in samples) if samples else "• (empty selection)"
+        verb = {
+            "drop": "Nothing playable was in that drop.",
+            "open": "That selection is not a supported media format.",
+            "folder": "No supported media files were found in that folder.",
+        }.get(context, "No supported media found.")
+        QMessageBox.information(
+            self,
+            "Unsupported format",
+            f"{verb}\n\n{detail}\n\n{self._supported_formats_hint()}",
+        )
+        self.status_bar.showMessage("Unsupported format — see dialog for details", 5000)
 
     def setup_icon(self):
         """Setup application and window icons"""
@@ -2691,11 +2854,14 @@ For more information, visit the project repository.
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Open Media File", "",
             "Video Files (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v);;"
-            "Audio Files (*.mp3 *.flac *.wav *.ogg *.m4a *.aac *.wma);;"
+            "Audio Files (*.mp3 *.flac *.wav *.ogg *.m4a *.aac *.wma *.opus);;"
             "All Files (*)"
         )
 
         if file_path:
+            if not self.is_supported_media_file(file_path):
+                self._warn_unsupported_paths([file_path], context="open")
+                return
             self.load_media(file_path)
             self.playlist.add_media_file(file_path)
             self.playlist.setCurrentRow(self.playlist.count() - 1)
@@ -2707,44 +2873,50 @@ For more information, visit the project repository.
         file_paths, _ = QFileDialog.getOpenFileNames(
             self, "Open Media Files", "",
             "Video Files (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v);;"
-            "Audio Files (*.mp3 *.flac *.wav *.ogg *.m4a *.aac *.wma);;"
+            "Audio Files (*.mp3 *.flac *.wav *.ogg *.m4a *.aac *.wma *.opus);;"
             "All Files (*)"
         )
 
         if file_paths:
-            for file_path in file_paths:
+            supported = [p for p in file_paths if self.is_supported_media_file(p)]
+            skipped = [p for p in file_paths if p not in supported]
+            if not supported:
+                self._warn_unsupported_paths(file_paths, context="open")
+                return
+            if skipped:
+                self.status_bar.showMessage(
+                    f"Skipped {len(skipped)} unsupported file(s)", 4000
+                )
+            for file_path in supported:
                 self.playlist.add_media_file(file_path)
                 self._register_library_path(file_path)
-            self.load_media(file_paths[0])
+            self.load_media(supported[0])
             self.playlist.setCurrentRow(0)
             self.refresh_home_grid()
 
     def open_folder(self):
-        """Open folder dialog and load all media files from folder"""
+        """Open folder dialog, index media, and persist the root for next launch."""
         folder_path = QFileDialog.getExistingDirectory(
             self, "Open Media Folder", ""
         )
 
         if folder_path:
-            # Find all media files in the folder
-            media_files = []
-            for root, dirs, files in os.walk(folder_path):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    if self.is_supported_media_file(file_path):
-                        media_files.append(file_path)
-
+            media_files = self.find_media_files_in_folder(folder_path)
             if media_files:
                 media_files.sort()
+                self._remember_library_root(folder_path)
                 for file_path in media_files:
                     self.playlist.add_media_file(file_path)
                     self._register_library_path(file_path)
+                self._rebuild_shuffle_order()
                 self.load_media(media_files[0])
                 self.playlist.setCurrentRow(0)
                 self.refresh_home_grid()
+                self.status_bar.showMessage(
+                    f"Indexed {len(media_files)} files from {folder_path}", 4000
+                )
             else:
-                QMessageBox.information(self, "No Media Files",
-                                      "No supported media files found in the selected folder.")
+                self._warn_unsupported_paths([folder_path], context="folder")
 
     def load_media(self, file_path):
         """Load media file into player"""
@@ -2756,6 +2928,9 @@ For more information, visit the project repository.
                 # Ensure the file exists for local files
                 if not os.path.exists(file_path):
                     QMessageBox.warning(self, "File Error", f"File not found: {file_path}")
+                    return
+                if not self.is_supported_media_file(file_path):
+                    self._warn_unsupported_paths([file_path], context="open")
                     return
                 url = QUrl.fromLocalFile(file_path)
 
@@ -2771,31 +2946,30 @@ For more information, visit the project repository.
             # Audio keeps the library visible; video expands the stage automatically.
             if self.is_video_path(file_path):
                 self.show_shell_page("stage")
-                if hasattr(self, "engine"):
-                    # Always re-bind WID after the stage is shown so video stays in-app
-                    # (never an external video window).
-                    def _rebind():
-                        # Ensure native window exists after the stage is visible.
+                if hasattr(self, "engine") and self.engine is not None:
+                    # Soft rebind first (no stop); hard only if soft fails after stage show.
+                    def _rebind(hard: bool = False):
                         self.video_widget.show()
                         self.video_widget.winId()
-                        rebound = self.engine.rebind_video_widget()
+                        rebound = self.engine.rebind_video_widget(hard=hard)
                         if hasattr(self, "now_playing"):
                             label = (
                                 "native C core (embedded)"
-                                if rebound
+                                if rebound or self.engine.has_embedded_video
                                 else "native C core (audio)"
                             )
                             self.now_playing.engine_label.setText(f"Engine: {label}")
-                        if rebound:
+                        if rebound or self.engine.has_embedded_video:
                             self.engine.play()
                         else:
+                            hint = embed_platform_hint()
                             self.status_bar.showMessage(
-                                "Video embed limited on this display — audio via native engine still works",
+                                f"Video embed limited ({hint}) — audio via native engine still works",
                                 5000,
                             )
 
-                    QTimer.singleShot(50, _rebind)
-                    QTimer.singleShot(250, _rebind)
+                    QTimer.singleShot(50, lambda: _rebind(False))
+                    QTimer.singleShot(250, lambda: _rebind(True))
             else:
                 self.minimize_now_playing_view()
 
@@ -3035,53 +3209,115 @@ For more information, visit the project repository.
         if self._preview_timer and not self._preview_timer.isActive():
             self._preview_timer.start()
 
+    def _playlist_paths(self) -> List[str]:
+        if not hasattr(self, "playlist") or self.playlist is None:
+            return []
+        return [
+            p
+            for i in range(self.playlist.count())
+            for p in [self.playlist.get_file_at_index(i)]
+            if p
+        ]
+
+    def _rebuild_shuffle_order(self, prefer_current: bool = True) -> None:
+        n = self.playlist.count() if hasattr(self, "playlist") and self.playlist else 0
+        order = list(range(n))
+        random.shuffle(order)
+        self._shuffle_order = order
+        self._shuffle_pos = 0
+        if prefer_current and self.app_state.last_file:
+            cur = self.playlist.find_file_index(self.app_state.last_file)
+            if cur is not None and cur in self._shuffle_order:
+                self._shuffle_pos = self._shuffle_order.index(cur)
+
+    def _queue_index_for_step(self, delta: int) -> Optional[int]:
+        """Resolve next/prev playlist index honoring shuffle + repeat."""
+        if not hasattr(self, "playlist") or self.playlist is None or self.playlist.count() == 0:
+            return None
+        n = self.playlist.count()
+        current = (
+            self.playlist.find_file_index(self.app_state.last_file)
+            if self.app_state.last_file
+            else None
+        )
+        if self.app_state.shuffle_enabled:
+            if len(self._shuffle_order) != n:
+                self._rebuild_shuffle_order()
+            if not self._shuffle_order:
+                return None
+            if current is not None and current in self._shuffle_order:
+                self._shuffle_pos = self._shuffle_order.index(current)
+            nxt = self._shuffle_pos + delta
+            if 0 <= nxt < len(self._shuffle_order):
+                self._shuffle_pos = nxt
+                return self._shuffle_order[nxt]
+            if self.app_state.repeat_mode == "all":
+                self._rebuild_shuffle_order(prefer_current=False)
+                self._shuffle_pos = 0 if delta > 0 else len(self._shuffle_order) - 1
+                return self._shuffle_order[self._shuffle_pos]
+            return None
+        if current is None:
+            return 0 if delta > 0 else n - 1
+        nxt = current + delta
+        if 0 <= nxt < n:
+            return nxt
+        if self.app_state.repeat_mode == "all":
+            return 0 if delta > 0 else n - 1
+        return None
+
+    def _play_queue_index(self, index: int, status_prefix: str = "") -> bool:
+        path = self.playlist.get_file_at_index(index)
+        if not path:
+            return False
+        self.playlist.setCurrentRow(index)
+        self.load_media(path)
+        QTimer.singleShot(100, self._engine_play)
+        label = os.path.basename(path)
+        self.status_bar.showMessage(
+            f"{status_prefix}{label}" if status_prefix else label, 3000
+        )
+        return True
+
     def previous_media(self):
-        """Go to previous media file in playlist"""
-        if hasattr(self, 'playlist') and self.playlist:
-            current_file = self.app_state.last_file
-            if current_file:
-                # Find current file index in playlist
-                current_index = self.playlist.find_file_index(current_file)
-                if current_index is not None and current_index > 0:
-                    # Load previous file
-                    prev_file = self.playlist.get_file_at_index(current_index - 1)
-                    if prev_file:
-                        # Update playlist selection
-                        self.playlist.setCurrentRow(current_index - 1)
-                        self.load_media(prev_file)
-                        self.status_bar.showMessage(f"Previous: {os.path.basename(prev_file)}")
-                    else:
-                        self.status_bar.showMessage("No previous file in playlist")
-                else:
-                    self.status_bar.showMessage("Already at first file in playlist")
-            else:
-                self.status_bar.showMessage("No current file loaded")
-        else:
-            self.status_bar.showMessage("No playlist available")
+        """Go to previous media in Up next (shuffle / wrap when enabled)."""
+        idx = self._queue_index_for_step(-1)
+        if idx is None:
+            self.status_bar.showMessage("No previous track", 2500)
+            return
+        self._play_queue_index(idx, "Previous: ")
 
     def next_media(self):
-        """Go to next media file in playlist"""
-        if hasattr(self, 'playlist') and self.playlist:
-            current_file = self.app_state.last_file
-            if current_file:
-                # Find current file index in playlist
-                current_index = self.playlist.find_file_index(current_file)
-                if current_index is not None and current_index < self.playlist.count() - 1:
-                    # Load next file
-                    next_file = self.playlist.get_file_at_index(current_index + 1)
-                    if next_file:
-                        # Update playlist selection
-                        self.playlist.setCurrentRow(current_index + 1)
-                        self.load_media(next_file)
-                        self.status_bar.showMessage(f"Next: {os.path.basename(next_file)}")
-                    else:
-                        self.status_bar.showMessage("No next file in playlist")
-                else:
-                    self.status_bar.showMessage("Already at last file in playlist")
-            else:
-                self.status_bar.showMessage("No current file loaded")
-        else:
-            self.status_bar.showMessage("No playlist available")
+        """Go to next media in Up next (shuffle / wrap when enabled)."""
+        idx = self._queue_index_for_step(1)
+        if idx is None:
+            self.status_bar.showMessage("No next track", 2500)
+            return
+        self._play_queue_index(idx, "Next: ")
+
+    def toggle_shuffle(self):
+        self.app_state.shuffle_enabled = not bool(self.app_state.shuffle_enabled)
+        if self.app_state.shuffle_enabled:
+            self._rebuild_shuffle_order()
+        self.settings.save_state(self.app_state)
+        if hasattr(self, "controls"):
+            self.controls.sync_playback_modes(
+                self.app_state.shuffle_enabled, self.app_state.repeat_mode
+            )
+        self.status_bar.showMessage(
+            "Shuffle on" if self.app_state.shuffle_enabled else "Shuffle off", 2500
+        )
+
+    def cycle_repeat_mode(self):
+        order = ("off", "all", "one")
+        cur = self.app_state.repeat_mode if self.app_state.repeat_mode in order else "off"
+        self.app_state.repeat_mode = order[(order.index(cur) + 1) % len(order)]
+        self.settings.save_state(self.app_state)
+        if hasattr(self, "controls"):
+            self.controls.sync_playback_modes(
+                self.app_state.shuffle_enabled, self.app_state.repeat_mode
+            )
+        labels = {"off": "Repeat off", "all": "Repeat all", "one": "Repeat one"}
+        self.status_bar.showMessage(labels[self.app_state.repeat_mode], 2500)
 
     def play_selected_item(self):
         """Play the currently selected playlist item"""
@@ -3315,27 +3551,58 @@ For more information, visit the project repository.
             self.auto_play_next()
 
     def auto_play_next(self):
-        """Auto-play next item in playlist when current media ends"""
-        if hasattr(self, 'playlist') and self.playlist:
-            current_file = self.app_state.last_file
-            if current_file:
-                # Find current file index in playlist
-                current_index = self.playlist.find_file_index(current_file)
-                if current_index is not None and current_index < self.playlist.count() - 1:
-                    # Load next file
-                    next_file = self.playlist.get_file_at_index(current_index + 1)
-                    if next_file:
-                        self.load_media(next_file)
-                        self.status_bar.showMessage(f"Auto-playing: {os.path.basename(next_file)}")
-                        QTimer.singleShot(100, self._engine_play)
+        """Advance when a track ends, honoring repeat / shuffle."""
+        if not hasattr(self, "playlist") or self.playlist is None or self.playlist.count() == 0:
+            return
+        mode = self.app_state.repeat_mode or "off"
+        if mode == "one" and self.app_state.last_file:
+            path = self.app_state.last_file
+            if os.path.exists(path):
+                self.load_media(path)
+                self.status_bar.showMessage(
+                    f"Repeating: {os.path.basename(path)}", 3000
+                )
+                QTimer.singleShot(100, self._engine_play)
+            return
+        idx = self._queue_index_for_step(1)
+        if idx is None:
+            return
+        path = self.playlist.get_file_at_index(idx)
+        if path:
+            self.playlist.setCurrentRow(idx)
+            self.load_media(path)
+            self.status_bar.showMessage(f"Auto-playing: {os.path.basename(path)}", 3000)
+            QTimer.singleShot(100, self._engine_play)
 
     def media_error(self, error, error_string):
         """Handle media errors"""
         # Only show critical errors to user, suppress common warnings
         if error_string and "pts == AV_NOPTS_VALUE" not in error_string:
             if "Unknown property transform" not in error_string:
-                QMessageBox.warning(self, "Media Error", f"Error: {error_string}")
-                self.status_bar.showMessage(f"Error: {error_string}")
+                lower = (error_string or "").lower()
+                codecish = any(
+                    k in lower
+                    for k in (
+                        "codec",
+                        "unsupported",
+                        "no suitable",
+                        "could not demux",
+                        "cannot find",
+                        "format",
+                        "decoder",
+                    )
+                )
+                title = "Unsupported or unreadable media" if codecish else "Media Error"
+                body = error_string
+                if codecish:
+                    body = (
+                        f"{error_string}\n\n"
+                        f"{self._supported_formats_hint()}\n"
+                        "If the extension looks correct, the codec may be missing "
+                        "from the system native media core (libvlc plugins)."
+                    )
+                QMessageBox.warning(self, title, body)
+                self.status_bar.showMessage(f"Error: {error_string}", 6000)
             else:
                 # Suppress transform warnings
                 pass
@@ -3479,6 +3746,55 @@ Position: {position // 1000}s
                 QTimer.singleShot(0, self.hide_to_tray)
         super().changeEvent(event)
 
+    def _queue_library_media_work(self, path: str) -> None:
+        """Enqueue native (or sync fallback) thumbnail + local tags for a library path."""
+        if not path or not os.path.isfile(path):
+            return
+        workers = getattr(self, "native_workers", None)
+        if workers is not None and workers.available:
+            workers.submit_thumb(path, _thumb_cache_root(), seek=3.0)
+            if path not in self._meta_cache:
+                workers.submit_tags(path)
+            return
+        # Sync Python fallback when the Rust pool is not built.
+        try:
+            generated = self.thumb_cache.ensure(path)
+            if generated:
+                self._thumb_map[path] = generated
+                if hasattr(self, "home_view"):
+                    self.home_view.update_thumbnail(path, generated)
+        except Exception:
+            pass
+        if path not in self._meta_cache:
+            try:
+                self._meta_cache[path] = load_local_metadata(path)
+            except Exception:
+                pass
+
+    def _on_native_thumb_ready(self, path: str, thumb_path: str) -> None:
+        if not path or not thumb_path:
+            return
+        self._thumb_map[path] = thumb_path
+        if hasattr(self, "home_view"):
+            self.home_view.update_thumbnail(path, thumb_path)
+
+    def _on_native_tags_ready(self, path: str, tags: dict) -> None:
+        if not path or not isinstance(tags, dict):
+            return
+        existing = self._meta_cache.get(path)
+        meta = existing or MediaMetadata(path=path, source="native")
+        meta.path = path
+        meta.title = (tags.get("title") or meta.title or "").strip()
+        meta.artist = (tags.get("artist") or meta.artist or "").strip()
+        meta.album = (tags.get("album") or meta.album or "").strip()
+        meta.year = (tags.get("year") or meta.year or "")[:4]
+        meta.genre = (tags.get("genre") or meta.genre or "").strip()
+        if meta.title or meta.artist:
+            meta.source = "tags"
+        self._meta_cache[path] = meta
+        if getattr(self.home_view, "_browse_mode", False):
+            self.refresh_facets()
+
     def closeEvent(self, event):
         """Close-to-tray while playing; otherwise persist state and quit."""
         playing = False
@@ -3490,6 +3806,8 @@ Position: {position // 1000}s
             return
         self.app_state.window_geometry = self.saveGeometry()
         self.settings.save_state(self.app_state)
+        if hasattr(self, "native_workers") and self.native_workers is not None:
+            self.native_workers.shutdown()
         if hasattr(self, "engine"):
             self.engine.shutdown()
         if self.tray_icon is not None:
@@ -3506,7 +3824,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.3.3")
+    app.setApplicationVersion("1.9.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

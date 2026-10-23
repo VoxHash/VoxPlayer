@@ -493,6 +493,20 @@ class HomeView(_MediaDropMixin, QWidget):
         self._thumbnails = thumbnails or {}
         self._render_items()
 
+    def update_thumbnail(self, path: str, thumbnail_path: str) -> None:
+        """Patch one card's art without rebuilding the whole grid."""
+        if not path or not thumbnail_path or not os.path.isfile(thumbnail_path):
+            return
+        self._thumbnails[path] = thumbnail_path
+        if self._view_mode == "list":
+            return
+        for i in range(self.grid.count()):
+            item = self.grid.itemAt(i)
+            w = item.widget() if item else None
+            if w is not None and getattr(w, "path", None) == path:
+                w.set_thumbnail(thumbnail_path)
+                break
+
     def _clear_grid(self) -> None:
         while self.grid.count():
             item = self.grid.takeAt(0)
@@ -500,13 +514,54 @@ class HomeView(_MediaDropMixin, QWidget):
             if w:
                 w.deleteLater()
 
+    def _make_empty_state(self) -> QWidget:
+        """Stronger empty library panel with clear next actions."""
+        box = QWidget()
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(32, 48, 32, 48)
+        lay.setSpacing(10)
+        title = QLabel("Your library is empty")
+        title.setObjectName("SectionTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet(
+            f"color: {COLORS['text']}; font-size: 20px; font-weight: 700;"
+        )
+        body = QLabel(
+            "Add media to get started:\n"
+            "• Open Folder from the left rail (roots are remembered next launch)\n"
+            "• Drop files onto Home to index, or onto Now Playing / transport to play\n"
+            "• Media → Open Files for a one-shot picker"
+        )
+        body.setObjectName("MetaSecondary")
+        body.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        body.setWordWrap(True)
+        body.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: 13px; line-height: 1.4;"
+        )
+        formats = QLabel(
+            "Supported formats include MP4, MKV, WebM, AVI, MP3, FLAC, M4A, Opus, OGG, WAV."
+        )
+        formats.setObjectName("MetaMuted")
+        formats.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        formats.setWordWrap(True)
+        formats.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 12px;")
+        lay.addWidget(title)
+        lay.addWidget(body)
+        lay.addWidget(formats)
+        return box
+
     def _render_items(self) -> None:
         paths = self._paths
         thumbs = self._thumbnails
         if self._view_mode == "list":
             self.list_widget.clear()
             if not paths:
-                empty = QListWidgetItem("No media yet — use + or Open Folder from the rail.")
+                empty = QListWidgetItem(
+                    "Library is empty\n"
+                    "Open Folder from the rail, drop files here to index, "
+                    "or use Media → Open Files.\n"
+                    "Supported: MP4, MKV, WebM, MP3, FLAC, M4A, Opus, and more."
+                )
                 empty.setFlags(Qt.ItemFlag.NoItemFlags)
                 self.list_widget.addItem(empty)
                 return
@@ -521,10 +576,7 @@ class HomeView(_MediaDropMixin, QWidget):
 
         self._clear_grid()
         if not paths:
-            empty = QLabel("No media yet — use + or Open Folder from the rail.")
-            empty.setObjectName("MetaSecondary")
-            empty.setStyleSheet(f"color: {COLORS['text_secondary']}; padding: 24px;")
-            self.grid.addWidget(empty, 0, 0)
+            self.grid.addWidget(self._make_empty_state(), 0, 0, 1, max(1, self._columns_for_width()))
             return
         cols = self._columns_for_width()
         self._last_cols = cols
@@ -895,6 +947,10 @@ class TransportBar(_MediaDropMixin, QWidget):
         buttons = QHBoxLayout()
         buttons.setSpacing(6)
         buttons.addStretch(1)
+        self.btn_shuffle = QPushButton("⇄")
+        self.btn_shuffle.setObjectName("TransportGhost")
+        self.btn_shuffle.setToolTip("Shuffle")
+        self.btn_shuffle.setCheckable(True)
         self.btn_prev = QPushButton("⏮")
         self.btn_prev.setObjectName("TransportGhost")
         self.btn_play = QPushButton("▶")
@@ -904,9 +960,19 @@ class TransportBar(_MediaDropMixin, QWidget):
         self.btn_stop.setObjectName("TransportGhost")
         self.btn_next = QPushButton("⏭")
         self.btn_next.setObjectName("TransportGhost")
+        self.btn_repeat = QPushButton("⟳")
+        self.btn_repeat.setObjectName("TransportGhost")
+        self.btn_repeat.setToolTip("Repeat: off")
         self.btn_mute = QPushButton("🔊")
         self.btn_mute.setObjectName("TransportGhost")
-        for b in (self.btn_prev, self.btn_play, self.btn_stop, self.btn_next):
+        for b in (
+            self.btn_shuffle,
+            self.btn_prev,
+            self.btn_play,
+            self.btn_stop,
+            self.btn_next,
+            self.btn_repeat,
+        ):
             buttons.addWidget(b)
         buttons.addStretch(1)
         center.addLayout(buttons)
@@ -948,6 +1014,8 @@ class TransportBar(_MediaDropMixin, QWidget):
         self.btn_mute.clicked.connect(self.toggle_mute)
         self.btn_prev.clicked.connect(self.previous_media)
         self.btn_next.clicked.connect(self.next_media)
+        self.btn_shuffle.clicked.connect(self.toggle_shuffle)
+        self.btn_repeat.clicked.connect(self.cycle_repeat)
         # Do not seek on every valueChanged (playback poll updates the slider).
         self.seek_slider.sliderPressed.connect(self._seek_pressed)
         self.seek_slider.sliderMoved.connect(self._seek_moved)
@@ -997,6 +1065,31 @@ class TransportBar(_MediaDropMixin, QWidget):
     def next_media(self):
         if hasattr(self.parent_window, "next_media"):
             self.parent_window.next_media()
+
+    def toggle_shuffle(self):
+        if hasattr(self.parent_window, "toggle_shuffle"):
+            self.parent_window.toggle_shuffle()
+
+    def cycle_repeat(self):
+        if hasattr(self.parent_window, "cycle_repeat_mode"):
+            self.parent_window.cycle_repeat_mode()
+
+    def sync_playback_modes(self, shuffle: bool, repeat_mode: str) -> None:
+        """Reflect persisted shuffle / repeat on the transport chrome."""
+        self.btn_shuffle.setChecked(bool(shuffle))
+        self.btn_shuffle.setToolTip("Shuffle on" if shuffle else "Shuffle off")
+        mode = repeat_mode if repeat_mode in ("off", "one", "all") else "off"
+        labels = {
+            "off": ("⟳", "Repeat off"),
+            "all": ("⟳*", "Repeat all"),
+            "one": ("⟳1", "Repeat one"),
+        }
+        text, tip = labels[mode]
+        self.btn_repeat.setText(text)
+        self.btn_repeat.setToolTip(tip)
+        self.btn_repeat.setProperty("active", "true" if mode != "off" else "false")
+        self.btn_repeat.style().unpolish(self.btn_repeat)
+        self.btn_repeat.style().polish(self.btn_repeat)
 
     def _seek_pressed(self):
         self._seek_user_active = True

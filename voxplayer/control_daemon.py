@@ -7,10 +7,15 @@ Endpoints (JSON)::
 
     GET  /status
     GET  /library  query: limit (default 200), offset (default 0)
+    GET  /playlists
+    GET  /podcasts
     POST /play  /pause  /playpause  /stop  /next  /previous
     POST /volume   body: {"percent": 0-200}
     POST /seek     body: {"ms": int} or {"relative_ms": int}
     POST /open     body: {"path": "/abs/or/file"}
+
+Bluetooth RFCOMM control (optional, ``VOXPLAYER_BT=1``) shares the same command
+surface as JSON lines — see ``voxplayer.bt_control``.
 
 Browser / TUI remotes::
 
@@ -29,6 +34,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlparse
 
+from .bt_control import BluetoothControlServer
 from .discovery import DiscoveryBeacon
 
 
@@ -66,12 +72,46 @@ class ControlDaemon:
         self._thread: Optional[threading.Thread] = None
         self._callbacks: Dict[str, Callable[..., Any]] = {}
         self._beacon: Optional[DiscoveryBeacon] = None
+        self._bt: Optional[BluetoothControlServer] = None
         self.host = DEFAULT_HOST
         self.port = DEFAULT_PORT
         self.version = version or ""
 
     def set_callbacks(self, **kwargs: Callable[..., Any]) -> None:
         self._callbacks.update(kwargs)
+
+    def _dispatch_command(self, cmd: str, body: dict) -> dict:
+        """Shared by HTTP POST and Bluetooth RFCOMM JSON lines."""
+        key_map = {
+            "status": "status",
+            "library": "library",
+            "playlists": "playlists",
+            "podcasts": "podcasts",
+            "play": "play",
+            "pause": "pause",
+            "playpause": "play_pause",
+            "play_pause": "play_pause",
+            "stop": "stop",
+            "next": "next",
+            "previous": "previous",
+            "volume": "volume",
+            "seek": "seek",
+            "open": "open",
+        }
+        key = key_map.get((cmd or "").strip().lower())
+        if not key:
+            return {"ok": False, "error": "unknown_cmd", "cmd": cmd}
+        fn = self._callbacks.get(key)
+        if not callable(fn):
+            return {"ok": False, "error": "not_implemented", "cmd": cmd}
+        if key in {"status"}:
+            data = fn()
+            return data if isinstance(data, dict) else {"ok": True}
+        if key in {"library", "playlists", "podcasts", "volume", "seek", "open"}:
+            data = fn(body if isinstance(body, dict) else {})
+            return data if isinstance(data, dict) else {"ok": True}
+        data = fn()
+        return data if isinstance(data, dict) else {"ok": True}
 
     def start(self) -> bool:
         if not daemon_enabled():
@@ -164,10 +204,6 @@ class ControlDaemon:
                     self._json(200, data if isinstance(data, dict) else {})
                     return
                 if path == "/library":
-                    fn = callbacks.get("library")
-                    if not callable(fn):
-                        self._json(501, {"error": "not_implemented"})
-                        return
                     from urllib.parse import parse_qs
 
                     qs = parse_qs(parsed.query or "")
@@ -180,7 +216,25 @@ class ControlDaemon:
                     except ValueError:
                         offset = 0
                     try:
-                        data = fn({"limit": limit, "offset": offset})
+                        data = parent._dispatch_command(
+                            "library", {"limit": limit, "offset": offset}
+                        )
+                    except Exception as exc:
+                        self._json(500, {"error": str(exc)})
+                        return
+                    self._json(200, data if isinstance(data, dict) else {})
+                    return
+                if path == "/playlists":
+                    try:
+                        data = parent._dispatch_command("playlists", {})
+                    except Exception as exc:
+                        self._json(500, {"error": str(exc)})
+                        return
+                    self._json(200, data if isinstance(data, dict) else {})
+                    return
+                if path == "/podcasts":
+                    try:
+                        data = parent._dispatch_command("podcasts", {})
                     except Exception as exc:
                         self._json(500, {"error": str(exc)})
                         return
@@ -196,6 +250,8 @@ class ControlDaemon:
                             "endpoints": [
                                 "/status",
                                 "/library",
+                                "/playlists",
+                                "/podcasts",
                                 "/play",
                                 "/pause",
                                 "/playpause",
@@ -207,6 +263,10 @@ class ControlDaemon:
                                 "/open",
                                 "/ui",
                             ],
+                            "bluetooth": {
+                                "enabled": parent._bt is not None and parent._bt.active,
+                                "channel": getattr(parent._bt, "channel", None),
+                            },
                         },
                     )
                     return
@@ -218,7 +278,7 @@ class ControlDaemon:
                 mapping = {
                     "/play": "play",
                     "/pause": "pause",
-                    "/playpause": "play_pause",
+                    "/playpause": "playpause",
                     "/stop": "stop",
                     "/next": "next",
                     "/previous": "previous",
@@ -226,19 +286,12 @@ class ControlDaemon:
                     "/seek": "seek",
                     "/open": "open",
                 }
-                key = mapping.get(path)
-                if not key:
+                cmd = mapping.get(path)
+                if not cmd:
                     self._json(404, {"error": "not_found"})
                     return
-                fn = callbacks.get(key)
-                if not callable(fn):
-                    self._json(501, {"error": "not_implemented"})
-                    return
                 try:
-                    if key in {"volume", "seek", "open"}:
-                        result = fn(body)
-                    else:
-                        result = fn()
+                    result = parent._dispatch_command(cmd, body)
                     self._json(200, result if isinstance(result, dict) else {"ok": True})
                 except Exception as exc:
                     self._json(500, {"error": str(exc)})
@@ -261,9 +314,20 @@ class ControlDaemon:
             self._beacon.start()
         except Exception:
             self._beacon = None
+        try:
+            self._bt = BluetoothControlServer(self._dispatch_command)
+            self._bt.start()
+        except Exception:
+            self._bt = None
         return True
 
     def stop(self) -> None:
+        if self._bt is not None:
+            try:
+                self._bt.stop()
+            except Exception:
+                pass
+            self._bt = None
         if self._beacon is not None:
             try:
                 self._beacon.stop()

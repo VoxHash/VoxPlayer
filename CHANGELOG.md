@@ -7,8 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Android companion phase 4: optional playlist/podcast pull from desktop
-- Optional Bluetooth RFCOMM control profile (Connect today uses Wi‑Fi discovery; BT lists paired hints)
+- Further Android companion polish (background playback limits, Quest UX)
+
+## [1.28.0] - 2026-10-23
+
+### Added
+- Dedicated Bluetooth RFCOMM control profile (`voxplayer/bt_control.py`, SPP UUID `00001101-…-05f9b34fb`, channel 5 / `VOXPLAYER_BT_CHANNEL`); same JSON-line commands as the HTTP daemon; `VOXPLAYER_BT=0` to disable
+- Android Connect sheet: tap a paired Bluetooth device for RFCOMM remote control (GrapheneOS-friendly; no Google Nearby)
+- Control daemon `GET /playlists` and `GET /podcasts` for companion sync (no cloud account)
+- Android Sync: pull playlists + podcast feeds over Wi‑Fi or Bluetooth; cache under app files; play podcast enclosures on-device
+
+### Changed
+- ROADMAP Later item 4 (Sync) and Bluetooth control marked done for 1.28.0
 
 ## [1.27.0] - 2026-10-23
 

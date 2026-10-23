@@ -138,6 +138,12 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { vm.reloadLocalLibrary() }
 
+    val btPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        vm.refreshBluetoothHints()
+    }
+
     val openDoc = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
@@ -241,7 +247,20 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = SurfaceCol,
         ) {
-            ConnectSheet(state, vm)
+            ConnectSheet(
+                state = state,
+                vm = vm,
+                onNeedBluetoothPermission = {
+                    if (Build.VERSION.SDK_INT >= 31) {
+                        btPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.BLUETOOTH_CONNECT,
+                                Manifest.permission.BLUETOOTH_SCAN,
+                            ),
+                        )
+                    }
+                },
+            )
         }
     }
 }
@@ -368,10 +387,18 @@ private fun LocalTab(
 
 @Composable
 private fun DesktopRemoteTab(state: PlayerUiState, vm: PlayerViewModel) {
+    val linkLabel = when (state.remoteLink) {
+        RemoteLink.Bluetooth -> "Bluetooth RFCOMM"
+        RemoteLink.Wifi -> "Wi‑Fi"
+        RemoteLink.None -> ""
+    }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
         Text(
-            if (state.remoteConnected) "Connected · desktop v${state.remoteVersion.ifBlank { "?" }}"
-            else "Not connected — tap the devices icon to Connect",
+            if (state.remoteConnected) {
+                "Connected · $linkLabel · desktop v${state.remoteVersion.ifBlank { "?" }}"
+            } else {
+                "Not connected — tap the devices icon to Connect"
+            },
             color = if (state.remoteConnected) ActiveGreen else Color(0xFFE26D6D),
         )
         Text("[${if (state.remotePlaying) "PLAYING" else "PAUSED"}] ${state.remoteTitle}")
@@ -397,8 +424,54 @@ private fun DesktopRemoteTab(state: PlayerUiState, vm: PlayerViewModel) {
             Button(onClick = vm::remoteVolUp, modifier = Modifier.weight(1f)) { Text("Vol +") }
             Button(onClick = { vm.openConnect(true) }, modifier = Modifier.weight(1f)) { Text("Connect") }
         }
-        Text("Desktop library", fontWeight = FontWeight.SemiBold)
-        LazyColumn(Modifier.weight(1f)) {
+        if (state.remoteConnected) {
+            Button(
+                onClick = vm::syncFromDesktop,
+                enabled = !state.syncBusy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (state.syncBusy) "Syncing…" else "Sync playlists & podcasts")
+            }
+        }
+        if (state.syncMessage.isNotBlank()) {
+            Text(state.syncMessage, color = Color.White.copy(0.7f), style = MaterialTheme.typography.bodySmall)
+        }
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (state.syncedPlaylists.isNotEmpty()) {
+                item { Text("Synced playlists", fontWeight = FontWeight.SemiBold) }
+                state.syncedPlaylists.forEach { pl ->
+                    item {
+                        Text("${pl.name} (${pl.items.size})", color = Color.White.copy(0.75f))
+                    }
+                    items(pl.items.take(40)) { item ->
+                        Text(
+                            "  ${item.title}",
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { vm.remoteOpen(item.path) }
+                                .padding(vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+            if (state.syncedFeeds.isNotEmpty()) {
+                item { Text("Synced podcasts", fontWeight = FontWeight.SemiBold) }
+                state.syncedFeeds.forEach { feed ->
+                    item {
+                        Text("${feed.title} (${feed.episodes.size})", color = Color.White.copy(0.75f))
+                    }
+                    items(feed.episodes.take(20)) { ep ->
+                        Text(
+                            "  ${ep.title}",
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { vm.playSyncedEpisode(ep) }
+                                .padding(vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+            item { Text("Desktop library", fontWeight = FontWeight.SemiBold) }
             items(state.remoteLibrary.take(80)) { item ->
                 Text(
                     item.title,
@@ -413,7 +486,11 @@ private fun DesktopRemoteTab(state: PlayerUiState, vm: PlayerViewModel) {
 }
 
 @Composable
-private fun ConnectSheet(state: PlayerUiState, vm: PlayerViewModel) {
+private fun ConnectSheet(
+    state: PlayerUiState,
+    vm: PlayerViewModel,
+    onNeedBluetoothPermission: () -> Unit,
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -462,10 +539,10 @@ private fun ConnectSheet(state: PlayerUiState, vm: PlayerViewModel) {
         if (state.scanning) {
             Text("Looking on Wi‑Fi…", color = Color.White.copy(0.55f))
         } else if (state.discovered.isEmpty()) {
-            Text("No other devices found", color = Color.White.copy(0.55f))
+            Text("No other devices found on Wi‑Fi", color = Color.White.copy(0.55f))
             TipRow(Icons.Default.Wifi, "Check your Wi‑Fi", "Connect this device and the PC to the same network (use voxplayer-lan-bypass if a VPN hides LAN).")
             TipRow(Icons.Default.Computer, "Start VoxPlayer on the PC", "Desktop must be running with LAN daemon enabled; it will appear automatically.")
-            TipRow(Icons.Default.Bluetooth, "Bluetooth", "Paired BT devices are listed as hints. Control uses Wi‑Fi once both share a LAN — enable Bluetooth to confirm nearby PCs.")
+            TipRow(Icons.Default.Bluetooth, "Or use Bluetooth", "Pair the phone with the PC, then tap a paired device below for RFCOMM control (no Google Nearby).")
         } else {
             state.discovered.forEach { d ->
                 val selected = state.activeOutput.contains(d.host)
@@ -488,22 +565,44 @@ private fun ConnectSheet(state: PlayerUiState, vm: PlayerViewModel) {
             }
         }
 
-        if (state.bondedHints.isNotEmpty()) {
-            Text("Bluetooth paired nearby", fontWeight = FontWeight.Medium)
-            state.bondedHints.forEach { name ->
-                Text("· $name", color = Color.White.copy(0.55f), style = MaterialTheme.typography.bodySmall)
+        Text("Bluetooth control", fontWeight = FontWeight.Medium)
+        if (!vm.hasBluetoothPermission() && Build.VERSION.SDK_INT >= 31) {
+            TextButton(onClick = onNeedBluetoothPermission) {
+                Text("Grant Bluetooth permission")
             }
+        } else if (state.bondedDevices.isEmpty()) {
             Text(
-                "After pairing, join the same Wi‑Fi as the PC and tap Refresh — discovery is over Wi‑Fi for GrapheneOS (no Google Nearby).",
-                color = Color.White.copy(0.45f),
+                "No paired devices. Pair this phone with the PC in system Bluetooth settings, then Refresh.",
+                color = Color.White.copy(0.55f),
                 style = MaterialTheme.typography.bodySmall,
             )
+        } else {
+            state.bondedDevices.forEach { d ->
+                val selected = state.remoteLink == RemoteLink.Bluetooth &&
+                    state.activeOutput.contains(d.name)
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, if (selected) ActiveGreen else Color.White.copy(0.12f), RoundedCornerShape(12.dp))
+                        .clickable { vm.connectBluetooth(d.address, d.name) }
+                        .padding(14.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Bluetooth, null, tint = if (selected) ActiveGreen else Color.White)
+                        Spacer(Modifier.size(12.dp))
+                        Column {
+                            Text(d.name, color = if (selected) ActiveGreen else Color.White, fontWeight = FontWeight.SemiBold)
+                            Text("${d.address} · RFCOMM control", color = Color.White.copy(0.55f), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
         }
 
         OutlinedTextField(
             value = state.remoteHost,
             onValueChange = vm::updateRemoteHost,
-            label = { Text("Desktop host (manual)") },
+            label = { Text("Desktop host (manual Wi‑Fi)") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
@@ -515,12 +614,15 @@ private fun ConnectSheet(state: PlayerUiState, vm: PlayerViewModel) {
             singleLine = true,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { vm.scanDesktops() }) {
+            Button(onClick = {
+                vm.scanDesktops()
+                vm.refreshBluetoothHints()
+            }) {
                 Icon(Icons.Default.Refresh, null)
                 Spacer(Modifier.size(6.dp))
                 Text("Refresh")
             }
-            Button(onClick = { vm.connectManual() }) { Text("Connect") }
+            Button(onClick = { vm.connectManual() }) { Text("Wi‑Fi") }
             TextButton(onClick = { vm.disconnectRemote(); vm.openConnect(false) }) { Text("This device") }
         }
     }

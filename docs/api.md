@@ -35,10 +35,12 @@ While the desktop app is running (unless `VOXPLAYER_DAEMON=0`), a small HTTP JSO
 |--------|------|--------|
 | GET | `/status` | Now playing, position, volume, version |
 | GET | `/library?limit=&offset=` | Read-only indexed library for companions |
+| GET | `/playlists` | Local playlist export (name + path/title items) for companion sync |
+| GET | `/podcasts` | Subscribed feeds + episode metadata for companion sync |
 | POST | `/play` `/pause` `/playpause` `/stop` `/next` `/previous` | Transport |
 | POST | `/volume` | Body `{"percent": 0-200}` |
 | POST | `/seek` | Body `{"ms": int}` or `{"relative_ms": int}` |
 | POST | `/open` | Body `{"path": "/abs/file"}` |
 | GET | `/ui/` | Packaged browser remote |
 
-The Android companion under `android/` uses this API over LAN or `adb reverse`.
+The Android companion under `android/` uses this API over LAN or `adb reverse`. The same command surface is also available over Bluetooth RFCOMM (`voxplayer.bt_control`, SPP UUID `00001101-0000-1000-8000-00805f9b34fb`, default channel 5; disable with `VOXPLAYER_BT=0`).

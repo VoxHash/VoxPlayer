@@ -69,6 +69,8 @@ Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video 
 | (CLI) `voxplayer-usb-bridge` | — | Collapse duplicate `adb` servers and refresh `adb reverse` for USB companion e2e |
 | `VOXPLAYER_DISCOVERY` | `1` | UDP LAN announce for Connect discovery (`0` to disable) |
 | `VOXPLAYER_DISCOVERY_PORT` | `17891` | UDP port companions scan for desktop announces |
+| `VOXPLAYER_BT` | `1` | Bluetooth RFCOMM control server when adapter is available (`0` to disable) |
+| `VOXPLAYER_BT_CHANNEL` | `5` | RFCOMM channel for the VoxPlayer control profile (SPP UUID) |
 | `VOXPLAYER_DISABLE_MPRIS` | unset | Set to `1` to disable MPRIS2 on Linux |
 | `ACOUSTID_API_KEY` | unset | Optional AcoustID client key for audio fingerprint lookup |
 | `TMDB_API_KEY` | unset | Optional TMDB key for video title/poster enrichment |

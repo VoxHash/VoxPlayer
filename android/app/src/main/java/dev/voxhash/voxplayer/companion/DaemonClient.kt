@@ -97,6 +97,75 @@ class DaemonClient(
     fun open(path: String): JSONObject =
         postJson("/open", JSONObject().put("path", path))
 
+    data class PlaylistExport(
+        val name: String,
+        val items: List<LibraryItem>,
+    )
+
+    data class PodcastEpisode(
+        val title: String,
+        val guid: String,
+        val enclosureUrl: String,
+        val localPath: String,
+    )
+
+    data class PodcastFeedExport(
+        val url: String,
+        val title: String,
+        val episodes: List<PodcastEpisode>,
+    )
+
+    fun playlists(): List<PlaylistExport> {
+        val obj = getJson("/playlists")
+        val arr = obj.optJSONArray("playlists") ?: JSONArray()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val pl = arr.optJSONObject(i) ?: continue
+                val itemsArr = pl.optJSONArray("items") ?: JSONArray()
+                val items = buildList {
+                    for (j in 0 until itemsArr.length()) {
+                        val it = itemsArr.optJSONObject(j) ?: continue
+                        val path = it.optString("path", "")
+                        if (path.isBlank()) continue
+                        add(LibraryItem(path, it.optString("title", path.substringAfterLast('/'))))
+                    }
+                }
+                add(PlaylistExport(name = pl.optString("name", "Playlist"), items = items))
+            }
+        }
+    }
+
+    fun podcasts(): List<PodcastFeedExport> {
+        val obj = getJson("/podcasts")
+        val arr = obj.optJSONArray("feeds") ?: JSONArray()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val f = arr.optJSONObject(i) ?: continue
+                val eps = f.optJSONArray("episodes") ?: JSONArray()
+                val episodes = buildList {
+                    for (j in 0 until eps.length()) {
+                        val e = eps.optJSONObject(j) ?: continue
+                        add(
+                            PodcastEpisode(
+                                title = e.optString("title", "Episode"),
+                                guid = e.optString("guid", ""),
+                                enclosureUrl = e.optString("enclosure_url", ""),
+                                localPath = e.optString("local_path", ""),
+                            ),
+                        )
+                    }
+                }
+                add(
+                    PodcastFeedExport(
+                        url = f.optString("url", ""),
+                        title = f.optString("title", f.optString("url", "Feed")),
+                        episodes = episodes,
+                    ),
+                )
+            }
+        }
+    }
+
     private fun getJson(path: String): JSONObject {
         val req = Request.Builder().url(root + path).get().build()
         http.newCall(req).execute().use { resp ->

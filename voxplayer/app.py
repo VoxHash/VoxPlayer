@@ -4559,6 +4559,8 @@ Position: {position // 1000}s
         self.control_daemon.set_callbacks(
             status=self._daemon_status,
             library=self._daemon_library,
+            playlists=self._daemon_playlists,
+            podcasts=self._daemon_podcasts,
             play=_ok(self._engine_play),
             pause=_ok(lambda: self.engine.pause() if hasattr(self, "engine") else None),
             play_pause=_ok(self.toggle_playback),
@@ -4576,10 +4578,11 @@ Position: {position // 1000}s
             ),
         )
         if self.control_daemon.start():
-            self.status_bar.showMessage(
-                f"Control daemon http://{self.control_daemon.host}:{self.control_daemon.port}/",
-                4000,
-            )
+            msg = f"Control daemon http://{self.control_daemon.host}:{self.control_daemon.port}/"
+            bt = getattr(self.control_daemon, "_bt", None)
+            if bt is not None and getattr(bt, "active", False):
+                msg += f" · Bluetooth RFCOMM ch{bt.channel}"
+            self.status_bar.showMessage(msg, 5000)
 
     def _mpris_playback_status(self) -> str:
         if not hasattr(self, "engine") or self.engine is None:
@@ -4664,6 +4667,54 @@ Position: {position // 1000}s
             title = (meta.title if meta and getattr(meta, "title", None) else None) or os.path.basename(p)
             items.append({"path": p, "title": title})
         return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+    def _daemon_playlists(self, body: dict = None) -> dict:
+        """Export local playlists for companion sync (paths + titles only)."""
+        store = getattr(self, "playlist_store", None)
+        if store is None:
+            return {"playlists": []}
+        out = []
+        for name in store.names():
+            paths = store.get(name)
+            items = []
+            for p in paths:
+                meta = self._meta_cache.get(p) if hasattr(self, "_meta_cache") else None
+                title = (
+                    meta.title if meta and getattr(meta, "title", None) else None
+                ) or os.path.basename(p)
+                items.append({"path": p, "title": title})
+            out.append({"name": name, "count": len(items), "items": items})
+        return {"playlists": out}
+
+    def _daemon_podcasts(self, body: dict = None) -> dict:
+        """Export subscribed podcast feeds + episode metadata for companion sync."""
+        store = getattr(self, "podcast_store", None)
+        if store is None:
+            return {"feeds": []}
+        feeds = []
+        for feed in (store.feeds or {}).values():
+            episodes = []
+            for ep in (feed.episodes or [])[:100]:
+                episodes.append(
+                    {
+                        "title": ep.title,
+                        "guid": ep.guid,
+                        "enclosure_url": ep.enclosure_url,
+                        "published": ep.published,
+                        "duration": ep.duration,
+                        "local_path": ep.local_path,
+                    }
+                )
+            feeds.append(
+                {
+                    "url": feed.url,
+                    "title": feed.title or feed.url,
+                    "link": feed.link,
+                    "description": (feed.description or "")[:500],
+                    "episodes": episodes,
+                }
+            )
+        return {"feeds": feeds}
 
     def _daemon_set_volume(self, body: dict) -> dict:
         pct = int(body.get("percent", self.app_state.volume))

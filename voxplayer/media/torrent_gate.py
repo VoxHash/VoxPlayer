@@ -120,22 +120,21 @@ def is_media_library_torrent(paths: Sequence[str]) -> Tuple[bool, str]:
     junk_count = len(stats["junk"])
     total = len(paths)
 
-    if media_count == 0 and playlist_count == 0:
+    # Require at least one audio or video file (playlists alone are not enough).
+    if media_count == 0:
         if junk_count:
             return (
                 False,
-                "Torrent rejected: contents look like installers/ISOs/archives, not a media library.",
+                "Torrent rejected: contents look like installers/ISOs/archives, not audio/video media.",
+            )
+        if playlist_count:
+            return (
+                False,
+                "Torrent rejected: playlist-only torrents are not accepted; include audio or video files.",
             )
         return (
             False,
-            "Torrent rejected: no video, audio, or playlist files found in the torrent contents.",
-        )
-
-    # Reject when junk dominates (e.g. Linux ISO + a stray .txt).
-    if junk_count > 0 and media_count == 0:
-        return (
-            False,
-            "Torrent rejected: only non-media payloads (ISO/archive/installer) were found.",
+            "Torrent rejected: no audio or video files found in the torrent contents.",
         )
 
     if junk_count >= media_count and media_count > 0 and junk_count / max(total, 1) >= 0.5:

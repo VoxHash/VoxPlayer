@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QFileDialog, QDockWidget, QListWidget, QListWidgetItem,
                             QMenuBar, QMenu, QStatusBar, QMessageBox, QInputDialog,
                             QLineEdit, QStackedWidget, QSizePolicy, QSystemTrayIcon,
-                            QStyle)
+                            QStyle, QDialog)
 from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput  # QVideoWidget host only; playback is libmpv
@@ -46,6 +46,7 @@ from .media.torrent_gate import validate_torrent_file, validate_torrent_file_lis
 from .media.playlists import PlaylistStore
 from .media.library_facets import group_library, VIDEO_EXT as FACET_VIDEO_EXT, AUDIO_EXT as FACET_AUDIO_EXT
 from .native_scan import scan_media_dir
+from .ui.torrent_picker import TorrentFilePickerDialog, media_paths_only
 
 
 class MetadataEnrichWorker(QThread):
@@ -124,10 +125,29 @@ class TorrentStreamer(QThread):
     file_ready = pyqtSignal(str)  # file_path
     error_occurred = pyqtSignal(str)  # error_message
 
-    def __init__(self, magnet_link: str = None, torrent_file: str = None):
+    def __init__(
+        self,
+        magnet_link: str = None,
+        torrent_file: str = None,
+        preferred_relative_path: str = None,
+        preferred_relative_paths: List[str] = None,
+    ):
         super().__init__()
         self.magnet_link = magnet_link
         self.torrent_file = torrent_file
+        prefs = list(preferred_relative_paths or [])
+        if preferred_relative_path:
+            prefs.insert(0, preferred_relative_path)
+        # Dedupe, normalize
+        seen = set()
+        normalized = []
+        for p in prefs:
+            n = (p or "").replace("\\", "/").lstrip("./")
+            if n and n.lower() not in seen:
+                seen.add(n.lower())
+                normalized.append(n)
+        self.preferred_relative_paths = normalized
+        self.preferred_relative_path = normalized[0] if normalized else ""
         self.temp_dir = None
         self.is_running = False
         self.qb_client = None
@@ -453,10 +473,18 @@ class TorrentStreamer(QThread):
         return int(idx) if idx is not None else None
 
     def _pick_stream_file(self) -> Optional[Any]:
-        """Select best candidate for immediate playback (prefer MP4, then largest)."""
+        """Select stream target: preferred relative path, else best media candidate."""
         files = self._torrent_files()
         if not files:
             return None
+
+        preferred = (self.preferred_relative_path or "").lower().lstrip("./")
+        if preferred:
+            for item in files:
+                name = str(getattr(item, "name", "")).replace("\\", "/")
+                name_l = name.lower().lstrip("./")
+                if name_l == preferred or name_l.endswith("/" + preferred) or name_l.endswith(preferred):
+                    return item
 
         media_rank = {
             ".mp4": 0,
@@ -488,17 +516,29 @@ class TorrentStreamer(QThread):
         candidates.sort(key=lambda entry: (entry[0], entry[1]))
         return candidates[0][2]
 
+    def _path_is_preferred(self, name: str) -> bool:
+        name_l = name.replace("\\", "/").lower().lstrip("./")
+        for pref in self.preferred_relative_paths:
+            pref_l = pref.lower().lstrip("./")
+            if name_l == pref_l or name_l.endswith("/" + pref_l) or name_l.endswith(pref_l):
+                return True
+        return False
+
     def _prioritize_selected_file(self, selected_index: int):
-        """Download selected media file first to reduce startup delay."""
+        """Download selected + other user-picked media; skip the rest."""
         file_items = self._torrent_files()
         selected_ids = []
+        preferred_ids = []
         other_ids = []
         for item in file_items:
             idx = self._file_index(item)
             if idx is None:
                 continue
+            name = str(getattr(item, "name", ""))
             if idx == selected_index:
                 selected_ids.append(idx)
+            elif self.preferred_relative_paths and self._path_is_preferred(name):
+                preferred_ids.append(idx)
             else:
                 other_ids.append(idx)
 
@@ -509,7 +549,21 @@ class TorrentStreamer(QThread):
                 )
             except Exception:
                 pass
-        if other_ids:
+        if preferred_ids:
+            try:
+                self.qb_client.torrents_file_priority(
+                    torrent_hash=self.torrent_hash, file_ids=preferred_ids, priority=6
+                )
+            except Exception:
+                pass
+        if other_ids and self.preferred_relative_paths:
+            try:
+                self.qb_client.torrents_file_priority(
+                    torrent_hash=self.torrent_hash, file_ids=other_ids, priority=0
+                )
+            except Exception:
+                pass
+        elif other_ids and not self.preferred_relative_paths:
             try:
                 self.qb_client.torrents_file_priority(
                     torrent_hash=self.torrent_hash, file_ids=other_ids, priority=0
@@ -540,8 +594,32 @@ class TorrentStreamer(QThread):
                 return downloaded >= required, downloaded, required
         return False, 0, required
 
+    def pause_transfer(self):
+        """Pause qBittorrent transfer (no upload/download) while keeping the torrent."""
+        if not self.qb_client or not self.torrent_hash:
+            return
+        try:
+            self.qb_client.torrents_pause(torrent_hashes=self.torrent_hash)
+        except Exception:
+            try:
+                self.qb_client.torrents_pause(torrent_hash=self.torrent_hash)
+            except Exception:
+                pass
+
+    def resume_transfer(self):
+        """Resume qBittorrent transfer for active playback."""
+        if not self.qb_client or not self.torrent_hash:
+            return
+        try:
+            self.qb_client.torrents_resume(torrent_hashes=self.torrent_hash)
+        except Exception:
+            try:
+                self.qb_client.torrents_resume(torrent_hash=self.torrent_hash)
+            except Exception:
+                pass
+
     def stop(self):
-        """Stop torrent streaming"""
+        """Stop torrent streaming and remove it from the client."""
         self.is_running = False
         if self.qb_client:
             try:
@@ -553,6 +631,8 @@ class TorrentStreamer(QThread):
                 pass
         if self.temp_dir and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir, ignore_errors=True)
+        self.torrent_hash = None
+        self.stream_file_path = None
 
 class UpdateChecker(QThread):
     """Thread for checking updates"""
@@ -956,8 +1036,10 @@ class VoxPlayerMainWindow(QMainWindow):
 
         # Torrent and update functionality
         self.torrent_streamer = None
+        self._torrent_active_paths = set()  # local paths belonging to the active torrent session
+        self._pending_torrent_rel_paths: List[str] = []
         self.update_checker = None
-        self.current_version = "1.3.2"
+        self.current_version = "1.3.3"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
@@ -1390,9 +1472,11 @@ class VoxPlayerMainWindow(QMainWindow):
             self.playlist.remove_item_by_file(path)
         self._sync_now_playing_queue()
         self.status_bar.showMessage(f"Removed from Up next: {os.path.basename(path)}", 2500)
+        self._maybe_release_torrent_after_queue_change()
 
     def clear_up_next_and_stop(self):
         self.stop_playback()
+        self._stop_torrent_session(silent=True)
         if hasattr(self, "playlist"):
             self.playlist.clear()
         self.app_state.last_file = ""
@@ -1915,25 +1999,64 @@ For more information, visit the project repository.
             self.start_torrent_streaming(torrent_file=file_path)
 
     def start_torrent_streaming(self, magnet_link: str = None, torrent_file: str = None):
-        """Start torrent streaming"""
-        if self.torrent_streamer and self.torrent_streamer.isRunning():
+        """Start torrent streaming (audio/video only; multi-file asks before clearing Up next)."""
+        if self.torrent_streamer and (
+            self.torrent_streamer.isRunning() or self.torrent_streamer.torrent_hash
+        ):
             QMessageBox.warning(self, "Torrent Active", "A torrent is already being streamed.")
             return
 
+        preferred = None
+        preferred_list: List[str] = []
         # Gate .torrent files before contacting the client
         if torrent_file:
-            ok, msg, _paths = validate_torrent_file(torrent_file)
+            ok, msg, paths = validate_torrent_file(torrent_file)
             if not ok:
                 QMessageBox.warning(
                     self,
                     "Torrent Rejected",
-                    f"{msg}\n\nVoxPlayer only accepts torrents that look like a "
-                    "video, music, or playlist media library.",
+                    f"{msg}\n\nVoxPlayer only accepts torrents that contain "
+                    "audio and/or video files.",
                 )
-                self.status_bar.showMessage("Torrent rejected: not a media library.")
+                self.status_bar.showMessage("Torrent rejected: not audio/video media.")
                 return
+            media = media_paths_only(paths)
+            if len(media) > 1:
+                confirm = QMessageBox.question(
+                    self,
+                    "Multi-file torrent",
+                    "This torrent contains multiple audio/video files "
+                    f"({len(media)}).\n\n"
+                    "Your Up next list will be cleared so the torrent file tree "
+                    "can be shown. Check any files from any folder (for example "
+                    "episodes across seasons), then confirm.\n\nContinue?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if confirm != QMessageBox.StandardButton.Yes:
+                    return
+                self.clear_up_next_and_stop()
+                picker = TorrentFilePickerDialog(
+                    media, self, title="Choose files to stream"
+                )
+                if picker.exec() != QDialog.DialogCode.Accepted:
+                    return
+                preferred_list = picker.selected_paths()
+                if not preferred_list:
+                    return
+                preferred = preferred_list[0]
+            elif len(media) == 1:
+                preferred = media[0]
+                preferred_list = [preferred]
 
-        self.torrent_streamer = TorrentStreamer(magnet_link=magnet_link, torrent_file=torrent_file)
+        self._stop_torrent_session(silent=True)
+        self.torrent_streamer = TorrentStreamer(
+            magnet_link=magnet_link,
+            torrent_file=torrent_file,
+            preferred_relative_path=preferred,
+            preferred_relative_paths=preferred_list if torrent_file else None,
+        )
+        self._pending_torrent_rel_paths = list(preferred_list) if torrent_file else []
         self.torrent_streamer.progress_updated.connect(self.on_torrent_progress)
         self.torrent_streamer.file_ready.connect(self.on_torrent_file_ready)
         self.torrent_streamer.error_occurred.connect(self.on_torrent_error)
@@ -1944,12 +2067,45 @@ For more information, visit the project repository.
         elif torrent_file:
             self.status_bar.showMessage("Starting torrent file stream...")
 
+    def _stop_torrent_session(self, silent: bool = False):
+        """Delete active torrent transfer from the client (no further up/down)."""
+        if not self.torrent_streamer:
+            if not silent:
+                QMessageBox.information(self, "No Torrent", "No torrent is currently active.")
+            return
+        try:
+            self.torrent_streamer.stop()
+            if self.torrent_streamer.isRunning():
+                self.torrent_streamer.wait(8000)
+        except Exception:
+            pass
+        self.torrent_streamer = None
+        self._torrent_active_paths = set()
+        if not silent:
+            self.status_bar.showMessage("Torrent stopped.")
+
+    def _maybe_release_torrent_after_queue_change(self):
+        """If no torrent paths remain in Up next, stop the transfer entirely."""
+        if not self._torrent_active_paths:
+            return
+        queued = set()
+        if hasattr(self, "playlist"):
+            for i in range(self.playlist.count()):
+                p = self.playlist.get_file_at_index(i)
+                if p:
+                    queued.add(os.path.abspath(p))
+        remaining = {os.path.abspath(p) for p in self._torrent_active_paths} & queued
+        playing = os.path.abspath(self.app_state.last_file) if self.app_state.last_file else ""
+        if playing in self._torrent_active_paths:
+            remaining.add(playing)
+        if not remaining:
+            self._stop_torrent_session(silent=True)
+            self.status_bar.showMessage("Torrent removed — transfer stopped.", 4000)
+
     def stop_torrent(self):
         """Stop torrent streaming"""
-        if self.torrent_streamer and self.torrent_streamer.isRunning():
-            self.torrent_streamer.stop()
-            self.torrent_streamer.wait()
-            self.status_bar.showMessage("Torrent stopped.")
+        if self.torrent_streamer:
+            self._stop_torrent_session(silent=False)
         else:
             QMessageBox.information(self, "No Torrent", "No torrent is currently active.")
 
@@ -1959,20 +2115,49 @@ For more information, visit the project repository.
 
     def on_torrent_file_ready(self, file_path: str):
         """Handle torrent file ready"""
+        abs_path = os.path.abspath(file_path)
+        self._torrent_active_paths.add(abs_path)
         # Add to playlist first
         self.playlist.add_media_file(file_path)
-        self.playlist.setCurrentRow(self.playlist.count() - 1)
+        # Queue other user-selected torrent files once their paths resolve on disk.
+        self._queue_other_selected_torrent_files(abs_path)
+        self.playlist.setCurrentRow(self.playlist.find_file_index(file_path) or 0)
 
         # Load and play the media
         self.load_media(file_path)
+        if self.torrent_streamer:
+            self.torrent_streamer.resume_transfer()
         QTimer.singleShot(100, self._engine_play)
 
         self.status_bar.showMessage(f"Torrent file ready: {os.path.basename(file_path)}")
+
+    def _queue_other_selected_torrent_files(self, first_abs: str) -> None:
+        """Add other checked torrent relatives into Up next when present on disk."""
+        rels = list(getattr(self, "_pending_torrent_rel_paths", []) or [])
+        if len(rels) <= 1:
+            return
+        first_rel = rels[0].replace("\\", "/")
+        # Infer content root from the first ready file path.
+        norm_first = first_abs.replace("\\", "/")
+        root = None
+        idx = norm_first.lower().find(first_rel.lower())
+        if idx >= 0:
+            root = norm_first[:idx]
+        if not root:
+            root = os.path.dirname(first_abs) + os.sep
+        for rel in rels[1:]:
+            cand = os.path.normpath(os.path.join(root, rel.replace("/", os.sep)))
+            if os.path.isfile(cand):
+                self._torrent_active_paths.add(os.path.abspath(cand))
+                if self.playlist.find_file_index(cand) is None:
+                    self.playlist.add_media_file(cand)
+        self._sync_now_playing_queue()
 
     def on_torrent_error(self, error_message: str):
         """Handle torrent errors"""
         QMessageBox.warning(self, "Torrent Error", error_message)
         self.status_bar.showMessage("Torrent error occurred.")
+        self._stop_torrent_session(silent=True)
 
     def filter_playlist(self, search_text):
         """Filter playlist items based on search text"""
@@ -2291,6 +2476,10 @@ For more information, visit the project repository.
         )
 
     def _engine_play(self):
+        if self.torrent_streamer and self.app_state.last_file:
+            abs_last = os.path.abspath(self.app_state.last_file)
+            if abs_last in self._torrent_active_paths:
+                self.torrent_streamer.resume_transfer()
         if hasattr(self, "engine") and self.engine is not None:
             self.engine.play()
 
@@ -2498,14 +2687,26 @@ For more information, visit the project repository.
             # Audio keeps the library visible; video expands the stage automatically.
             if self.is_video_path(file_path):
                 self.show_shell_page("stage")
-                if hasattr(self, "engine") and not self.engine.has_embedded_video:
-                    # Re-bind libmpv into the visible stage (X11/XWayland).
-                    rebound = self.engine.rebind_video_widget()
-                    if not rebound:
-                        self.status_bar.showMessage(
-                            "Video embed limited on this display — audio via libmpv still works",
-                            5000,
-                        )
+                if hasattr(self, "engine"):
+                    # Always re-bind WID after the stage is shown so video stays in-app
+                    # (never an external mpv window).
+                    def _rebind():
+                        rebound = self.engine.rebind_video_widget()
+                        if hasattr(self, "now_playing"):
+                            label = (
+                                "libmpv (embedded)"
+                                if rebound
+                                else "libmpv (audio)"
+                            )
+                            self.now_playing.engine_label.setText(f"Engine: {label}")
+                        if not rebound:
+                            self.status_bar.showMessage(
+                                "Video embed limited on this display — audio via libmpv still works",
+                                5000,
+                            )
+
+                    QTimer.singleShot(0, _rebind)
+                    QTimer.singleShot(150, _rebind)
             else:
                 self.minimize_now_playing_view()
 
@@ -2802,13 +3003,23 @@ For more information, visit the project repository.
 
     def toggle_playback(self):
         """Toggle play/pause"""
-        if hasattr(self, "engine") and self.engine is not None:
-            self.engine.toggle()
+        if not hasattr(self, "engine") or self.engine is None:
+            return
+        if self.engine.is_playing():
+            self.engine.pause()
+            if self.torrent_streamer and self.app_state.last_file:
+                if os.path.abspath(self.app_state.last_file) in self._torrent_active_paths:
+                    self.torrent_streamer.pause_transfer()
+                    self.status_bar.showMessage("Torrent transfer paused (not playing).", 3000)
+        else:
+            self._engine_play()
 
     def stop_playback(self):
-        """Stop playback"""
+        """Stop playback and pause any torrent transfer until play resumes."""
         if hasattr(self, "engine") and self.engine is not None:
             self.engine.stop()
+        if self.torrent_streamer:
+            self.torrent_streamer.pause_transfer()
 
     def toggle_mute(self):
         """Toggle mute via libmpv without fighting the volume slider."""
@@ -2859,12 +3070,12 @@ For more information, visit the project repository.
         self.controls.volume_slider.setValue(int(new_volume))
         self.set_volume(int(new_volume))
 
-    def seek_to_position(self, position):
-        """Seek to position (0.0-1.0)"""
+    def seek_to_position(self, position, exact: bool = True):
+        """Seek to position (0.0-1.0). Scrub uses exact=False to avoid UI freezes."""
         if hasattr(self, "engine") and self.engine is not None:
             dur = self.engine.duration()
             if dur > 0:
-                self.engine.set_position(int(position * dur))
+                self.engine.set_position(int(position * dur), exact=exact)
 
     def seek_relative(self, seconds):
         """Seek relative to current position"""
@@ -3198,7 +3409,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.3.2")
+    app.setApplicationVersion("1.3.3")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

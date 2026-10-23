@@ -12,6 +12,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Broader subtitle format support where maintainable
 - Skin/theme packs; optional local control daemon; Android / GrapheneOS companion phase
 
+## [1.3.3] - 2026-10-23
+
+### Fixed
+- In-app video embed: do not open an external mpv window; bind WID before loading video
+- Seek scrubbing no longer freezes the UI on large jumps (deferred keyframe seek; exact on release)
+- Torrent picker: select multiple files across folders; ROADMAP scrub of excluded-scope wording
+
+### Changed
+- ROADMAP: stronger native Rust/C/Zig migration stance for long-run performance
+
 ## [1.3.2] - 2026-10-23
 
 ### Fixed

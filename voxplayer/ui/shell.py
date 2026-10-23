@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from typing import Dict, List, Optional
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent, QObject
 from PyQt6.QtGui import QPixmap, QDragEnterEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QWidget,
@@ -934,16 +934,18 @@ class TransportBar(_MediaDropMixin, QWidget):
         root.addLayout(right, 2)
 
         self.seek_slider.setMouseTracking(True)
-        self.seek_slider.enterEvent = self.on_seek_hover
-        self.seek_slider.leaveEvent = self.on_seek_leave
-        self.seek_slider.mouseMoveEvent = self.on_seek_mouse_move
+        self._seek_user_active = False
+        self.seek_slider.installEventFilter(self)
 
         self.btn_play.clicked.connect(self.toggle_play)
         self.btn_stop.clicked.connect(self.stop)
         self.btn_mute.clicked.connect(self.toggle_mute)
         self.btn_prev.clicked.connect(self.previous_media)
         self.btn_next.clicked.connect(self.next_media)
-        self.seek_slider.valueChanged.connect(self.seek_changed)
+        # Do not seek on every valueChanged (playback poll updates the slider).
+        self.seek_slider.sliderPressed.connect(self._seek_pressed)
+        self.seek_slider.sliderMoved.connect(self._seek_moved)
+        self.seek_slider.sliderReleased.connect(self._seek_released)
         self.volume_slider.valueChanged.connect(self.volume_changed)
 
     def set_track_meta(self, title: str, subtitle: str = "") -> None:
@@ -990,29 +992,39 @@ class TransportBar(_MediaDropMixin, QWidget):
         if hasattr(self.parent_window, "next_media"):
             self.parent_window.next_media()
 
-    def seek_changed(self, value):
+    def _seek_pressed(self):
+        self._seek_user_active = True
+
+    def _seek_moved(self, value):
         if hasattr(self.parent_window, "seek_to_position"):
-            self.parent_window.seek_to_position(value / 1000.0)
+            self.parent_window.seek_to_position(value / 1000.0, exact=False)
+
+    def _seek_released(self):
+        self._seek_user_active = False
+        if hasattr(self.parent_window, "seek_to_position"):
+            self.parent_window.seek_to_position(self.seek_slider.value() / 1000.0, exact=True)
 
     def volume_changed(self, value):
         if hasattr(self.parent_window, "set_volume"):
             self.parent_window.set_volume(value)
         self.volume_label.setText(f"{value}%")
 
-    def on_seek_hover(self, event):
-        if hasattr(self.parent_window, "show_timeline_preview"):
-            self.parent_window.show_timeline_preview(True)
-
-    def on_seek_leave(self, event):
-        if hasattr(self.parent_window, "show_timeline_preview"):
-            self.parent_window.show_timeline_preview(False)
-
-    def on_seek_mouse_move(self, event):
-        if hasattr(self.parent_window, "update_timeline_preview"):
-            pos = event.position().x()
-            width = self.seek_slider.width()
-            if width > 0:
-                self.parent_window.update_timeline_preview(pos / width)
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if obj is self.seek_slider:
+            et = event.type()
+            if et == QEvent.Type.Enter:
+                if hasattr(self.parent_window, "show_timeline_preview"):
+                    self.parent_window.show_timeline_preview(True)
+            elif et == QEvent.Type.Leave:
+                if hasattr(self.parent_window, "show_timeline_preview"):
+                    self.parent_window.show_timeline_preview(False)
+            elif et == QEvent.Type.MouseMove:
+                if hasattr(self.parent_window, "update_timeline_preview"):
+                    width = self.seek_slider.width()
+                    if width > 0:
+                        pos = event.position().x()
+                        self.parent_window.update_timeline_preview(pos / width)
+        return super().eventFilter(obj, event)
 
     def update_time(self, current, total):
         def format_time(ms):
@@ -1024,6 +1036,8 @@ class TransportBar(_MediaDropMixin, QWidget):
         self.time_label.setText(f"{format_time(current)} / {format_time(total)}")
 
     def update_seek_position(self, position):
+        if self._seek_user_active:
+            return
         self.seek_slider.blockSignals(True)
         self.seek_slider.setValue(int(position * 1000))
         self.seek_slider.blockSignals(False)

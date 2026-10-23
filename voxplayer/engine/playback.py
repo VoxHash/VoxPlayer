@@ -97,6 +97,7 @@ class PlaybackEngine(QObject):
         self._volume_pct = 100  # 0..200 logical
         self._mpv_poll = None
         self._mpv_video_bound = False
+        self._seek_pending = None  # deferred (ms, exact) to avoid UI freezes
 
         # Compatibility aliases — UI historically touched these; they are unused for audio.
         self.media_player = None
@@ -106,26 +107,40 @@ class PlaybackEngine(QObject):
             raise NativeEngineError(native_engine_install_hint())
         self.backend_ready.emit("mpv")
 
+    @staticmethod
+    def _looks_like_video(path: str) -> bool:
+        ext = os.path.splitext(path)[1].lower()
+        return ext in {
+            ".mp4",
+            ".mkv",
+            ".avi",
+            ".mov",
+            ".wmv",
+            ".flv",
+            ".webm",
+            ".m4v",
+            ".mpg",
+            ".mpeg",
+            ".ts",
+            ".m2ts",
+            ".vob",
+        }
+
     def _try_init_mpv(self) -> bool:
-        """Initialize libmpv with WID embed when possible; audio-only otherwise."""
+        """Initialize idle libmpv with no OS window (video loads only after WID bind)."""
         ensure_mpv_safe_locale()
         try:
             mpv = require_mpv_module()
         except NativeEngineError:
             return False
 
-        # Attempt WID embed (works on X11 and typically XWayland).
+        # Idle, no window: never open an external mpv window before WID embed.
         try:
-            from PyQt6.QtCore import Qt as _Qt
-
-            self.video_widget.setAttribute(_Qt.WidgetAttribute.WA_NativeWindow, True)
-            wid = int(self.video_widget.winId())
             player = mpv.MPV(
-                wid=str(wid),
-                vo="gpu",
-                hwdec="auto-safe",
+                vo="null",
                 keep_open="yes",
                 idle="yes",
+                force_window="no",
                 input_default_bindings=False,
                 input_vo_keyboard=False,
                 osc=False,
@@ -134,33 +149,12 @@ class PlaybackEngine(QObject):
                 volume_max=200,
             )
             self._mpv = player
-            self._mpv_video_bound = True
-            self._start_mpv_poll()
-            return True
-        except Exception:
-            self._mpv = None
-            self._mpv_video_bound = False
-
-        # Audio-first mpv — reliable 0–200% volume when embed is unavailable
-        # (pure Wayland, headless, or WID failure). Video frames are not embedded.
-        try:
-            player = mpv.MPV(
-                vo="null",
-                video="no",
-                keep_open="yes",
-                idle="yes",
-                input_default_bindings=False,
-                osc=False,
-                osd_level=0,
-                volume=100,
-                volume_max=200,
-            )
-            self._mpv = player
             self._mpv_video_bound = False
             self._start_mpv_poll()
             return True
         except Exception:
             self._mpv = None
+            self._mpv_video_bound = False
             return False
 
     def _start_mpv_poll(self) -> None:
@@ -170,11 +164,13 @@ class PlaybackEngine(QObject):
         self._mpv_poll.start()
 
     def rebind_video_widget(self) -> bool:
-        """Re-attempt WID embed after the stage becomes visible (X11/XWayland)."""
-        if self._mpv is None:
+        """Bind (or re-bind) libmpv to the in-app video widget WID.
+
+        Always recreates the player against the current winId so video cannot
+        open in an external window after the stage is shown.
+        """
+        if self.video_widget is None:
             return False
-        if self._mpv_video_bound:
-            return True
         try:
             mpv = require_mpv_module()
             path = self._source_path
@@ -182,20 +178,48 @@ class PlaybackEngine(QObject):
             was_playing = self.is_playing()
             vol = self._volume_pct
             muted = self._muted
-            try:
-                self._mpv.terminate()
-            except Exception:
-                pass
+            if self._mpv is not None:
+                try:
+                    self._mpv.terminate()
+                except Exception:
+                    pass
+                self._mpv = None
             from PyQt6.QtCore import Qt as _Qt
 
             self.video_widget.setAttribute(_Qt.WidgetAttribute.WA_NativeWindow, True)
+            self.video_widget.show()
+            self.video_widget.update()
             wid = int(self.video_widget.winId())
+            if wid == 0:
+                # Keep a window-less player; do not open an external VO.
+                player = mpv.MPV(
+                    vo="null",
+                    keep_open="yes",
+                    idle="yes",
+                    force_window="no",
+                    input_default_bindings=False,
+                    osc=False,
+                    osd_level=0,
+                    volume=float(vol),
+                    volume_max=200,
+                )
+                self._mpv = player
+                self._mpv_video_bound = False
+                if path and not self._looks_like_video(path):
+                    player.play(path)
+                    player.pause = not was_playing
+                if self._mpv_poll is None:
+                    self._start_mpv_poll()
+                return False
+
+            # WID embed — video renders inside the Qt widget only.
             player = mpv.MPV(
                 wid=str(wid),
-                vo="gpu",
+                vo="x11" if sys.platform.startswith("linux") else "gpu",
                 hwdec="auto-safe",
                 keep_open="yes",
                 idle="yes",
+                force_window="no",
                 input_default_bindings=False,
                 input_vo_keyboard=False,
                 osc=False,
@@ -212,13 +236,31 @@ class PlaybackEngine(QObject):
             if path:
                 player.play(path)
                 if pos:
+                    # Keyframe seek on rebind — never block UI with exact seek here.
                     try:
-                        player.seek(pos / 1000.0, reference="absolute")
+                        player.command("seek", pos / 1000.0, "absolute")
                     except Exception:
                         pass
                 player.pause = not was_playing
+            if self._mpv_poll is None:
+                self._start_mpv_poll()
             return True
         except Exception:
+            self._mpv_video_bound = False
+            if self._mpv is None:
+                try:
+                    mpv = require_mpv_module()
+                    self._mpv = mpv.MPV(
+                        vo="null",
+                        force_window="no",
+                        keep_open="yes",
+                        idle="yes",
+                        volume=100,
+                        volume_max=200,
+                    )
+                    self._start_mpv_poll()
+                except Exception:
+                    pass
             return False
 
     @property
@@ -230,9 +272,13 @@ class PlaybackEngine(QObject):
         return bool(self._mpv_video_bound)
 
     def set_source(self, file_path: str) -> None:
+        """Remember path; load audio immediately, defer video until WID embed."""
         self._source_path = file_path
         if self._mpv is None:
             self.error_occurred.emit("Native engine not initialized")
+            return
+        # Video without embed would open an external mpv window — wait for rebind.
+        if self._looks_like_video(file_path) and not self._mpv_video_bound:
             return
         try:
             self._mpv.play(file_path)
@@ -294,16 +340,42 @@ class PlaybackEngine(QObject):
             pass
         return self._duration_ms
 
-    def set_position(self, ms: int) -> None:
+    def set_position(self, ms: int, exact: bool = False) -> None:
+        """Seek without freezing the UI.
+
+        Scrubbing uses keyframe seeks; ``exact=True`` (slider release) uses a
+        deferred absolute seek so large jumps do not block the Qt event loop.
+        """
         if self._mpv is None:
             return
+        ms = max(0, int(ms))
+        self._seek_pending = (ms, bool(exact))
+        # Coalesce rapid scrub events onto the next event-loop tick.
+        QTimer.singleShot(0, self._flush_pending_seek)
+
+    def _flush_pending_seek(self) -> None:
+        if self._mpv is None or self._seek_pending is None:
+            return
+        ms, exact = self._seek_pending
+        self._seek_pending = None
+        seconds = max(0.0, float(ms) / 1000.0)
         try:
-            self._mpv.seek(ms / 1000.0, reference="absolute")
+            if exact:
+                # Prefer non-blocking absolute seek; fall back if needed.
+                try:
+                    self._mpv.command("seek", seconds, "absolute")
+                except Exception:
+                    self._mpv.time_pos = seconds
+            else:
+                self._mpv.command("seek", seconds, "absolute", "keyframes")
         except Exception:
-            pass
+            try:
+                self._mpv.seek(seconds, reference="absolute")
+            except Exception:
+                pass
 
     def seek_relative(self, seconds: float) -> None:
-        self.set_position(max(0, self.position() + int(seconds * 1000)))
+        self.set_position(max(0, self.position() + int(seconds * 1000)), exact=True)
 
     def volume_percent(self) -> int:
         """Logical user volume 0..200."""

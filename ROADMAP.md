@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.3.2**). Stack: **PyQt6 shell** + **libmpv-only playback** (python-mpv + system libmpv). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.3.3**). Stack: **PyQt6 shell** + **libmpv-only playback** (python-mpv + system libmpv). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -68,6 +68,9 @@ Industry desktop players keep demux → decode → output in C/native code and r
 | **2** | Rust/C metadata + thumbnail worker pool (queue from Python, results via callbacks) | Next |
 | **3** | Optional Zig experiments for alternate scanners / packagers if Rust artifacts are heavy | Later |
 | **4** | Keep PyQt6 as the product surface; avoid second playback engines | Ongoing |
+| **5** | Harden in-app video WID embed + non-blocking seeks on all desktop targets | In progress |
+
+**Long-run stance:** Keep investing in Rust/C (and Zig where it helps packaging) for hot paths so memory and parallel work stay efficient while the desktop shell remains PyQt6. That is how the project stays robust as library size and features grow.
 
 Build Phase 1 locally: `cargo build --release --manifest-path native/Cargo.toml`.
 
@@ -115,8 +118,7 @@ GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analyti
 - Optional plugin hooks that stay out of the core path
 - WebAssembly / TUI clients talking to the local daemon
 - Packaging: ship libmpv (or clear per-OS installers) inside desktop bundles for Windows/macOS/Linux
-
-
+- Continue growing the native (Rust / C / optional Zig) surface area for scan, metadata, and other hot paths so the PyQt6 shell stays light under heavy multitasking
 
 ---
 

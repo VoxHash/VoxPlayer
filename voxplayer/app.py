@@ -957,7 +957,7 @@ class VoxPlayerMainWindow(QMainWindow):
         # Torrent and update functionality
         self.torrent_streamer = None
         self.update_checker = None
-        self.current_version = "1.2.1"
+        self.current_version = "1.3.1"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
@@ -3187,7 +3187,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.3.0")
+    app.setApplicationVersion("1.3.1")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

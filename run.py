@@ -27,6 +27,12 @@ def _reexec_with_venv_if_needed() -> None:
 
 def _preflight_native_engine() -> None:
     """Fail fast with install guidance if python-mpv / libmpv are missing."""
+    import locale
+
+    try:
+        locale.setlocale(locale.LC_NUMERIC, "C")
+    except locale.Error:
+        pass
     try:
         import mpv
     except ImportError:

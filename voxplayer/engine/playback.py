@@ -24,8 +24,19 @@ class NativeEngineError(RuntimeError):
     """Raised when libmpv / python-mpv cannot be initialized."""
 
 
+def ensure_mpv_safe_locale() -> None:
+    """libmpv requires LC_NUMERIC=C; other locales can segfault on mpv_set_option."""
+    import locale
+
+    try:
+        locale.setlocale(locale.LC_NUMERIC, "C")
+    except locale.Error:
+        pass
+
+
 def prefer_xcb_for_mpv_embed() -> None:
     """Prefer X11/XWayland so libmpv WID embedding works under Wayland sessions."""
+    ensure_mpv_safe_locale()
     if os.getenv("VOXPLAYER_FORCE_WAYLAND", "").strip() in {"1", "true", "yes"}:
         return
     if os.getenv("DISPLAY") and not os.getenv("VOXPLAYER_KEEP_QPA"):
@@ -49,7 +60,6 @@ def native_engine_install_hint() -> str:
         "  • Fedora:             sudo dnf install mpv-libs",
         "  • macOS (Homebrew):   brew install mpv",
         "  • Windows:            install mpv / libmpv and ensure mpv-2.dll is on PATH",
-        "                        ",
         "",
         "Wayland note: prefer X11/XWayland for embedded video (DISPLAY set).",
         "On pure Wayland, audio volume still works; video embed may be limited.",
@@ -98,6 +108,7 @@ class PlaybackEngine(QObject):
 
     def _try_init_mpv(self) -> bool:
         """Initialize libmpv with WID embed when possible; audio-only otherwise."""
+        ensure_mpv_safe_locale()
         try:
             mpv = require_mpv_module()
         except NativeEngineError:

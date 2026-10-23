@@ -30,7 +30,7 @@ Package: [https://pypi.org/project/voxplayer/](https://pypi.org/project/voxplaye
 | Debian / Ubuntu | `sudo apt install libmpv2` (or `libmpv1` on older releases) |
 | Fedora | `sudo dnf install mpv-libs` |
 | macOS | `brew install mpv` |
-| Windows | Install libmpv and ensure `mpv-2.dll` is on `PATH` (see python-mpv docs) |
+| Windows | Install libmpv and ensure `mpv-2.dll` is on `PATH` |
 
 Prefer **X11 / XWayland** for embedded video (`DISPLAY` set). On pure Wayland, audio volume still works; video embed may be limited.
 

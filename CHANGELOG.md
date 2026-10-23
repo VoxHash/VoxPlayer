@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Broader subtitle format support where maintainable
 - Skin/theme packs; optional local control daemon; Android / GrapheneOS companion phase
 
+## [1.3.1] - 2026-10-23
+
+### Fixed
+- libmpv startup segfault under non-C locales (`LC_NUMERIC=C` before engine init)
+- Native-engine install dialog no longer cites third-party GitHub installation URLs
+
 ## [1.3.0] - 2026-10-23
 
 ### Added

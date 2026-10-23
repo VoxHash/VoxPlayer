@@ -40,6 +40,7 @@ from .engine.playback import (
     NativeEngineError,
     show_native_engine_failure,
     embed_platform_hint,
+    embed_status_message,
 )
 from .media.thumbnails import ThumbnailCache, get_thumbnail_path, _cache_root as _thumb_cache_root
 from .media.metadata import (
@@ -114,6 +115,27 @@ class AppState:
             self.library_roots = []
         if self.repeat_mode not in ("off", "one", "all"):
             self.repeat_mode = "off"
+
+def qbittorrent_webui_setup_text() -> str:
+    """First-run / error copy for enabling the Web UI — never embeds secrets."""
+    host = os.getenv("QB_HOST", "localhost:8080")
+    return (
+        "qBittorrent Web UI setup (required for torrent streaming)\n"
+        "────────────────────────────────────────\n"
+        "1. Open qBittorrent → Tools → Options → Web UI.\n"
+        "2. Enable “Web User Interface (Remote control)”.\n"
+        "3. Prefer “Bypass authentication for clients on localhost” for local use,\n"
+        "   or set a username/password you choose yourself.\n"
+        "4. Note the IP and port (default often 127.0.0.1:8080).\n"
+        "5. Tell VoxPlayer via environment variables (optional if localhost + bypass):\n"
+        f"     QB_HOST={host}\n"
+        "     QB_USERNAME=…   (only if auth is required)\n"
+        "     QB_PASSWORD=…   (only if auth is required; never commit these)\n"
+        "\n"
+        "VoxPlayer does not ship or store default passwords. Keep credentials in your\n"
+        "shell profile or a private env file — not in the repository."
+    )
+
 
 @dataclass
 class SubtitleTrack:
@@ -242,8 +264,8 @@ class TorrentStreamer(QThread):
             ) from exc
         except Exception as exc:
             raise RuntimeError(
-                f"Failed to connect to qBittorrent at '{os.getenv('QB_HOST', 'localhost:8080')}'. "
-                "Please ensure qBittorrent is running, Web UI is enabled, and QB_USERNAME/QB_PASSWORD are set if auth is required."
+                f"Failed to connect to qBittorrent at '{os.getenv('QB_HOST', 'localhost:8080')}'.\n\n"
+                + qbittorrent_webui_setup_text()
             ) from exc
 
     def _add_magnet_link(self):
@@ -509,10 +531,12 @@ class TorrentStreamer(QThread):
         self.stream_file_size = file_size
         self.stream_file_path = os.path.join(self.temp_dir, file_name)
 
+        self._seq_reasserted = False
         self._prioritize_selected_file(file_index)
+        buf_mb = max(1, self._buffer_target_bytes() // (1024 * 1024))
         self.progress_updated.emit(
             45,
-            f"Sequential mode enabled for {os.path.basename(file_name)}",
+            f"Sequential mode + ~{buf_mb} MiB buffer for {os.path.basename(file_name)}",
         )
 
     def _set_sequential_download(self):
@@ -660,18 +684,63 @@ class TorrentStreamer(QThread):
                 pass
 
     def _buffer_target_bytes(self) -> int:
-        """Compute startup buffer based on file size/container."""
+        """Safer startup buffer: enough header/moov, not a huge wait before first play.
+
+        Overrides via env (no secrets):
+          VOXPLAYER_TORRENT_BUFFER_MB   absolute megabytes (optional)
+          VOXPLAYER_TORRENT_BUFFER_PCT  percent of file size as float 0–100 (optional)
+        """
         if self.stream_file_size <= 0 or not self.stream_file_path:
             return 0
         _, ext = os.path.splitext(self.stream_file_path.lower())
-        base = 64 * 1024 * 1024 if ext == ".mkv" else 32 * 1024 * 1024
-        pct_target = int(self.stream_file_size * 0.02)
-        return min(max(base, pct_target), 256 * 1024 * 1024)
+        audio_ext = {
+            ".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma", ".opus", ".ape", ".aiff",
+        }
+        # Conservative bases: start sooner; sequential + first/last piece cover seeking.
+        if ext in audio_ext:
+            base = 4 * 1024 * 1024
+            soft_cap = 24 * 1024 * 1024
+            pct = 0.01
+        elif ext == ".mkv":
+            base = 24 * 1024 * 1024
+            soft_cap = 96 * 1024 * 1024
+            pct = 0.015
+        else:
+            base = 12 * 1024 * 1024
+            soft_cap = 64 * 1024 * 1024
+            pct = 0.012
+
+        env_mb = os.getenv("VOXPLAYER_TORRENT_BUFFER_MB", "").strip()
+        env_pct = os.getenv("VOXPLAYER_TORRENT_BUFFER_PCT", "").strip()
+        try:
+            if env_pct:
+                pct = max(0.001, min(0.10, float(env_pct) / 100.0))
+        except ValueError:
+            pass
+        pct_target = int(self.stream_file_size * pct)
+        # Never require more than ~8% of a small file or the soft cap.
+        hard_cap = min(soft_cap, max(base, int(self.stream_file_size * 0.08)))
+        required = min(max(base, pct_target), hard_cap)
+        try:
+            if env_mb:
+                required = max(1024 * 1024, int(float(env_mb) * 1024 * 1024))
+                required = min(required, soft_cap)
+        except ValueError:
+            pass
+        # Tiny files: wait for most of the file.
+        if self.stream_file_size < base:
+            required = max(1, int(self.stream_file_size * 0.85))
+        return required
 
     def _is_buffer_ready(self):
         """Return whether selected file has enough sequentially downloaded data."""
         if self.stream_file_index is None:
             return False, 0, 0
+        # Re-assert sequential + first/last on each poll until ready (client may reset).
+        if not getattr(self, "_seq_reasserted", False):
+            self._set_sequential_download()
+            self._set_first_last_piece_priority()
+            self._seq_reasserted = True
         required = self._buffer_target_bytes()
         for item in self._torrent_files():
             idx = self._file_index(item)
@@ -679,6 +748,9 @@ class TorrentStreamer(QThread):
                 size = int(getattr(item, "size", 0) or 0)
                 progress = float(getattr(item, "progress", 0.0) or 0.0)
                 downloaded = int(size * progress)
+                # Also treat near-complete small remainder as ready.
+                if size > 0 and (size - downloaded) <= 512 * 1024 and progress >= 0.95:
+                    return True, downloaded, required
                 return downloaded >= required, downloaded, required
         return False, 0, required
 
@@ -1160,7 +1232,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self._torrent_active_paths = set()  # local paths belonging to the active torrent session
         self._pending_torrent_rel_paths: List[str] = []
         self.update_checker = None
-        self.current_version = "1.10.0"
+        self.current_version = "1.11.0"
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}
@@ -1755,6 +1827,10 @@ class VoxPlayerMainWindow(QMainWindow):
         open_torrent_action.triggered.connect(self.open_torrent_file)
         torrent_menu.addAction(open_torrent_action)
 
+        webui_setup_action = QAction("Web UI &Setup Guide…", self)
+        webui_setup_action.triggered.connect(self.show_qbittorrent_webui_setup)
+        torrent_menu.addAction(webui_setup_action)
+
         stop_torrent_action = QAction("&Stop Torrent", self)
         stop_torrent_action.setShortcut("Ctrl+Shift+T")
         stop_torrent_action.triggered.connect(self.stop_torrent)
@@ -1963,14 +2039,24 @@ class VoxPlayerMainWindow(QMainWindow):
         self._on_backend_ready(self.engine.backend_name)
 
     def _on_backend_ready(self, name: str):
+        if hasattr(self, "engine") and self.engine is not None:
+            self.engine.refresh_embed_hint()
         embed = getattr(self.engine, "has_embedded_video", False)
-        label = "native C core (embedded)" if embed else "native C core (audio)"
+        hint = embed_platform_hint()
+        if embed:
+            label = "native C core (embedded)"
+        elif hint == "wayland-limited":
+            label = "native C core (audio; Wayland embed limited)"
+        else:
+            label = "native C core (audio)"
         if name not in ("native", "mpv"):
             label = "native C core"
         if hasattr(self, "now_playing"):
             self.now_playing.engine_label.setText(f"Engine: {label}")
         if hasattr(self, "status_bar"):
-            self.status_bar.showMessage(f"Playback engine: {label}", 4000)
+            self.status_bar.showMessage(
+                f"Playback engine: {label} — {embed_status_message(hint)}", 6000
+            )
 
     def _reassert_engine_volume(self):
         """Re-push the engine's last logical volume after the native engine opens a stream.
@@ -2163,8 +2249,45 @@ For more information, visit the project repository.
         """
         QMessageBox.information(self, "VoxPlayer Help", help_text)
 
+    def show_qbittorrent_webui_setup(self, _checked: bool = False) -> None:
+        """Show help copy for enabling the Web UI (no embedded secrets)."""
+        QMessageBox.information(
+            self,
+            "qBittorrent Web UI setup",
+            qbittorrent_webui_setup_text(),
+        )
+        self.settings.settings.setValue("torrent_webui_setup_seen", True)
+
+    def _ensure_torrent_webui_setup_seen(self) -> bool:
+        """On first torrent action, show setup guide once. Returns False if user cancels."""
+        seen_raw = self.settings.settings.value("torrent_webui_setup_seen", False)
+        if isinstance(seen_raw, str):
+            seen = seen_raw.strip().lower() in {"1", "true", "yes"}
+        else:
+            seen = bool(seen_raw)
+        if seen:
+            return True
+        box = QMessageBox(self)
+        box.setWindowTitle("Torrent streaming — first run")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setText(
+            "Torrent streaming uses your local qBittorrent Web UI.\n\n"
+            "Read the short setup guide before continuing. "
+            "VoxPlayer never ships default passwords."
+        )
+        box.setInformativeText(qbittorrent_webui_setup_text())
+        cont = box.addButton("Continue", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is not cont:
+            return False
+        self.settings.settings.setValue("torrent_webui_setup_seen", True)
+        return True
+
     def open_magnet_link(self):
         """Open magnet link dialog"""
+        if not self._ensure_torrent_webui_setup_seen():
+            return
         magnet_link, ok = QInputDialog.getText(
             self, "Open Magnet Link", "Enter magnet link:"
         )
@@ -2173,6 +2296,8 @@ For more information, visit the project repository.
 
     def open_torrent_file(self):
         """Open torrent file dialog"""
+        if not self._ensure_torrent_webui_setup_seen():
+            return
         default_dir = os.path.expanduser("~/Downloads/Torrents")
         if not os.path.isdir(default_dir):
             default_dir = os.path.expanduser("~/Downloads")
@@ -3833,7 +3958,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.10.0")
+    app.setApplicationVersion("1.11.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

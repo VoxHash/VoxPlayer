@@ -7,12 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Wayland compositor video embed without a second media stack
 - Watch-folder / incremental `vox_scan` re-index
 - Deeper library facets (albums, artists, play counts, recently played / never played)
-- Safer torrent sequential-download defaults and buffer thresholds; first-run Web UI setup copy
 - Broader subtitle format support where maintainable
 - Optional local control daemon; Android / GrapheneOS companion phase
+
+## [1.11.0] - 2026-10-23
+
+### Added
+- Wayland embed path: force X11/XWayland when `DISPLAY` is set; probe future `libvlc_media_player_set_wayland_surface`; skip XID bind on pure Wayland without that API; clearer embed status copy (`VOXPLAYER_EMBED` / `VOXPLAYER_FORCE_WAYLAND`)
+- Safer torrent startup buffers (smaller audio/video bases, soft caps, env overrides `VOXPLAYER_TORRENT_BUFFER_MB` / `_PCT`); re-assert sequential + first/last piece priority
+- First-run qBittorrent Web UI setup guide (Media → Torrent → Web UI Setup Guide) with no embedded secrets; connection errors reuse the same copy
+
+### Changed
+- ROADMAP Wayland embed, torrent buffer, and first-run Web UI items marked done
 
 ## [1.10.0] - 2026-10-23
 

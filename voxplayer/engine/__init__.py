@@ -10,6 +10,8 @@ from .playback import (
     show_native_engine_failure,
     require_vlc_module,
     embed_platform_hint,
+    embed_status_message,
+    libvlc_has_wayland_surface_api,
 )
 
 __all__ = [
@@ -22,4 +24,6 @@ __all__ = [
     "show_native_engine_failure",
     "require_vlc_module",
     "embed_platform_hint",
+    "embed_status_message",
+    "libvlc_has_wayland_surface_api",
 ]

@@ -40,35 +40,110 @@ def _x_init_threads() -> None:
         pass
 
 
+def _env_truthy(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
+
+
 def prefer_xcb_for_embed() -> None:
-    """Prefer X11/XWayland so window-ID video embed works under Wayland sessions."""
+    """Prefer X11/XWayland so window-ID video embed works under Wayland sessions.
+
+    Wayland sessions often export both ``WAYLAND_DISPLAY`` and ``DISPLAY`` (XWayland).
+    Forcing ``QT_QPA_PLATFORM=xcb`` when DISPLAY is available is the reliable embed
+    path on current system libvlc (3.x has no public Wayland surface bind API yet).
+    """
     _x_init_threads()
-    if os.getenv("VOXPLAYER_FORCE_WAYLAND", "").strip() in {"1", "true", "yes"}:
+    if _env_truthy("VOXPLAYER_FORCE_WAYLAND"):
         return
-    if os.getenv("DISPLAY") and not os.getenv("VOXPLAYER_KEEP_QPA"):
-        os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+    if _env_truthy("VOXPLAYER_KEEP_QPA"):
+        return
+    mode = (os.getenv("VOXPLAYER_EMBED") or "auto").strip().lower()
+    if mode == "wayland":
+        return
+    if mode == "xcb" or (mode == "auto" and os.getenv("DISPLAY")):
+        # Force (not setdefault): session defaults to wayland must not win over embed.
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 
 # Backward-compatible alias used by older call sites
 prefer_xcb_for_mpv_embed = prefer_xcb_for_embed
 
 
+def libvlc_has_wayland_surface_api() -> bool:
+    """True when libvlc exports a Wayland surface bind (VLC 4+ / experimental builds)."""
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        import ctypes
+
+        for libname in ("libvlc.so.5", "libvlc.so"):
+            try:
+                lib = ctypes.CDLL(libname)
+            except OSError:
+                continue
+            if hasattr(lib, "libvlc_media_player_set_wayland_surface"):
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def qt_platform_name() -> str:
+    """Return the live Qt platform plugin name when a QGuiApplication exists."""
+    try:
+        from PyQt6.QtGui import QGuiApplication
+
+        app = QGuiApplication.instance()
+        if app is not None:
+            name = (app.platformName() or "").strip().lower()
+            if name:
+                return name
+    except Exception:
+        pass
+    return (os.environ.get("QT_QPA_PLATFORM") or "").strip().lower()
+
+
 def embed_platform_hint() -> str:
     """Short note about the current session's embed prospects."""
-    qpa = (os.environ.get("QT_QPA_PLATFORM") or "").lower()
-    if sys.platform.startswith("linux"):
-        if "wayland" in qpa and "xcb" not in qpa:
-            return "wayland-limited"
-        if os.environ.get("DISPLAY"):
-            return "x11"
-        if os.environ.get("WAYLAND_DISPLAY"):
-            return "wayland-limited"
-        return "linux-unknown"
     if sys.platform == "win32":
         return "win32"
     if sys.platform == "darwin":
         return "darwin"
-    return "other"
+    if not sys.platform.startswith("linux"):
+        return "other"
+
+    plat = qt_platform_name()
+    if "wayland" in plat and "xcb" not in plat:
+        if libvlc_has_wayland_surface_api():
+            return "wayland-native"
+        return "wayland-limited"
+    if "xcb" in plat or "x11" in plat:
+        return "x11"
+    if os.getenv("DISPLAY"):
+        return "x11"
+    if os.getenv("WAYLAND_DISPLAY"):
+        if libvlc_has_wayland_surface_api():
+            return "wayland-native"
+        return "wayland-limited"
+    return "linux-unknown"
+
+
+def embed_status_message(hint: Optional[str] = None) -> str:
+    """User-facing one-liner for the engine / status bar."""
+    h = hint or embed_platform_hint()
+    if h == "x11":
+        return "Video embed: X11/XWayland (window-ID)"
+    if h == "wayland-native":
+        return "Video embed: Wayland surface (native libvlc)"
+    if h == "wayland-limited":
+        return (
+            "Video embed limited on pure Wayland — relaunch with X11/XWayland "
+            "(unset VOXPLAYER_FORCE_WAYLAND; ensure DISPLAY is set) for in-app video"
+        )
+    if h == "win32":
+        return "Video embed: HWND"
+    if h == "darwin":
+        return "Video embed: NSObject"
+    return f"Video embed: {h}"
 
 
 def native_engine_install_hint() -> str:
@@ -89,8 +164,10 @@ def native_engine_install_hint() -> str:
         "  • macOS (Homebrew):   brew install vlc",
         "  • Windows:            install VLC and ensure libvlc.dll is on PATH",
         "",
-        "Wayland note: prefer X11/XWayland for embedded video (DISPLAY set).",
-        "  Pure Wayland may limit WID embed; audio volume still works.",
+        "Wayland / embed:",
+        "  • Default: force X11/XWayland when DISPLAY is set (reliable in-app video).",
+        "  • Pure Wayland without libvlc Wayland surface API: audio works; video embed is limited.",
+        "  • VOXPLAYER_EMBED=xcb|wayland|auto   VOXPLAYER_FORCE_WAYLAND=1   VOXPLAYER_KEEP_QPA=1",
     ]
     return "\n".join(lines)
 
@@ -312,8 +389,67 @@ class PlaybackEngine(QObject):
         except Exception:
             return 0
 
+    def _try_bind_wayland_surface(self) -> bool:
+        """Bind via libvlc Wayland surface API when the compositor build exports it."""
+        if self._player is None or not sys.platform.startswith("linux"):
+            return False
+        if not libvlc_has_wayland_surface_api():
+            return False
+        try:
+            import ctypes
+            from PyQt6.QtGui import QGuiApplication
+
+            app = QGuiApplication.instance()
+            if app is None or self.video_widget is None:
+                return False
+            wh = self.video_widget.window().windowHandle()
+            if wh is None:
+                self.video_widget.winId()
+                wh = self.video_widget.window().windowHandle()
+            if wh is None:
+                return False
+            # Best-effort: future PyQt builds may expose display/surface pointers.
+            display = surface = None
+            try:
+                ni = app.nativeInterface(type(wh))
+                display = getattr(ni, "display", None) or getattr(ni, "wlDisplay", None)
+                surface = getattr(ni, "surface", None) or getattr(ni, "wlSurface", None)
+            except Exception:
+                pass
+            if not display or not surface:
+                return False
+            lib = None
+            for libname in ("libvlc.so.5", "libvlc.so"):
+                try:
+                    lib = ctypes.CDLL(libname)
+                    break
+                except OSError:
+                    continue
+            if lib is None or not hasattr(lib, "libvlc_media_player_set_wayland_surface"):
+                return False
+            fn = lib.libvlc_media_player_set_wayland_surface
+            fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+            fn.restype = None
+            # python-vlc MediaPlayer wraps a C pointer at ._as_parameter_ / .value
+            player_ptr = getattr(self._player, "_as_parameter_", None) or int(self._player)
+            fn(ctypes.c_void_p(int(player_ptr)), ctypes.c_void_p(int(display)), ctypes.c_void_p(int(surface)))
+            self._embed_hint = "wayland-native"
+            return True
+        except Exception:
+            return False
+
     def _apply_wid(self, wid: int) -> bool:
-        if self._player is None or wid == 0:
+        if self._player is None:
+            return False
+        # Prefer native Wayland surface bind when available (no second media stack).
+        if self._try_bind_wayland_surface():
+            return True
+        hint = embed_platform_hint()
+        # Pure Wayland without the surface API: skip XID bind (avoids a detached toplevel).
+        if hint == "wayland-limited" and sys.platform.startswith("linux"):
+            self._embed_hint = "wayland-limited"
+            return False
+        if wid == 0:
             return False
         try:
             if sys.platform.startswith("linux"):
@@ -421,10 +557,18 @@ class PlaybackEngine(QObject):
     @property
     def embed_limited(self) -> bool:
         """True when the session is unlikely to host reliable WID video."""
-        return self._embed_hint == "wayland-limited" and not self._video_bound
+        hint = embed_platform_hint()
+        self._embed_hint = hint
+        return hint == "wayland-limited" and not self._video_bound
 
     @property
     def embed_platform(self) -> str:
+        self._embed_hint = embed_platform_hint()
+        return self._embed_hint
+
+    def refresh_embed_hint(self) -> str:
+        """Re-evaluate platform after QApplication exists; return current hint."""
+        self._embed_hint = embed_platform_hint()
         return self._embed_hint
 
     def _load_media_path(self, file_path: str, start_paused: bool = True) -> None:

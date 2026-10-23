@@ -36,10 +36,12 @@ python app.py
 
 ## qBittorrent Web UI
 
+First-run in the app: **Media → Torrent → Web UI Setup Guide…** (also shown once before the first magnet/torrent open). VoxPlayer never ships default passwords.
+
 1. Start qBittorrent (or `qbittorrent-nox --webui-port=8080`)
 2. Enable Web UI in preferences
-3. Set a username/password you control
-4. Export matching `QB_*` variables before launching VoxPlayer
+3. Prefer “Bypass authentication for clients on localhost”, or set a username/password you control
+4. Export matching `QB_*` variables before launching VoxPlayer when auth is required
 5. Too many failed logins can temporarily ban your IP — clear bans in qBittorrent if auth suddenly returns 403
 
 ## Secrets
@@ -50,12 +52,15 @@ Never commit `.env` files or real Web UI passwords. `.gitignore` already exclude
 
 **Native C media core is the only playback engine** (`python-vlc` + system libvlc). Volume 0–200% and mute use native-engine properties. There is no Qt Multimedia playback path — missing native C media core exits with install instructions.
 
-Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video embed. On pure Wayland, audio volume still works; embed may be limited.
+Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video embed. On pure Wayland without a libvlc Wayland surface API, audio volume still works; embed may be limited.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `VOXPLAYER_EMBED` | `auto` | `auto` / `xcb` / `wayland` — embed preference |
 | `VOXPLAYER_FORCE_WAYLAND` | unset | Set to `1` to skip X11 preference under Wayland |
 | `VOXPLAYER_KEEP_QPA` | unset | Set to `1` to leave `QT_QPA_PLATFORM` unchanged |
+| `VOXPLAYER_TORRENT_BUFFER_MB` | unset | Override torrent startup buffer (MiB) |
+| `VOXPLAYER_TORRENT_BUFFER_PCT` | unset | Override buffer as percent of file size (0–100) |
 | `ACOUSTID_API_KEY` | unset | Optional AcoustID client key for audio fingerprint lookup |
 | `TMDB_API_KEY` | unset | Optional TMDB key for video title/poster enrichment |
 | `FPCALC` | `fpcalc` | Path to AcoustID `fpcalc` binary when using fingerprinting |

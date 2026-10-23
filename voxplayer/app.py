@@ -80,6 +80,7 @@ from .codecs import (
     probe_file_codecs,
     probe_system_codecs,
 )
+from .plugins import PluginManager, plugins_dir
 from .multiroom import (
     RoomPeer,
     fanout_action,
@@ -1298,6 +1299,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.control_daemon = ControlDaemon()
         self.multiroom = load_multiroom_config()
         self._multiroom_inbound = False
+        self.plugin_manager = PluginManager()
         # Phase 2: Rust metadata + thumbnail worker pool (optional; falls back to sync Python).
         self.native_workers = NativeMediaWorkers(self)
         if self.native_workers.available:
@@ -1472,6 +1474,7 @@ class VoxPlayerMainWindow(QMainWindow):
             )
             self.controls.set_viz_enabled(bool(self.app_state.spectrum_meter_enabled))
         self._setup_mpris_and_daemon()
+        self._setup_plugins()
 
     def show_shell_page(self, page: str):
         self._shell_page = page
@@ -1798,6 +1801,8 @@ class VoxPlayerMainWindow(QMainWindow):
             stats_by_path=stats.stats if stats else None,
         )
         self.home_view.set_facets(facets)
+        if hasattr(self, "plugin_manager"):
+            self.plugin_manager.emit("on_library_changed", items)
 
     def apply_facet_bucket(self, facet_key: str, bucket: str):
         stats = getattr(self, "library_index", None)
@@ -2417,6 +2422,16 @@ class VoxPlayerMainWindow(QMainWindow):
         codec_support_action.triggered.connect(self.show_codec_support)
         help_menu.addAction(codec_support_action)
 
+        plugins_action = QAction("&Plugins…", self)
+        plugins_action.triggered.connect(self.show_plugins_info)
+        help_menu.addAction(plugins_action)
+
+        help_menu.addSeparator()
+
+        # Plugin-contributed actions (shell-side only)
+        self._plugins_menu = help_menu.addMenu("Plugin &actions")
+        self._refresh_plugin_actions_menu()
+
         help_menu.addSeparator()
 
         check_updates_action = QAction("&Check for Updates", self)
@@ -2690,6 +2705,49 @@ For more information, visit the project repository.
             "(default any)."
         )
         QMessageBox.information(self, "Codec support", body)
+
+    def _setup_plugins(self) -> None:
+        """Load optional shell plugins; never touches the native C core."""
+        if not hasattr(self, "plugin_manager"):
+            return
+        self.plugin_manager.attach_host(self)
+        loaded = self.plugin_manager.load_all()
+        self.plugin_manager.emit("on_app_ready")
+        self._refresh_plugin_actions_menu()
+        if loaded:
+            ok = sum(1 for p in loaded if not p.error)
+            self.status_bar.showMessage(
+                f"Plugins: {ok} loaded from {plugins_dir()}", 4000
+            )
+
+    def _refresh_plugin_actions_menu(self) -> None:
+        menu = getattr(self, "_plugins_menu", None)
+        if menu is None:
+            return
+        menu.clear()
+        actions = []
+        if hasattr(self, "plugin_manager"):
+            actions = self.plugin_manager.collect_actions()
+        if not actions:
+            empty = QAction("(no plugin actions)", self)
+            empty.setEnabled(False)
+            menu.addAction(empty)
+            return
+        for item in actions:
+            act = QAction(item["label"], self)
+            cb = item["callback"]
+            act.triggered.connect(cb)
+            menu.addAction(act)
+
+    def show_plugins_info(self) -> None:
+        if not hasattr(self, "plugin_manager"):
+            QMessageBox.information(self, "Plugins", "Plugin manager unavailable.")
+            return
+        QMessageBox.information(
+            self,
+            "Plugins",
+            self.plugin_manager.status_summary(),
+        )
 
     def show_qbittorrent_webui_setup(self, _checked: bool = False) -> None:
         """Show help copy for enabling the Web UI (no embedded secrets)."""
@@ -3577,6 +3635,18 @@ For more information, visit the project repository.
             # Optional waveform / spectrum from real PCM (ffmpeg), not a second engine
             self._request_track_viz(file_path)
 
+            # Plugin hooks (shell observers — never the native decode path)
+            meta = self._meta_cache.get(file_path)
+            meta_dict = None
+            if meta is not None:
+                meta_dict = {
+                    "title": getattr(meta, "title", "") or "",
+                    "artist": getattr(meta, "artist", "") or "",
+                    "album": getattr(meta, "album", "") or "",
+                }
+            if hasattr(self, "plugin_manager"):
+                self.plugin_manager.emit("on_track_changed", file_path, meta_dict)
+
             # Sidecar subtitles: SRT / WebVTT / ASS / SSA
             if hasattr(self, "subtitle_manager"):
                 self.subtitle_manager.clear()
@@ -4144,6 +4214,9 @@ For more information, visit the project repository.
             self.controls.btn_play.setText("▶")
             self.status_bar.showMessage("Stopped")
             self.show_logo(True)
+
+        if hasattr(self, "plugin_manager") and isinstance(state, str):
+            self.plugin_manager.emit("on_playback_state", state)
 
         if ended:
             self._clear_resume_bookmark_for(self.app_state.last_file)
@@ -5076,6 +5149,8 @@ Position: {position // 1000}s
         self.status_bar.showMessage(f"Gapless → {filename}", 3000)
         self._multiroom_broadcast("open", {"path": os.path.abspath(path)})
         self._multiroom_broadcast("play")
+        if hasattr(self, "plugin_manager"):
+            self.plugin_manager.emit("on_track_changed", path, None)
         return True
 
     def _with_multiroom_inbound(self, fn):
@@ -5259,7 +5334,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.20.0")
+    app.setApplicationVersion("1.21.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

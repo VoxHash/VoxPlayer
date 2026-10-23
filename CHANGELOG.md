@@ -8,7 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Android / GrapheneOS companion phase (Later)
-- Stretch: packaging, plugins, TUI/WASM daemon clients
+- Stretch: WASM/TUI daemon clients; desktop packaging with native core; grow Rust/Zig hot paths
+
+## [1.21.0] - 2026-10-23
+
+### Added
+- Optional shell plugin hooks outside the native C core (`voxplayer/plugins.py`)
+- Discover `~/.config/voxplayer/plugins/*.py` and pip entry points `voxplayer.plugins`
+- Hooks: `on_app_ready`, `on_track_changed`, `on_playback_state`, `on_library_changed`, `contribute_actions`
+- Help → Plugins… status; Help → Plugin actions menu; sample `example_nowplaying_log.py` written on first load
+- Guard: plugins declaring `PROVIDES_PLAYBACK_ENGINE` are rejected; `VOXPLAYER_PLUGINS=0` disables all
+
+### Changed
+- ROADMAP Stretch plugin-hooks item marked done
 
 ## [1.20.0] - 2026-10-23
 

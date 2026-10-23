@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.20.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.21.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -122,7 +122,7 @@ GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analyti
 
 ## Stretch (H2 2027+)
 
-- Optional plugin hooks that stay out of the core path
+- Optional plugin hooks that stay out of the core path (**Done 1.21.0** — `~/.config/voxplayer/plugins/` + `voxplayer.plugins` entry points; Help → Plugins)
 - WebAssembly / TUI clients talking to the local daemon
 - Packaging: ship the native C media core (or clear per-OS installers) inside desktop bundles for Windows/macOS/Linux
 - Continue growing the native (Rust / C / optional Zig) surface area for scan, metadata, and other hot paths so the PyQt6 shell stays light under heavy multitasking

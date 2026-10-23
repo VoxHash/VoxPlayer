@@ -18,14 +18,15 @@ A professional media player with advanced features including:
 - Optional spectrum / waveform transport chrome
 - Broader HEVC / AV1 / Opus coverage via native core + codec probe
 - Accessibility contrast pass + optional high-contrast mode
+- Optional shell plugin hooks (out of the native core path)
 - Timeline preview and keyboard shortcuts
 
 Author: VoxHash
 License: MIT
-Version: 1.20.0
+Version: 1.21.0
 """
 
-__version__ = "1.20.0"
+__version__ = "1.21.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

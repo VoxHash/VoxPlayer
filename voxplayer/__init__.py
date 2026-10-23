@@ -20,14 +20,15 @@ A professional media player with advanced features including:
 - Accessibility contrast pass + optional high-contrast mode
 - Optional shell plugin hooks (out of the native core path)
 - TUI + browser remotes for the localhost control daemon
+- Desktop onedir bundles that can ship the native C media core
 - Timeline preview and keyboard shortcuts
 
 Author: VoxHash
 License: MIT
-Version: 1.22.0
+Version: 1.23.0
 """
 
-__version__ = "1.22.0"
+__version__ = "1.23.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

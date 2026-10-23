@@ -124,7 +124,7 @@ GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analyti
 
 - Optional plugin hooks that stay out of the core path (**Done 1.21.0** — `~/.config/voxplayer/plugins/` + `voxplayer.plugins` entry points; Help → Plugins)
 - WebAssembly / TUI clients talking to the local daemon (**Done 1.22.0** — `voxplayer-tui` / `voxplayer-ctl`; browser UI at daemon `/ui` with CORS for external / WASM hosts)
-- Packaging: ship the native C media core (or clear per-OS installers) inside desktop bundles for Windows/macOS/Linux
+- Packaging: ship the native C media core (or clear per-OS installers) inside desktop bundles for Windows/macOS/Linux (**Done 1.23.0** — PyInstaller onedir + `native_core/`; `packaging/install_native_core_*`; CI installs core before bundle)
 - Continue growing the native (Rust / C / optional Zig) surface area for scan, metadata, and other hot paths so the PyQt6 shell stays light under heavy multitasking
 
 ---

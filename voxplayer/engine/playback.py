@@ -152,7 +152,10 @@ def native_engine_install_hint() -> str:
         "VoxPlayer requires the native C media core (python-vlc + system libvlc).",
         "Qt Multimedia is not used for playback.",
         "",
-        "Install steps:",
+        "Desktop bundles: prefer a release that ships the native core under native_core/,",
+        "  or run the clear per-OS installer: packaging/install_native_core_*.{sh,ps1}",
+        "",
+        "Install steps (dev / pip):",
         "  • Python binding:  pip install python-vlc",
         "  • Or project venv: .venv/bin/pip install -r requirements.txt",
         "  • Then launch:     python run.py   (or: .venv/bin/python run.py)",
@@ -162,7 +165,8 @@ def native_engine_install_hint() -> str:
         "  • Debian / Ubuntu:    sudo apt install vlc libvlc-dev",
         "  • Fedora:             sudo dnf install vlc",
         "  • macOS (Homebrew):   brew install vlc",
-        "  • Windows:            install VLC and ensure libvlc.dll is on PATH",
+        "  • Windows:            install the desktop media suite; ensure libvlc.dll is on PATH",
+        "                        or set VLC_HOME to that install folder",
         "",
         "Wayland / embed:",
         "  • Default: force X11/XWayland when DISPLAY is set (reliable in-app video).",
@@ -174,6 +178,12 @@ def native_engine_install_hint() -> str:
 
 def require_vlc_module():
     """Import python-vlc or raise NativeEngineError with install text."""
+    try:
+        from ..native_core_paths import configure_bundled_native_core
+
+        configure_bundled_native_core()
+    except Exception:
+        pass
     try:
         import vlc  # noqa: WPS433
 
@@ -310,6 +320,12 @@ class PlaybackEngine(QObject):
                 hw = avcodec_hw_arg()
                 if hw:
                     args.append(hw)
+            except Exception:
+                pass
+            try:
+                from ..native_core_paths import plugin_path_args
+
+                args.extend(plugin_path_args())
             except Exception:
                 pass
             self._instance = vlc.Instance(*args)

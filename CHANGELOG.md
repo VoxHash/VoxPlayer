@@ -8,7 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Android / GrapheneOS companion phase (Later)
-- Stretch: desktop packaging with native core; grow Rust/Zig hot paths
+- Stretch: grow Rust/Zig/C hot paths (scan, metadata) under heavy multitasking
+
+## [1.23.0] - 2026-10-23
+
+### Added
+- `voxplayer/native_core_paths.py` — discover system/bundled native C media core; activate in frozen apps
+- PyInstaller **onedir** `voxplayer.spec` copies libvlc + plugins into `native_core/` when present on the build host
+- Runtime hook `packaging/rthook_native_core.py`; Instance `--plugin-path` for bundled plugins
+- Clear per-OS installers: `packaging/install_native_core_{linux,macos}.sh`, `install_native_core_windows.ps1`
+- `packaging/build_desktop.sh`; CI installs the media core before Windows/macOS/Linux bundles
+
+### Changed
+- Debian packaging wraps the onedir bundle and depends on `vlc | libvlc5`
+- ROADMAP Stretch packaging item marked done
 
 ## [1.22.0] - 2026-10-23
 

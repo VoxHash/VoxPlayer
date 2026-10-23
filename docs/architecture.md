@@ -32,6 +32,8 @@ QApplication
 | `voxplayer/native_workers.py` | ctypes loader + Qt bridge for Rust `vox_meta` worker pool |
 | `native/` | Cargo workspace (`vox_scan`, `vox_meta`) + Zig `vox_scan_zig` |
 | `run.py` | Launcher: prefer `.venv`, preflight the native C media core |
+| `voxplayer/native_core_paths.py` | Discover / activate bundled or system native C media core |
+| `voxplayer.spec` + `packaging/` | PyInstaller onedir + clear per-OS native-core installers |
 | `test.py` | Smoke tests |
 | `docs/` | User and integrator documentation |
 

@@ -57,9 +57,37 @@ Optional metadata extras:
 pip install -e ".[metadata]"
 ```
 
-## Method 3: GitHub Releases
+## Method 3: GitHub Releases (desktop bundles)
 
-Download platform binaries from [Releases](https://github.com/VoxHash/VoxPlayer/releases) when published for your OS.
+Download platform archives from [Releases](https://github.com/VoxHash/VoxPlayer/releases) when published for your OS.
+
+CI builds an **onedir** bundle via `voxplayer.spec` / `packaging/build_desktop.sh`. When the build host has the native C media core installed, it is copied under `native_core/` inside the bundle so target machines do not need a separate media-suite install.
+
+| Artifact | Contents |
+|----------|----------|
+| `VoxPlayer-Linux.tar.gz` | `VoxPlayer/` onedir (Linux) |
+| `VoxPlayer-Windows.zip` | `VoxPlayer/` onedir (Windows) |
+| `VoxPlayer-macOS.zip` | `VoxPlayer/` onedir (macOS) |
+
+Local build:
+
+```bash
+chmod +x packaging/build_desktop.sh
+./packaging/build_desktop.sh
+# → dist/VoxPlayer/VoxPlayer
+```
+
+### Clear per-OS installers (native core only)
+
+If you use a pip install or a bundle built without `native_core/`, install the playback dependency with:
+
+| Platform | Script |
+|----------|--------|
+| Linux | `packaging/install_native_core_linux.sh` |
+| macOS | `packaging/install_native_core_macos.sh` |
+| Windows | `packaging/install_native_core_windows.ps1` |
+
+Debian/Ubuntu `.deb` builds (`build_debian.sh`) depend on `vlc | libvlc5` and wrap the onedir bundle.
 
 ## Method 4: Python package build
 

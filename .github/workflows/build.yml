@@ -22,60 +22,80 @@ jobs:
     name: Build Windows Executable
     runs-on: windows-latest
     if: github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows') || startsWith(github.ref, 'refs/tags/v')
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    
+
+    - name: Install native C media core (Chocolatey)
+      run: |
+        choco install vlc -y --no-progress
+        if (Test-Path "C:\Program Files\VideoLAN\VLC") {
+          echo "VLC_HOME=C:\Program Files\VideoLAN\VLC" >> $env:GITHUB_ENV
+        }
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
-    
-    - name: Build executable
+
+    - name: Build onedir bundle
       run: |
-        pyinstaller --onefile --windowed --name VoxPlayer --icon=icon.ico app.py
-    
+        python -m PyInstaller --clean --noconfirm voxplayer.spec
+
+    - name: Zip Windows artifact
+      shell: pwsh
+      run: |
+        Compress-Archive -Path dist\VoxPlayer\* -DestinationPath dist\VoxPlayer-Windows.zip
+
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
         name: VoxPlayer-Windows
-        path: dist/VoxPlayer.exe
+        path: dist/VoxPlayer-Windows.zip
         retention-days: 30
 
   build-macos:
     name: Build macOS App
     runs-on: macos-latest
     if: github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos') || startsWith(github.ref, 'refs/tags/v')
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    
+
+    - name: Install native C media core
+      run: |
+        brew install vlc || true
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
-    
-    - name: Build macOS app
+
+    - name: Build onedir bundle
       run: |
-        pyinstaller --onefile --windowed --name VoxPlayer --icon=icon.ico app.py || echo "macOS build requires additional setup"
-    
+        python -m PyInstaller --clean --noconfirm voxplayer.spec
+
+    - name: Zip macOS artifact
+      run: |
+        cd dist && zip -r VoxPlayer-macOS.zip VoxPlayer
+
     - name: Upload macOS artifact
       uses: actions/upload-artifact@v4
       with:
         name: VoxPlayer-macOS
-        path: dist/VoxPlayer
+        path: dist/VoxPlayer-macOS.zip
         retention-days: 30
       if: always()
 
@@ -83,63 +103,71 @@ jobs:
     name: Build Linux Executable
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux') || startsWith(github.ref, 'refs/tags/v')
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    
-    - name: Install system dependencies
+
+    - name: Install system dependencies + native C media core
       run: |
         sudo apt-get update
-        sudo apt-get install -y libgl1 libegl1 libxcb-xinerama0 libxkbcommon-x11-0
-    
+        sudo apt-get install -y libgl1 libegl1 libxcb-xinerama0 libxkbcommon-x11-0 \
+          vlc libvlc-dev libvlccore-dev
+
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
-    
-    - name: Build Linux executable
+
+    - name: Build onedir bundle
       run: |
-        pyinstaller --onefile --windowed --name VoxPlayer --icon=icon.ico app.py
-    
+        python -m PyInstaller --clean --noconfirm voxplayer.spec
+        test -d dist/VoxPlayer
+        # native_core should be present when apt packages installed
+        find dist/VoxPlayer -type d -name native_core | head -5
+
+    - name: Zip Linux artifact
+      run: |
+        cd dist && tar -czf VoxPlayer-Linux.tar.gz VoxPlayer
+
     - name: Upload Linux artifact
       uses: actions/upload-artifact@v4
       with:
         name: VoxPlayer-Linux
-        path: dist/VoxPlayer
+        path: dist/VoxPlayer-Linux.tar.gz
         retention-days: 30
 
   build-package:
     name: Build Python Package
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    
+
     - name: Install build dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build wheel twine
-    
+
     - name: Build package
       run: |
         python -m build
-    
+
     - name: Check package
       run: |
         twine check dist/*
-    
+
     - name: Upload package artifacts
       uses: actions/upload-artifact@v4
       with:

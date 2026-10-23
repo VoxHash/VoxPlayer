@@ -35,6 +35,12 @@ def _reexec_with_venv_if_needed() -> None:
 def _preflight_native_engine() -> None:
     """Fail fast with install guidance if python-vlc / libvlc are missing."""
     try:
+        from voxplayer.native_core_paths import configure_bundled_native_core
+
+        configure_bundled_native_core()
+    except Exception:
+        pass
+    try:
         import vlc
     except ImportError:
         print(

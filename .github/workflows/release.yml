@@ -49,10 +49,12 @@ jobs:
           See [CHANGELOG.md](CHANGELOG.md) for details.
           
           ### Downloads
-          - Windows: VoxPlayer.exe
-          - macOS: VoxPlayer.app
-          - Linux: VoxPlayer
+          - Windows: VoxPlayer-Windows.zip (onedir; includes native_core when CI found libvlc)
+          - macOS: VoxPlayer-macOS.zip
+          - Linux: VoxPlayer-Linux.tar.gz
           - Python Package: *.whl
+          
+          If a bundle lacks `native_core/`, run `packaging/install_native_core_*` on the target OS.
         files: |
           artifacts/**/*
         draft: false

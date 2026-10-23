@@ -46,18 +46,12 @@ echo ""
 # Clean previous builds
 rm -rf dist build voxplayer_1.0.0_amd64.deb
 
-# Build the executable
-python3 -m PyInstaller \
-    --onefile \
-    --windowed \
-    --name voxplayer \
-    --add-data "README.md:." \
-    --add-data "LICENSE:." \
-    app.py
+# Build onedir bundle (includes native C media core when present on the host)
+python3 -m PyInstaller --clean --noconfirm voxplayer.spec
 
 # Check if executable was created
-if [ ! -f "dist/voxplayer" ]; then
-    echo "ERROR: VoxPlayer executable not found in dist folder"
+if [ ! -f "dist/VoxPlayer/VoxPlayer" ]; then
+    echo "ERROR: VoxPlayer onedir bundle not found in dist/VoxPlayer"
     exit 1
 fi
 
@@ -74,11 +68,16 @@ mkdir -p $PACKAGE_DIR/usr/share/pixmaps
 mkdir -p $PACKAGE_DIR/usr/share/doc/voxplayer
 mkdir -p $PACKAGE_DIR/usr/share/voxplayer
 
-# Copy executable
-cp dist/voxplayer $PACKAGE_DIR/usr/bin/
+# Copy onedir bundle under /usr/share/voxplayer and wrapper in /usr/bin
+cp -a dist/VoxPlayer "$PACKAGE_DIR/usr/share/voxplayer/app"
+cat > "$PACKAGE_DIR/usr/bin/voxplayer" << 'WRAP'
+#!/bin/sh
+exec /usr/share/voxplayer/app/VoxPlayer "$@"
+WRAP
 
 # Make executable
 chmod +x $PACKAGE_DIR/usr/bin/voxplayer
+chmod +x $PACKAGE_DIR/usr/share/voxplayer/app/VoxPlayer
 
 # Create desktop file
 cat > $PACKAGE_DIR/usr/share/applications/voxplayer.desktop << EOF
@@ -152,8 +151,8 @@ Version: 1.0.0
 Section: sound
 Priority: optional
 Architecture: amd64
-Depends: python3-pyqt6, python3-pyqt6.qtmultimedia, python3-pyqt6.qtmultimediawidgets
-Maintainer: VoxHash <voxhash@example.com>
+Depends: vlc | libvlc5, libvlc-dev | libvlc5
+Maintainer: VoxHash <contact@voxhash.dev>
 Description: Ultra-compact media player
  VoxPlayer is a modern, ultra-compact media player for Linux with professional
  file association support. Built with PyQt6 and designed for simplicity and

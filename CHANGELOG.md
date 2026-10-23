@@ -8,8 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Android / GrapheneOS companion phase
-- Waveform / spectrum meter as optional transport chrome
+- Broader codec coverage (HEVC, AV1, Opus) as the native C core allows
 - Accessibility contrast pass on the dark shell
+
+## [1.18.0] - 2026-10-23
+
+### Added
+- Optional transport spectrum meter + seekable waveform strip (View → Spectrum / waveform meter)
+- Real PCM analysis via ffmpeg (same toolchain as thumbnails); playhead-synced band levels — libvlc audio output unchanged
+
+### Changed
+- ROADMAP waveform / spectrum chrome marked done
 
 ## [1.17.0] - 2026-10-23
 

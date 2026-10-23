@@ -65,6 +65,12 @@ from .portable_sync import (
     list_portable_volumes,
     sync_files_to_volume,
 )
+from .audio_viz import (
+    analyze_track_async,
+    get_cached as get_viz_cached,
+    spectrum_bands,
+    waveform_slice,
+)
 from .multiroom import (
     RoomPeer,
     fanout_action,
@@ -126,6 +132,7 @@ class AppState:
     repeat_mode: str = "off"  # off | one | all
     resume_bookmarks_enabled: bool = True
     gapless_queue_enabled: bool = True
+    spectrum_meter_enabled: bool = False
 
     def __post_init__(self):
         if self.resume_positions is None:
@@ -896,6 +903,9 @@ class Settings:
         self.settings.setValue(
             "gapless_queue_enabled", bool(state.gapless_queue_enabled)
         )
+        self.settings.setValue(
+            "spectrum_meter_enabled", bool(state.spectrum_meter_enabled)
+        )
 
     def load_state(self) -> AppState:
         """Load application state"""
@@ -934,6 +944,11 @@ class Settings:
             gapless = gapless.strip().lower() in {"1", "true", "yes"}
         else:
             gapless = bool(gapless)
+        spectrum = self.settings.value("spectrum_meter_enabled", False)
+        if isinstance(spectrum, str):
+            spectrum = spectrum.strip().lower() in {"1", "true", "yes"}
+        else:
+            spectrum = bool(spectrum)
         return AppState(
             window_geometry=self.settings.value("window_geometry"),
             theme=raw_theme,
@@ -947,6 +962,7 @@ class Settings:
             repeat_mode=repeat,
             resume_bookmarks_enabled=resume_bm,
             gapless_queue_enabled=gapless,
+            spectrum_meter_enabled=spectrum,
         )
 
 class PlayerControls(TransportBar):
@@ -1436,6 +1452,7 @@ class VoxPlayerMainWindow(QMainWindow):
                 bool(self.app_state.shuffle_enabled),
                 str(self.app_state.repeat_mode or "off"),
             )
+            self.controls.set_viz_enabled(bool(self.app_state.spectrum_meter_enabled))
         self._setup_mpris_and_daemon()
 
     def show_shell_page(self, page: str):
@@ -2297,6 +2314,12 @@ class VoxPlayerMainWindow(QMainWindow):
         now_playing_action.setChecked(True)
         now_playing_action.triggered.connect(lambda: self.toggle_now_playing())
         view_menu.addAction(now_playing_action)
+
+        self._spectrum_action = QAction("&Spectrum / waveform meter", self)
+        self._spectrum_action.setCheckable(True)
+        self._spectrum_action.setChecked(bool(self.app_state.spectrum_meter_enabled))
+        self._spectrum_action.triggered.connect(self.toggle_spectrum_meter)
+        view_menu.addAction(self._spectrum_action)
 
         tray_action = QAction("Minimize to &Tray", self)
         tray_action.setShortcut("Ctrl+Shift+T")
@@ -3512,6 +3535,9 @@ For more information, visit the project repository.
             # Bookmark resume (desktop companion for portable players)
             self._schedule_resume_bookmark(file_path)
 
+            # Optional waveform / spectrum from real PCM (ffmpeg), not a second engine
+            self._request_track_viz(file_path)
+
             # Sidecar subtitles: SRT / WebVTT / ASS / SSA
             if hasattr(self, "subtitle_manager"):
                 self.subtitle_manager.clear()
@@ -4165,6 +4191,7 @@ For more information, visit the project repository.
             current_pos = self.engine.position()
             self.controls.update_time(current_pos, duration)
             self._maybe_prepare_gapless(current_pos, duration)
+            self._update_spectrum_meter(current_pos, duration)
             # Persist bookmark about every 5s while playing
             if self.engine.is_playing() and current_pos > 0 and (current_pos // 5000) != getattr(
                 self, "_bm_tick", -1
@@ -4796,6 +4823,64 @@ Position: {position // 1000}s
             f"On-device: {os.path.basename(target)}", 4000
         )
 
+    def toggle_spectrum_meter(self, checked: bool = False) -> None:
+        self.app_state.spectrum_meter_enabled = bool(checked)
+        self.settings.save_state(self.app_state)
+        if hasattr(self, "controls"):
+            self.controls.set_viz_enabled(bool(checked))
+        if checked and self.app_state.last_file:
+            self._request_track_viz(self.app_state.last_file)
+        self.status_bar.showMessage(
+            "Spectrum / waveform on" if checked else "Spectrum / waveform off",
+            3000,
+        )
+
+    def _request_track_viz(self, file_path: str) -> None:
+        if not self.app_state.spectrum_meter_enabled:
+            return
+        if not file_path or not os.path.isfile(file_path):
+            return
+        # Skip heavy decode for obvious video-only paths without audio need — still try
+        cached = get_viz_cached(file_path)
+        if cached and cached.ok:
+            self._apply_viz_data(cached)
+            return
+
+        def _done(data):
+            # Marshal back to Qt thread
+            QTimer.singleShot(0, lambda d=data: self._apply_viz_data(d))
+
+        analyze_track_async(file_path, on_done=_done)
+
+    def _apply_viz_data(self, data) -> None:
+        if not data or not getattr(data, "ok", False):
+            return
+        if os.path.abspath(data.path) != os.path.abspath(self.app_state.last_file or ""):
+            return
+        if not hasattr(self, "controls"):
+            return
+        peaks = waveform_slice(data, 320)
+        self.controls.set_waveform_peaks(peaks)
+        self._viz_data = data
+
+    def _update_spectrum_meter(self, position_ms: int, duration_ms: int) -> None:
+        if not self.app_state.spectrum_meter_enabled:
+            return
+        if not hasattr(self, "controls"):
+            return
+        data = getattr(self, "_viz_data", None)
+        if data is None or not getattr(data, "ok", False):
+            path = self.app_state.last_file or ""
+            data = get_viz_cached(path)
+            if data and data.ok:
+                self._viz_data = data
+            else:
+                return
+        if not self.engine.is_playing():
+            return
+        levels = spectrum_bands(data, position_ms, duration_ms, n_bands=28)
+        self.controls.set_spectrum_levels(levels)
+
     def toggle_gapless_queue(self, checked: bool = False) -> None:
         self.app_state.gapless_queue_enabled = bool(checked)
         self.settings.save_state(self.app_state)
@@ -5127,7 +5212,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.17.0")
+    app.setApplicationVersion("1.18.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

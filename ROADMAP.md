@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.17.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.18.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -98,7 +98,7 @@ Build Phase 3 (optional lighter scanner): `native/vox_scan_zig/build.sh` → `na
 ### Library UX (streaming-style shells)
 - Albums / Artists / Tracks / Liked navigation alongside the current Home grid (**Done 1.17.0**)
 - Analytics-style views: most played, recently added, never played (local-only, privacy-first) (**Done 1.12.0** facets — Recently / Never / Most played)
-- Waveform / spectrum meter as optional transport chrome
+- Waveform / spectrum meter as optional transport chrome (**Done 1.18.0** — View → Spectrum / waveform meter; real PCM via ffmpeg)
 
 ### Playback quality
 - Broader codec coverage (HEVC, AV1, Opus) as the native C core allows

@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 
 from ..theme import COLORS
 from .marquee import MarqueeLabel
+from .spectrum import SpectrumMeter, WaveformStrip
 
 
 VIDEO_EXT = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
@@ -968,6 +969,7 @@ class TransportBar(_MediaDropMixin, QWidget):
         super().__init__(parent)
         self.parent_window = parent
         self.setObjectName("TransportBar")
+        self._viz_enabled = False
         self.setFixedHeight(76)
         self._enable_drops()
         self.setup_ui()
@@ -1034,8 +1036,17 @@ class TransportBar(_MediaDropMixin, QWidget):
             self.btn_repeat,
         ):
             buttons.addWidget(b)
+        self.spectrum = SpectrumMeter(bands=28)
+        self.spectrum.setFixedWidth(140)
+        self.spectrum.hide()
+        buttons.addWidget(self.spectrum)
         buttons.addStretch(1)
         center.addLayout(buttons)
+
+        self.waveform = WaveformStrip()
+        self.waveform.hide()
+        self.waveform.seek_requested.connect(self._on_waveform_seek)
+        center.addWidget(self.waveform)
 
         seek_row = QHBoxLayout()
         self.time_label = QLabel("00:00 / 00:00")
@@ -1151,6 +1162,25 @@ class TransportBar(_MediaDropMixin, QWidget):
         self.btn_repeat.style().unpolish(self.btn_repeat)
         self.btn_repeat.style().polish(self.btn_repeat)
 
+    def set_viz_enabled(self, enabled: bool) -> None:
+        self._viz_enabled = bool(enabled)
+        self.spectrum.setVisible(self._viz_enabled)
+        self.waveform.setVisible(self._viz_enabled)
+        self.setFixedHeight(108 if self._viz_enabled else 76)
+        if not self._viz_enabled:
+            self.spectrum.clear()
+
+    def set_waveform_peaks(self, peaks: list) -> None:
+        self.waveform.set_peaks(peaks or [])
+
+    def set_spectrum_levels(self, levels: list) -> None:
+        if self._viz_enabled:
+            self.spectrum.set_levels(levels or [])
+
+    def _on_waveform_seek(self, ratio: float) -> None:
+        if hasattr(self.parent_window, "seek_to_position"):
+            self.parent_window.seek_to_position(float(ratio), exact=True)
+
     def _seek_pressed(self):
         self._seek_user_active = True
 
@@ -1193,6 +1223,8 @@ class TransportBar(_MediaDropMixin, QWidget):
             return f"{minutes:02d}:{seconds:02d}"
 
         self.time_label.setText(f"{format_time(current)} / {format_time(total)}")
+        if self._viz_enabled and total and total > 0:
+            self.waveform.set_playhead(float(current) / float(total))
 
     def update_seek_position(self, position):
         if self._seek_user_active:
@@ -1200,3 +1232,5 @@ class TransportBar(_MediaDropMixin, QWidget):
         self.seek_slider.blockSignals(True)
         self.seek_slider.setValue(int(position * 1000))
         self.seek_slider.blockSignals(False)
+        if self._viz_enabled:
+            self.waveform.set_playhead(float(position))

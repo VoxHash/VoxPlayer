@@ -7,7 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (background playback limits, Quest UX)
+- Further Android companion polish (background playback limits)
+
+## [1.29.0] - 2026-10-23
+
+### Added
+- Quest / Horizon OS panel sizing: default **1024×640 dp** (Meta common 2D app frame), min 360×225; `com.oculus.supportedDevices` for Quest 2/3/Pro/3S
+- Companion shell aligned with desktop ember-on-charcoal: left rail, Home media grid, Now Playing side panel on wide layouts, full transport with Connect
+
+### Changed
+- Android / GrapheneOS / Quest UI: larger touch targets (≥44dp), readable type, no streaming-green accents — warm ember primary matching desktop
 
 ## [1.28.1] - 2026-10-23
 

@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#12141A</color>
+    <color name="ic_launcher_background">#0B0F14</color>
+    <color name="vox_bg_app">#0B0F14</color>
+    <color name="vox_accent">#FF8A3D</color>
+    <color name="vox_transport">#0E141C</color>
 </resources>

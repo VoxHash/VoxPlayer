@@ -54,6 +54,8 @@ cd android && ./gradlew :app:assembleDebug
 
 Trusted LAN: set `VOXPLAYER_DAEMON_ALLOW_LAN=1` and `VOXPLAYER_DAEMON_HOST=0.0.0.0` on the desktop. The app’s **Connect** sheet discovers the PC on Wi‑Fi via UDP port `17891` (or enter host/port manually). Paired Bluetooth devices can use the RFCOMM control profile (`VOXPLAYER_BT=1`, channel 5) when Wi‑Fi is unavailable. On-device audio/video plays locally with Media3 without a PC. Use **Sync playlists & podcasts** on the Desktop tab to pull `GET /playlists` and `GET /podcasts` into on-device cache.
 
+On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**1024×640 dp** by default, resizable). Wide layouts show the desktop-style Home grid + Now Playing column.
+
 When a desktop VPN (e.g. ProtonVPN) steals RFC1918 routes, keep LAN local:
 
 ```bash

@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 - Metadata enrichment via ffprobe/mutagen tags, MusicBrainz, optional AcoustID (`ACOUSTID_API_KEY`), optional TMDB (`TMDB_API_KEY`), Cover Art Archive
+- Offline-first metadata: disk cache (`~/.cache/voxplayer/metadata/`), fetch-once per file identity, **View → Refresh Metadata** / library refresh
 - Optional extras: `pip install "voxplayer[metadata]"`
 
 ## [1.1.0] - 2026-10-22

@@ -22,7 +22,7 @@ voxplayer
 - **Hybrid playback**: Qt Multimedia by default; optional libmpv via `pip install "voxplayer[native]"`
 - **True volume amplification**: Up to 200% (mpv native / Pulse-boosted Qt path); Media Info matches the slider
 - **Thumbnails & live preview**: ffmpeg-cached posters on library cards; live frame grabs in Now Playing / transport
-- **Metadata enrichment**: embedded tags, MusicBrainz, optional AcoustID / TMDB (see docs/configuration.md)
+- **Metadata enrichment**: offline-first local tags; optional online MusicBrainz / AcoustID / TMDB once per file with disk cache and manual refresh (see docs/configuration.md)
 - **Queue / playlists**: Search, filtering, import/export
 - **Torrent streaming**: qBittorrent Web UI integration with media-library gating
 - **File associations**: Double-click media to open with VoxPlayer

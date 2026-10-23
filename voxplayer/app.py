@@ -30,25 +30,47 @@ from .theme import app_stylesheet, COLORS
 from .ui.shell import LeftRail, HomeView, NowPlayingPanel, TransportBar
 from .engine.playback import PlaybackEngine
 from .media.thumbnails import ThumbnailCache, get_thumbnail_path
-from .media.metadata import MediaMetadata, enrich_metadata
+from .media.metadata import (
+    MediaMetadata,
+    enrich_metadata,
+    is_online,
+    load_local_metadata,
+)
 from .media.torrent_gate import validate_torrent_file, validate_torrent_file_list
 
 
 class MetadataEnrichWorker(QThread):
-    """Background tag / MusicBrainz / AcoustID / TMDB enrichment."""
+    """Background offline-first enrichment (network only when online / refresh)."""
 
     finished_meta = pyqtSignal(object)
 
-    def __init__(self, path: str, cover_path: str, parent=None):
+    def __init__(
+        self,
+        path: str,
+        cover_path: str,
+        parent=None,
+        force_refresh: bool = False,
+        allow_network: bool = True,
+    ):
         super().__init__(parent)
         self.path = path
         self.cover_path = cover_path
+        self.force_refresh = force_refresh
+        self.allow_network = allow_network
 
     def run(self):
         try:
-            meta = enrich_metadata(self.path, cover_dest=self.cover_path)
+            meta = enrich_metadata(
+                self.path,
+                cover_dest=self.cover_path,
+                force_refresh=self.force_refresh,
+                allow_network=self.allow_network,
+            )
         except Exception:
-            meta = MediaMetadata(path=self.path)
+            try:
+                meta = load_local_metadata(self.path)
+            except Exception:
+                meta = MediaMetadata(path=self.path)
         self.finished_meta.emit(meta)
 
 
@@ -1283,6 +1305,17 @@ class VoxPlayerMainWindow(QMainWindow):
         media_info_action.triggered.connect(self.show_media_info)
         view_menu.addAction(media_info_action)
 
+        view_menu.addSeparator()
+
+        refresh_meta_action = QAction("&Refresh Metadata", self)
+        refresh_meta_action.setShortcut("Ctrl+Shift+R")
+        refresh_meta_action.triggered.connect(self.refresh_current_metadata)
+        view_menu.addAction(refresh_meta_action)
+
+        refresh_library_meta_action = QAction("Refresh Metadata for &Library", self)
+        refresh_library_meta_action.triggered.connect(self.refresh_library_metadata)
+        view_menu.addAction(refresh_library_meta_action)
+
         # Help menu (with Update options moved here)
         help_menu = menubar.addMenu("&Help")
 
@@ -2188,37 +2221,135 @@ For more information, visit the project repository.
                 self.subtitle_manager.load_subtitles(subtitle_path)
                 self.status_bar.showMessage(f"Loaded: {filename} + Subtitles ({file_size_mb:.1f}MB, {file_ext})")
 
-            # Enrich metadata (network) without blocking the UI long-term
-            QTimer.singleShot(50, lambda p=file_path: self._enrich_current_media(p))
+            # Local tags immediately; network only if online and not yet cached
+            try:
+                local_meta = load_local_metadata(file_path)
+                self._meta_cache[file_path] = local_meta
+                self._apply_enriched_metadata(local_meta, quiet=True)
+            except Exception:
+                pass
+            QTimer.singleShot(
+                50, lambda p=file_path: self._enrich_current_media(p, force_refresh=False)
+            )
 
         except Exception as e:
             QMessageBox.critical(self, "Load Error", f"Failed to load media file:\n{str(e)}")
             self.status_bar.showMessage(f"Error loading: {os.path.basename(file_path)}")
 
-    def _enrich_current_media(self, file_path: str):
-        """Run metadata enrichment and refresh Now Playing / Media Info fields."""
+    def _enrich_current_media(self, file_path: str, force_refresh: bool = False):
+        """Async enrichment: cache hit / offline = local only; online fetch once."""
         if not file_path or not os.path.isfile(file_path):
             return
-        if file_path in self._meta_cache:
-            self._apply_enriched_metadata(self._meta_cache[file_path])
+
+        # In-memory hit with completed network (unless user refresh)
+        existing = self._meta_cache.get(file_path)
+        if existing and existing.network_attempted and not force_refresh:
+            self._apply_enriched_metadata(existing, quiet=True)
             return
 
         cover_dest = self.thumb_cache.path_for(file_path + ".cover")
-        worker = MetadataEnrichWorker(file_path, cover_dest, self)
+        # Skip starting network work when clearly offline (still apply disk cache via enrich)
+        allow_network = True
+        if not force_refresh:
+            try:
+                allow_network = is_online()
+            except Exception:
+                allow_network = False
+
+        worker = MetadataEnrichWorker(
+            file_path,
+            cover_dest,
+            self,
+            force_refresh=force_refresh,
+            allow_network=allow_network or force_refresh,
+        )
         self._enrich_thread = worker
 
         def _on_done(meta: MediaMetadata):
-            if not meta or meta.path != getattr(self.app_state, "last_file", ""):
-                if meta and meta.path:
-                    self._meta_cache[meta.path] = meta
+            if not meta:
                 return
             self._meta_cache[meta.path] = meta
-            self._apply_enriched_metadata(meta)
+            if meta.path != getattr(self.app_state, "last_file", ""):
+                return
+            self._apply_enriched_metadata(meta, quiet=not force_refresh)
 
         worker.finished_meta.connect(_on_done)
         worker.start()
 
-    def _apply_enriched_metadata(self, meta: MediaMetadata):
+    def refresh_current_metadata(self):
+        """User-requested re-fetch for the current file (online only)."""
+        path = getattr(self.app_state, "last_file", "") or ""
+        if not path or not os.path.isfile(path):
+            self.status_bar.showMessage("No media loaded to refresh metadata.", 3000)
+            return
+        if not is_online(force=True):
+            self.status_bar.showMessage(
+                "Offline — using local tags only. Connect to refresh online metadata.",
+                4000,
+            )
+            local = load_local_metadata(path)
+            self._meta_cache[path] = local
+            self._apply_enriched_metadata(local, quiet=False)
+            return
+        self.status_bar.showMessage("Refreshing metadata…", 2000)
+        self._enrich_current_media(path, force_refresh=True)
+
+    def refresh_library_metadata(self):
+        """User-requested refresh for library paths (sequential background workers)."""
+        paths = list(getattr(self, "library_paths", []) or [])
+        if hasattr(self, "playlist"):
+            for i in range(self.playlist.count()):
+                p = self.playlist.get_file_at_index(i)
+                if p and p not in paths:
+                    paths.append(p)
+        paths = [p for p in paths if p and os.path.isfile(p)]
+        if not paths:
+            self.status_bar.showMessage("Library is empty.", 3000)
+            return
+        if not is_online(force=True):
+            self.status_bar.showMessage(
+                f"Offline — kept local tags for {len(paths)} items (no network refresh).",
+                4000,
+            )
+            return
+
+        self._library_refresh_queue = list(paths)
+        self.status_bar.showMessage(
+            f"Refreshing metadata for {len(paths)} library items…", 4000
+        )
+        self._pump_library_metadata_refresh()
+
+    def _pump_library_metadata_refresh(self):
+        queue = getattr(self, "_library_refresh_queue", None) or []
+        if not queue:
+            self.status_bar.showMessage("Library metadata refresh complete.", 4000)
+            self.refresh_home_grid()
+            return
+        path = queue.pop(0)
+        self._library_refresh_queue = queue
+        cover_dest = self.thumb_cache.path_for(path + ".cover")
+        worker = MetadataEnrichWorker(
+            path, cover_dest, self, force_refresh=True, allow_network=True
+        )
+
+        def _on_done(meta: MediaMetadata):
+            if meta and meta.path:
+                self._meta_cache[meta.path] = meta
+                if meta.cover_path:
+                    self._thumb_map[meta.path] = meta.cover_path
+                if meta.path == getattr(self.app_state, "last_file", ""):
+                    self._apply_enriched_metadata(meta, quiet=True)
+            remaining = len(getattr(self, "_library_refresh_queue", []) or [])
+            self.status_bar.showMessage(
+                f"Library metadata: {remaining} remaining…", 1500
+            )
+            QTimer.singleShot(200, self._pump_library_metadata_refresh)
+
+        worker.finished_meta.connect(_on_done)
+        self._enrich_thread = worker
+        worker.start()
+
+    def _apply_enriched_metadata(self, meta: MediaMetadata, quiet: bool = False):
         if not meta:
             return
         title = meta.display_title()
@@ -2241,11 +2372,13 @@ For more information, visit the project repository.
             if cover:
                 self.controls.set_track_art(cover)
         self.setWindowTitle(f"{title} - VoxPlayer")
-        self.status_bar.showMessage(
-            f"Metadata ({meta.source}): {title}" + (f" — {subtitle}" if subtitle else ""),
-            4000,
-        )
-        self.refresh_home_grid()
+        if not quiet:
+            self.status_bar.showMessage(
+                f"Metadata ({meta.source}): {title}"
+                + (f" — {subtitle}" if subtitle else ""),
+                4000,
+            )
+            self.refresh_home_grid()
 
     def _update_live_preview(self):
         """Grab the current video surface into Now Playing + transport art."""

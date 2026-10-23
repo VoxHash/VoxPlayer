@@ -58,14 +58,24 @@ Never commit `.env` files or real Web UI passwords. `.gitignore` already exclude
 
 On Wayland, VoxPlayer defaults to Qt Multimedia unless `VOXPLAYER_ENGINE=mpv` is set.
 
-### Metadata enrichment
+### Metadata enrichment (offline-first)
 
-VoxPlayer reads embedded tags (ffprobe / optional mutagen), then best-effort network lookup:
+Playback, library load, and the UI never depend on the network.
+
+| Mode | Behavior |
+|------|----------|
+| Offline | Local tags / ffprobe / filename / embedded or generated thumbnails only. No error dialogs. |
+| Online | Remote lookup at most **once per file** (identity = path + size + mtime). Results cached under `~/.cache/voxplayer/metadata/`. |
+| Refresh | **View → Refresh Metadata** (current item) or **Refresh Metadata for Library** re-fetches when online. |
+
+Pipeline when online (and not yet cached):
 
 1. MusicBrainz recording search (no key; polite User-Agent required)
 2. Cover Art Archive for release front covers
 3. AcoustID when `ACOUSTID_API_KEY` is set (`pip install "voxplayer[metadata]"` + `fpcalc`)
 4. TMDB multi-search when `TMDB_API_KEY` is set
+
+Local embedded tags are shown immediately; network data fills empty fields asynchronously and does not wipe good local tags unless you refresh.
 
 Store keys only in the environment or a local gitignored `.env`. Never commit API keys.
 

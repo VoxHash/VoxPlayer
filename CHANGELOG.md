@@ -7,9 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Multi-room / cast-style outputs without a second media stack
 - Android / GrapheneOS companion phase
 - Hardware / open-firmware portable-player companion concepts
+
+## [1.15.0] - 2026-10-23
+
+### Added
+- LAN multi-room transport sync: Audio → Multi-room fans out play/pause/stop/open/seek/volume to peer VoxPlayer control daemons (same native stack; peers need `VOXPLAYER_DAEMON_ALLOW_LAN=1`)
+- Manage rooms (add/remove/test/toggle), Sync now, and setup help; config in `~/.config/voxplayer/multiroom.json`
+- Inbound daemon commands do not re-broadcast (no leader↔follower echo loops)
+
+### Changed
+- ROADMAP multi-room item marked done (no second media / cast SDK)
 
 ## [1.14.0] - 2026-10-23
 

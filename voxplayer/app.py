@@ -61,6 +61,13 @@ from .control_daemon import ControlDaemon
 from .podcasts import PodcastStore, download_episode, podcasts_dir
 from .subtitles import companion_subtitle_paths
 from .portable_sync import list_portable_volumes, sync_files_to_volume
+from .multiroom import (
+    RoomPeer,
+    fanout_action,
+    load_config as load_multiroom_config,
+    probe_peer,
+    save_config as save_multiroom_config,
+)
 
 
 class MetadataEnrichWorker(QThread):
@@ -1232,6 +1239,8 @@ class VoxPlayerMainWindow(QMainWindow):
         self.podcast_store = PodcastStore()
         self.mpris = MprisController(self)
         self.control_daemon = ControlDaemon()
+        self.multiroom = load_multiroom_config()
+        self._multiroom_inbound = False
         # Phase 2: Rust metadata + thumbnail worker pool (optional; falls back to sync Python).
         self.native_workers = NativeMediaWorkers(self)
         if self.native_workers.available:
@@ -2059,6 +2068,23 @@ class VoxPlayerMainWindow(QMainWindow):
         self.audio_device_menu = sound_output_menu.addMenu("&Select Device")
         self.audio_device_menu.setEnabled(self.app_state.audio_output_mode == "manual")
         self.update_audio_device_menu()
+
+        # Multi-room (LAN peer sync — same native stack, no cast SDK)
+        multiroom_menu = audio_menu.addMenu("&Multi-room")
+        self._multiroom_sync_action = QAction("&Sync transport to rooms", self)
+        self._multiroom_sync_action.setCheckable(True)
+        self._multiroom_sync_action.setChecked(bool(self.multiroom.sync_enabled))
+        self._multiroom_sync_action.triggered.connect(self.toggle_multiroom_sync)
+        multiroom_menu.addAction(self._multiroom_sync_action)
+        manage_rooms_action = QAction("&Manage rooms…", self)
+        manage_rooms_action.triggered.connect(self.manage_multiroom_peers)
+        multiroom_menu.addAction(manage_rooms_action)
+        sync_now_action = QAction("Sync &now (open + seek + volume)", self)
+        sync_now_action.triggered.connect(self.multiroom_sync_now)
+        multiroom_menu.addAction(sync_now_action)
+        rooms_help_action = QAction("Multi-room &setup…", self)
+        rooms_help_action.triggered.connect(self.show_multiroom_help)
+        multiroom_menu.addAction(rooms_help_action)
 
         # View menu
         view_menu = menubar.addMenu("&View")
@@ -2955,6 +2981,7 @@ For more information, visit the project repository.
                 self.torrent_streamer.resume_transfer()
         if hasattr(self, "engine") and self.engine is not None:
             self.engine.play()
+        self._multiroom_broadcast("play")
 
     def find_media_files_in_folder(self, folder_path):
         """Find all supported media files in a folder recursively (native scan when built)."""
@@ -3500,11 +3527,13 @@ For more information, visit the project repository.
                 self.refresh_facets()
         if hasattr(self, "engine") and self.app_state.last_file:
             QTimer.singleShot(200, self._start_playback_with_gain)
+        if file_path:
+            abs_path = os.path.abspath(file_path)
+            self._multiroom_broadcast("open", {"path": abs_path})
 
     def _start_playback_with_gain(self):
         """Start playback then re-apply engine volume after the stream opens."""
-        if hasattr(self, "engine") and self.engine is not None:
-            self.engine.play()
+        self._engine_play()
         QTimer.singleShot(400, self._reassert_engine_volume)
         QTimer.singleShot(1200, self._reassert_engine_volume)
         if self._preview_timer and not self._preview_timer.isActive():
@@ -3573,6 +3602,7 @@ For more information, visit the project repository.
         self.playlist.setCurrentRow(index)
         self.load_media(path)
         QTimer.singleShot(100, self._engine_play)
+        self._multiroom_broadcast("open", {"path": os.path.abspath(path)})
         label = os.path.basename(path)
         self.status_bar.showMessage(
             f"{status_prefix}{label}" if status_prefix else label, 3000
@@ -3637,6 +3667,7 @@ For more information, visit the project repository.
                 if os.path.abspath(self.app_state.last_file) in self._torrent_active_paths:
                     self.torrent_streamer.pause_transfer()
                     self.status_bar.showMessage("Torrent transfer paused (not playing).", 3000)
+            self._multiroom_broadcast("pause")
         else:
             self._engine_play()
 
@@ -3646,6 +3677,7 @@ For more information, visit the project repository.
             self.engine.stop()
         if self.torrent_streamer:
             self.torrent_streamer.pause_transfer()
+        self._multiroom_broadcast("stop")
 
     def toggle_mute(self):
         """Toggle mute via native engine without fighting the volume slider."""
@@ -3694,6 +3726,7 @@ For more information, visit the project repository.
                 f"Volume: {volume}% (engine boost — clipping may occur)",
                 2500,
             )
+        self._multiroom_broadcast("volume", {"percent": volume})
 
     def adjust_volume(self, delta):
         """Adjust volume by delta"""
@@ -3708,12 +3741,18 @@ For more information, visit the project repository.
         if hasattr(self, "engine") and self.engine is not None:
             dur = self.engine.duration()
             if dur > 0:
-                self.engine.set_position(int(position * dur), exact=exact)
+                ms = int(position * dur)
+                self.engine.set_position(ms, exact=exact)
+                if exact:
+                    self._multiroom_broadcast("seek", {"ms": ms})
 
     def seek_relative(self, seconds):
         """Seek relative to current position"""
         if hasattr(self, "engine") and self.engine is not None:
             self.engine.seek_relative(seconds)
+            self._multiroom_broadcast(
+                "seek", {"relative_ms": int(float(seconds) * 1000)}
+            )
 
     def take_snapshot(self):
         """Take a snapshot of the current frame"""
@@ -4156,8 +4195,7 @@ Position: {position // 1000}s
 
         def _ok(fn):
             def _wrap(*a, **k):
-                fn(*a, **k)
-                return {"ok": True}
+                return self._with_multiroom_inbound(lambda: (fn(*a, **k), {"ok": True})[1])
 
             return _wrap
 
@@ -4169,9 +4207,15 @@ Position: {position // 1000}s
             stop=_ok(self.stop_playback),
             next=_ok(self.next_media),
             previous=_ok(self.previous_media),
-            volume=self._daemon_set_volume,
-            seek=self._daemon_seek,
-            open=self._daemon_open,
+            volume=lambda body: self._with_multiroom_inbound(
+                lambda: self._daemon_set_volume(body)
+            ),
+            seek=lambda body: self._with_multiroom_inbound(
+                lambda: self._daemon_seek(body)
+            ),
+            open=lambda body: self._with_multiroom_inbound(
+                lambda: self._daemon_open(body)
+            ),
         )
         if self.control_daemon.start():
             self.status_bar.showMessage(
@@ -4455,6 +4499,154 @@ Position: {position // 1000}s
             f"Synced {copied} file(s) to {volume.label}", 5000
         )
 
+    def _with_multiroom_inbound(self, fn):
+        """Run ``fn`` without fanning transport back out to peers."""
+        prev = self._multiroom_inbound
+        self._multiroom_inbound = True
+        try:
+            return fn()
+        finally:
+            self._multiroom_inbound = prev
+
+    def _multiroom_broadcast(self, action: str, body: Optional[dict] = None) -> None:
+        if self._multiroom_inbound:
+            return
+        if not getattr(self, "multiroom", None) or not self.multiroom.sync_enabled:
+            return
+        peers = [p for p in self.multiroom.peers if p.enabled]
+        if not peers:
+            return
+        fanout_action(peers, action, body)
+
+    def toggle_multiroom_sync(self, checked: bool = False) -> None:
+        self.multiroom.sync_enabled = bool(checked)
+        save_multiroom_config(self.multiroom)
+        n = len([p for p in self.multiroom.peers if p.enabled])
+        if self.multiroom.sync_enabled:
+            self.status_bar.showMessage(
+                f"Multi-room sync on ({n} room(s))", 4000
+            )
+        else:
+            self.status_bar.showMessage("Multi-room sync off", 3000)
+
+    def show_multiroom_help(self) -> None:
+        QMessageBox.information(
+            self,
+            "Multi-room setup",
+            "Multi-room uses the same VoxPlayer native stack on each machine — "
+            "no Chromecast/AirPlay SDK.\n\n"
+            "On every room host:\n"
+            "  1. Run VoxPlayer\n"
+            "  2. Export VOXPLAYER_DAEMON_ALLOW_LAN=1 (and optionally "
+            "VOXPLAYER_DAEMON_HOST=0.0.0.0)\n"
+            "  3. Allow TCP port 17890 on the LAN firewall\n\n"
+            "On the leader machine:\n"
+            "  • Audio → Multi-room → Manage rooms… (add host/IP)\n"
+            "  • Enable “Sync transport to rooms”\n\n"
+            "Open/path sync needs the same file path on each room "
+            "(shared mount or identical library layout).",
+        )
+
+    def manage_multiroom_peers(self) -> None:
+        while True:
+            peers = self.multiroom.peers
+            lines = [
+                f"{i+1}. {p.name} @ {p.host}:{p.port}"
+                + ("" if p.enabled else " [disabled]")
+                for i, p in enumerate(peers)
+            ] or ["(no rooms yet)"]
+            choice, ok = QInputDialog.getItem(
+                self,
+                "Manage multi-room peers",
+                "Rooms:\n"
+                + "\n".join(lines)
+                + "\n\nAction:",
+                [
+                    "Add room…",
+                    "Remove room…",
+                    "Test room…",
+                    "Toggle room enabled…",
+                    "Done",
+                ],
+                0,
+                False,
+            )
+            if not ok or choice == "Done":
+                break
+            if choice.startswith("Add"):
+                name, ok1 = QInputDialog.getText(self, "Add room", "Display name:")
+                if not ok1 or not (name or "").strip():
+                    continue
+                host, ok2 = QInputDialog.getText(
+                    self, "Add room", "Host / IP:", text="192.168.1."
+                )
+                if not ok2 or not (host or "").strip():
+                    continue
+                port_s, ok3 = QInputDialog.getText(
+                    self, "Add room", "Daemon port:", text="17890"
+                )
+                if not ok3:
+                    continue
+                try:
+                    port = int((port_s or "17890").strip())
+                except ValueError:
+                    port = 17890
+                self.multiroom.peers.append(
+                    RoomPeer(name=name.strip(), host=host.strip(), port=port)
+                )
+                save_multiroom_config(self.multiroom)
+                continue
+            if not peers:
+                QMessageBox.information(self, "Multi-room", "No rooms configured.")
+                continue
+            labels = [f"{p.name} ({p.host}:{p.port})" for p in peers]
+            pick, okp = QInputDialog.getItem(
+                self, "Select room", "Room:", labels, 0, False
+            )
+            if not okp or pick not in labels:
+                continue
+            idx = labels.index(pick)
+            peer = peers[idx]
+            if choice.startswith("Remove"):
+                del self.multiroom.peers[idx]
+                save_multiroom_config(self.multiroom)
+            elif choice.startswith("Test"):
+                ok_probe, msg = probe_peer(peer)
+                QMessageBox.information(
+                    self,
+                    "Room probe",
+                    f"{peer.name} ({peer.host}:{peer.port})\n{msg}",
+                )
+            elif choice.startswith("Toggle"):
+                peer.enabled = not peer.enabled
+                save_multiroom_config(self.multiroom)
+
+    def multiroom_sync_now(self) -> None:
+        """Push open/seek/volume/play-or-pause to peers once (ignores sync toggle)."""
+        peers = [p for p in self.multiroom.peers if p.enabled]
+        if not peers:
+            QMessageBox.information(
+                self,
+                "Multi-room",
+                "No enabled rooms. Use Manage rooms… first.",
+            )
+            return
+        path = self.app_state.last_file or ""
+        vol = int(self.app_state.volume)
+        if path and os.path.isfile(path):
+            fanout_action(peers, "open", {"path": os.path.abspath(path)})
+        fanout_action(peers, "volume", {"percent": vol})
+        if hasattr(self, "engine") and self.engine is not None:
+            ms = int(self.engine.position())
+            if ms > 0:
+                fanout_action(peers, "seek", {"ms": ms})
+            fanout_action(
+                peers, "play" if self.engine.is_playing() else "pause"
+            )
+        self.status_bar.showMessage(
+            f"Synced transport to {len(peers)} room(s)", 4000
+        )
+
     def closeEvent(self, event):
         """Close-to-tray while playing; otherwise persist state and quit."""
         playing = False
@@ -4488,7 +4680,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.14.0")
+    app.setApplicationVersion("1.15.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

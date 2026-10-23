@@ -12,14 +12,15 @@ A professional media player with advanced features including:
 - Fullscreen mode with auto-hiding controls
 - SRT / WebVTT / ASS-SSA subtitle support; MPRIS2 + localhost control daemon; podcast feeds
 - Portable / USB playlist and podcast sync
+- LAN multi-room transport sync (peer control daemons)
 - Timeline preview and keyboard shortcuts
 
 Author: VoxHash
 License: MIT
-Version: 1.14.0
+Version: 1.15.0
 """
 
-__version__ = "1.14.0"
+__version__ = "1.15.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

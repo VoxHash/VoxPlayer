@@ -237,6 +237,11 @@ class PlaybackEngine(QObject):
         self._last_error_msg = ""
         self._error_emitted_for_source = ""
         self._event_manager = None
+        # Gapless queue: secondary player from the same Instance (same native stack).
+        self._next_player = None
+        self._next_media = None
+        self._next_path = ""
+        self._user_stop = False
 
         self.media_player = None
         self.audio_output = None
@@ -620,6 +625,8 @@ class PlaybackEngine(QObject):
         self.state_changed.emit("paused")
 
     def set_source(self, file_path: str) -> None:
+        self.clear_prepared_next()
+        self._user_stop = False
         self._source_path = file_path
         self.clear_last_error()
         if self._player is None:
@@ -663,9 +670,118 @@ class PlaybackEngine(QObject):
     def stop(self) -> None:
         if self._player is None:
             return
+        self._user_stop = True
+        self.clear_prepared_next()
         self._player.stop()
         self._last_state = "stopped"
         self.state_changed.emit("stopped")
+
+    def clear_prepared_next(self) -> None:
+        """Drop a buffered next track (same Instance — no second media stack)."""
+        if self._next_player is not None:
+            try:
+                self._next_player.stop()
+            except Exception:
+                pass
+            try:
+                self._next_player.release()
+            except Exception:
+                pass
+        self._next_player = None
+        self._next_media = None
+        self._next_path = ""
+
+    def prepared_next_path(self) -> str:
+        return self._next_path or ""
+
+    def prepare_next(self, file_path: str) -> bool:
+        """
+        Buffer the next audio file on a second MediaPlayer from this Instance.
+
+        Best-effort gapless queue (libVLC 3 has no true DSP gapless). Call
+        ``promote_prepared_next`` when the current track ends.
+        """
+        if not file_path or not os.path.isfile(file_path):
+            return False
+        if self._instance is None or self._vlc is None:
+            return False
+        if self._looks_like_video(file_path):
+            return False
+        if self._next_path == file_path and self._next_player is not None:
+            return True
+        self.clear_prepared_next()
+        try:
+            player = self._instance.media_player_new()
+            media = self._instance.media_new_path(file_path)
+            if self._volume_pct > 100:
+                try:
+                    media.add_option(f":gain={self._volume_pct / 100.0:.3f}")
+                except Exception:
+                    pass
+            player.set_media(media)
+            player.audio_set_volume(
+                0 if self._muted else min(200, int(self._volume_pct))
+            )
+            player.play()
+            # Pause once opened so the track is buffered without audible overlap.
+            QTimer.singleShot(120, lambda p=player: self._pause_prepared(p))
+            self._next_player = player
+            self._next_media = media
+            self._next_path = file_path
+            return True
+        except Exception:
+            self.clear_prepared_next()
+            return False
+
+    def _pause_prepared(self, player) -> None:
+        if player is None or player is not self._next_player:
+            return
+        try:
+            player.set_pause(True)
+            player.set_time(0)
+        except Exception:
+            pass
+
+    def promote_prepared_next(self) -> Optional[str]:
+        """Swap to the prepared player. Returns the new source path or None."""
+        if self._next_player is None or not self._next_path:
+            return None
+        old = self._player
+        path = self._next_path
+        self._player = self._next_player
+        self._media = self._next_media
+        self._source_path = path
+        self._next_player = None
+        self._next_media = None
+        self._next_path = ""
+        self._duration_ms = 0
+        self._attach_error_events()
+        try:
+            self._player.set_pause(False)
+            self._player.play()
+        except Exception:
+            pass
+        self._apply_volume_to_player()
+        self.set_muted(self._muted)
+        if old is not None:
+            try:
+                old.stop()
+            except Exception:
+                pass
+            try:
+                old.release()
+            except Exception:
+                pass
+        self._last_state = "playing"
+        self.state_changed.emit("playing")
+        try:
+            d = self._player.get_length()
+            if d and d > 0:
+                self._duration_ms = int(d)
+                self.duration_changed.emit(self._duration_ms)
+        except Exception:
+            pass
+        return path
 
     def toggle(self) -> None:
         if self.is_playing():
@@ -862,8 +978,13 @@ class PlaybackEngine(QObject):
             elif not playing and self._last_state == "playing":
                 # 5 = Ended, 6 handled above
                 if st_i == 5:
-                    self._last_state = "stopped"
-                    self.state_changed.emit("stopped")
+                    if self._user_stop:
+                        self._user_stop = False
+                        self._last_state = "stopped"
+                        self.state_changed.emit("stopped")
+                    else:
+                        self._last_state = "ended"
+                        self.state_changed.emit("ended")
                 elif st_i not in (1, 2, 4):  # Opening/Buffering/Paused
                     self._last_state = "stopped"
                     self.state_changed.emit("stopped")
@@ -873,6 +994,7 @@ class PlaybackEngine(QObject):
     def shutdown(self) -> None:
         if self._poll:
             self._poll.stop()
+        self.clear_prepared_next()
         if self.video_widget is not None and self._surface_filter is not None:
             try:
                 self.video_widget.removeEventFilter(self._surface_filter)

@@ -197,6 +197,57 @@ def _unique_dest(folder: str, filename: str) -> str:
         n += 1
 
 
+_MEDIA_EXTS = {
+    ".mp3",
+    ".flac",
+    ".wav",
+    ".ogg",
+    ".m4a",
+    ".aac",
+    ".wma",
+    ".opus",
+    ".mp4",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".webm",
+    ".m4v",
+}
+
+
+def on_device_library_root(volume_path: str, subdir: str = "VoxPlayer") -> str:
+    return os.path.join(volume_path, subdir)
+
+
+def list_on_device_library(
+    volume_path: str, *, subdir: str = "VoxPlayer"
+) -> Tuple[str, List[str], List[str]]:
+    """
+    List media files and M3U playlists under ``volume/VoxPlayer``.
+
+    Returns ``(root, media_paths, m3u_paths)``. Missing root → empty lists.
+    """
+    root = on_device_library_root(volume_path, subdir)
+    media: List[str] = []
+    playlists: List[str] = []
+    if not os.path.isdir(root):
+        return root, media, playlists
+    try:
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for name in filenames:
+                path = os.path.join(dirpath, name)
+                ext = os.path.splitext(name)[1].lower()
+                if ext in {".m3u", ".m3u8"}:
+                    playlists.append(path)
+                elif ext in _MEDIA_EXTS:
+                    media.append(path)
+    except OSError:
+        pass
+    media.sort(key=lambda p: os.path.basename(p).lower())
+    playlists.sort(key=lambda p: os.path.basename(p).lower())
+    return root, media, playlists
+
+
 def sync_files_to_volume(
     volume_path: str,
     files: Iterable[str],

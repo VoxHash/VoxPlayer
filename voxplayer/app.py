@@ -60,7 +60,11 @@ from .mpris import MprisController
 from .control_daemon import ControlDaemon
 from .podcasts import PodcastStore, download_episode, podcasts_dir
 from .subtitles import companion_subtitle_paths
-from .portable_sync import list_portable_volumes, sync_files_to_volume
+from .portable_sync import (
+    list_on_device_library,
+    list_portable_volumes,
+    sync_files_to_volume,
+)
 from .multiroom import (
     RoomPeer,
     fanout_action,
@@ -120,6 +124,8 @@ class AppState:
     library_roots: List[str] = None  # persisted Open Folder roots
     shuffle_enabled: bool = False
     repeat_mode: str = "off"  # off | one | all
+    resume_bookmarks_enabled: bool = True
+    gapless_queue_enabled: bool = True
 
     def __post_init__(self):
         if self.resume_positions is None:
@@ -884,6 +890,12 @@ class Settings:
         self.settings.setValue("shuffle_enabled", bool(state.shuffle_enabled))
         mode = state.repeat_mode if state.repeat_mode in ("off", "one", "all") else "off"
         self.settings.setValue("repeat_mode", mode)
+        self.settings.setValue(
+            "resume_bookmarks_enabled", bool(state.resume_bookmarks_enabled)
+        )
+        self.settings.setValue(
+            "gapless_queue_enabled", bool(state.gapless_queue_enabled)
+        )
 
     def load_state(self) -> AppState:
         """Load application state"""
@@ -912,6 +924,16 @@ class Settings:
         # Migrate legacy dark/light keys to the Ember bundled palette.
         if raw_theme in ("dark", "light", ""):
             raw_theme = "ember"
+        resume_bm = self.settings.value("resume_bookmarks_enabled", True)
+        if isinstance(resume_bm, str):
+            resume_bm = resume_bm.strip().lower() in {"1", "true", "yes"}
+        else:
+            resume_bm = bool(resume_bm)
+        gapless = self.settings.value("gapless_queue_enabled", True)
+        if isinstance(gapless, str):
+            gapless = gapless.strip().lower() in {"1", "true", "yes"}
+        else:
+            gapless = bool(gapless)
         return AppState(
             window_geometry=self.settings.value("window_geometry"),
             theme=raw_theme,
@@ -923,6 +945,8 @@ class Settings:
             library_roots=roots,
             shuffle_enabled=shuffle,
             repeat_mode=repeat,
+            resume_bookmarks_enabled=resume_bm,
+            gapless_queue_enabled=gapless,
         )
 
 class PlayerControls(TransportBar):
@@ -2006,6 +2030,9 @@ class VoxPlayerMainWindow(QMainWindow):
         sync_portable_action = QAction("&Sync Playlist or Podcasts…", self)
         sync_portable_action.triggered.connect(self.sync_to_portable_device)
         portable_menu.addAction(sync_portable_action)
+        browse_device_action = QAction("&Browse On-Device Library…", self)
+        browse_device_action.triggered.connect(self.browse_on_device_library)
+        portable_menu.addAction(browse_device_action)
 
         media_menu.addSeparator()
 
@@ -2068,6 +2095,22 @@ class VoxPlayerMainWindow(QMainWindow):
         self.audio_device_menu = sound_output_menu.addMenu("&Select Device")
         self.audio_device_menu.setEnabled(self.app_state.audio_output_mode == "manual")
         self.update_audio_device_menu()
+
+        # Portable-player companion: gapless queue + bookmark resume
+        companion_menu = audio_menu.addMenu("&Playback companion")
+        self._gapless_action = QAction("&Gapless queue (prefetch next)", self)
+        self._gapless_action.setCheckable(True)
+        self._gapless_action.setChecked(bool(self.app_state.gapless_queue_enabled))
+        self._gapless_action.triggered.connect(self.toggle_gapless_queue)
+        companion_menu.addAction(self._gapless_action)
+        self._resume_bm_action = QAction("&Bookmark resume positions", self)
+        self._resume_bm_action.setCheckable(True)
+        self._resume_bm_action.setChecked(bool(self.app_state.resume_bookmarks_enabled))
+        self._resume_bm_action.triggered.connect(self.toggle_resume_bookmarks)
+        companion_menu.addAction(self._resume_bm_action)
+        clear_bm_action = QAction("&Clear all bookmarks", self)
+        clear_bm_action.triggered.connect(self.clear_resume_bookmarks)
+        companion_menu.addAction(clear_bm_action)
 
         # Multi-room (LAN peer sync — same native stack, no cast SDK)
         multiroom_menu = audio_menu.addMenu("&Multi-room")
@@ -2264,7 +2307,7 @@ class VoxPlayerMainWindow(QMainWindow):
             QTimer.singleShot(200, self._reassert_engine_volume)
         else:
             self.controls.btn_play.setText("▶")
-            if state == "stopped" and self._preview_timer:
+            if state in ("stopped", "ended") and self._preview_timer:
                 self._preview_timer.stop()
         self.playback_state_changed(state)
         if hasattr(self, "mpris") and self.mpris is not None:
@@ -3322,6 +3365,9 @@ For more information, visit the project repository.
 
             self.status_bar.showMessage(f"Loaded: {filename} ({file_size_mb:.1f}MB, {file_ext})")
 
+            # Bookmark resume (desktop companion for portable players)
+            self._schedule_resume_bookmark(file_path)
+
             # Sidecar subtitles: SRT / WebVTT / ASS / SSA
             if hasattr(self, "subtitle_manager"):
                 self.subtitle_manager.clear()
@@ -3858,10 +3904,12 @@ For more information, visit the project repository.
         playing = False
         paused = False
         stopped = False
+        ended = False
         if isinstance(state, str):
             playing = state == "playing"
             paused = state == "paused"
             stopped = state == "stopped"
+            ended = state == "ended"
         elif state is None and hasattr(self, "engine") and self.engine is not None:
             playing = self.engine.is_playing()
             paused = not playing and bool(self.engine.source_path())
@@ -3882,13 +3930,19 @@ For more information, visit the project repository.
             self.status_bar.showMessage("Paused")
             # Keep video frame visible while paused; logo only for audio/empty.
             self.show_logo(False if is_video else True)
+            self._save_resume_bookmark()
         else:
             self.controls.btn_play.setText("▶")
             self.status_bar.showMessage("Stopped")
             self.show_logo(True)
 
-        if stopped:
+        if ended:
+            self._clear_resume_bookmark_for(self.app_state.last_file)
+            if self._try_promote_gapless():
+                return
             self.auto_play_next()
+        elif stopped:
+            self._save_resume_bookmark()
 
     def auto_play_next(self):
         """Advance when a track ends, honoring repeat / shuffle."""
@@ -3966,6 +4020,13 @@ For more information, visit the project repository.
         if duration > 0:
             current_pos = self.engine.position()
             self.controls.update_time(current_pos, duration)
+            self._maybe_prepare_gapless(current_pos, duration)
+            # Persist bookmark about every 5s while playing
+            if self.engine.is_playing() and current_pos > 0 and (current_pos // 5000) != getattr(
+                self, "_bm_tick", -1
+            ):
+                self._bm_tick = current_pos // 5000
+                self._save_resume_bookmark()
 
     def show_media_info(self):
         """Show media information dialog"""
@@ -4499,6 +4560,248 @@ Position: {position // 1000}s
             f"Synced {copied} file(s) to {volume.label}", 5000
         )
 
+    def browse_on_device_library(self) -> None:
+        """Simple on-device library view for USB volumes with a VoxPlayer folder."""
+        volumes = list_portable_volumes()
+        if not volumes:
+            QMessageBox.information(
+                self,
+                "On-device library",
+                "No portable volumes detected. Mount a USB drive and try again.",
+            )
+            return
+        vol_labels = {f"{v.label} — {v.path}": v for v in volumes}
+        vol_pick, ok = QInputDialog.getItem(
+            self,
+            "On-device library",
+            "Volume:",
+            list(vol_labels.keys()),
+            0,
+            False,
+        )
+        if not ok or vol_pick not in vol_labels:
+            return
+        volume = vol_labels[vol_pick]
+        root, media, playlists = list_on_device_library(volume.path)
+        if not media and not playlists:
+            QMessageBox.information(
+                self,
+                "On-device library",
+                f"No media under:\n{root}\n\n"
+                "Sync a playlist first (Portable Devices → Sync…).",
+            )
+            return
+        choices: List[str] = []
+        choice_map: Dict[str, str] = {}
+        for pl in playlists:
+            label = f"Playlist: {os.path.basename(pl)}"
+            choices.append(label)
+            choice_map[label] = pl
+        for path in media[:200]:
+            label = f"Track: {os.path.basename(path)}"
+            # Disambiguate duplicate basenames
+            if label in choice_map:
+                label = f"Track: {os.path.relpath(path, root)}"
+            choices.append(label)
+            choice_map[label] = path
+        pick, ok = QInputDialog.getItem(
+            self,
+            f"On-device — {volume.label}",
+            f"{len(media)} file(s), {len(playlists)} playlist(s) in {root}",
+            choices,
+            0,
+            False,
+        )
+        if not ok or pick not in choice_map:
+            return
+        target = choice_map[pick]
+        if target.lower().endswith((".m3u", ".m3u8")):
+            try:
+                base = os.path.dirname(target)
+                resolved: List[str] = []
+                with open(target, "r", encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        cand = line if os.path.isabs(line) else os.path.normpath(
+                            os.path.join(base, line)
+                        )
+                        if os.path.isfile(cand):
+                            resolved.append(cand)
+                if not resolved:
+                    QMessageBox.information(
+                        self,
+                        "On-device library",
+                        "Playlist has no resolvable local files on this volume.",
+                    )
+                    return
+                self.clear_up_next_and_stop()
+                for p in resolved:
+                    self.playlist.add_media_file(p)
+                self.load_and_play_media(resolved[0])
+                self.status_bar.showMessage(
+                    f"On-device playlist: {os.path.basename(target)} ({len(resolved)})",
+                    4000,
+                )
+            except OSError as exc:
+                QMessageBox.warning(self, "On-device library", str(exc))
+            return
+        self.load_and_play_media(target)
+        self.status_bar.showMessage(
+            f"On-device: {os.path.basename(target)}", 4000
+        )
+
+    def toggle_gapless_queue(self, checked: bool = False) -> None:
+        self.app_state.gapless_queue_enabled = bool(checked)
+        self.settings.save_state(self.app_state)
+        if not checked and hasattr(self, "engine") and self.engine is not None:
+            self.engine.clear_prepared_next()
+        self.status_bar.showMessage(
+            "Gapless queue on" if checked else "Gapless queue off", 3000
+        )
+
+    def toggle_resume_bookmarks(self, checked: bool = False) -> None:
+        self.app_state.resume_bookmarks_enabled = bool(checked)
+        self.settings.save_state(self.app_state)
+        self.status_bar.showMessage(
+            "Bookmark resume on" if checked else "Bookmark resume off", 3000
+        )
+
+    def clear_resume_bookmarks(self) -> None:
+        self.app_state.resume_positions = {}
+        self.settings.save_state(self.app_state)
+        self.status_bar.showMessage("Cleared all resume bookmarks", 3000)
+
+    def _save_resume_bookmark(self) -> None:
+        if not self.app_state.resume_bookmarks_enabled:
+            return
+        path = self.app_state.last_file
+        if not path or not hasattr(self, "engine") or self.engine is None:
+            return
+        pos = int(self.engine.position())
+        dur = int(self.engine.duration())
+        if pos < 5000:
+            return
+        if dur > 0 and pos >= max(0, dur - 10000):
+            self._clear_resume_bookmark_for(path)
+            return
+        bookmarks = dict(self.app_state.resume_positions or {})
+        bookmarks[os.path.abspath(path)] = pos
+        # Cap store size
+        if len(bookmarks) > 400:
+            # drop oldest arbitrary extras
+            for key in list(bookmarks.keys())[: len(bookmarks) - 400]:
+                bookmarks.pop(key, None)
+        self.app_state.resume_positions = bookmarks
+        try:
+            self.settings.settings.setValue(
+                "resume_positions", json.dumps(bookmarks)
+            )
+        except Exception:
+            pass
+
+    def _clear_resume_bookmark_for(self, path: str) -> None:
+        if not path:
+            return
+        key = os.path.abspath(path)
+        bookmarks = dict(self.app_state.resume_positions or {})
+        if key in bookmarks:
+            bookmarks.pop(key, None)
+            self.app_state.resume_positions = bookmarks
+            try:
+                self.settings.settings.setValue(
+                    "resume_positions", json.dumps(bookmarks)
+                )
+            except Exception:
+                pass
+
+    def _schedule_resume_bookmark(self, file_path: str) -> None:
+        if not self.app_state.resume_bookmarks_enabled or not file_path:
+            return
+        key = os.path.abspath(file_path)
+        ms = int((self.app_state.resume_positions or {}).get(key) or 0)
+        if ms < 5000:
+            return
+
+        def _apply():
+            if not hasattr(self, "engine") or self.engine is None:
+                return
+            if os.path.abspath(self.app_state.last_file or "") != key:
+                return
+            dur = int(self.engine.duration())
+            if dur > 0 and ms >= dur - 5000:
+                return
+            self.engine.set_position(ms, exact=True)
+            self.status_bar.showMessage(
+                f"Resumed at {ms // 60000}:{(ms // 1000) % 60:02d}", 3500
+            )
+
+        QTimer.singleShot(450, _apply)
+        QTimer.singleShot(1200, _apply)
+
+    def _next_queue_path_for_gapless(self) -> str:
+        if self.app_state.repeat_mode == "one" and self.app_state.last_file:
+            return self.app_state.last_file
+        idx = self._queue_index_for_step(1)
+        if idx is None:
+            return ""
+        path = self.playlist.get_file_at_index(idx)
+        return path if path and os.path.isfile(path) else ""
+
+    def _maybe_prepare_gapless(self, position_ms: int, duration_ms: int) -> None:
+        if not self.app_state.gapless_queue_enabled:
+            return
+        if not hasattr(self, "engine") or self.engine is None:
+            return
+        if not self.engine.is_playing():
+            return
+        if duration_ms <= 0 or position_ms <= 0:
+            return
+        remaining = duration_ms - position_ms
+        if remaining > 3500 or remaining < 0:
+            return
+        path = self.app_state.last_file or ""
+        if path and self.is_video_path(path):
+            return
+        nxt = self._next_queue_path_for_gapless()
+        if not nxt or os.path.abspath(nxt) == os.path.abspath(path):
+            if self.app_state.repeat_mode != "one":
+                return
+        self.engine.prepare_next(nxt)
+
+    def _try_promote_gapless(self) -> bool:
+        if not self.app_state.gapless_queue_enabled:
+            return False
+        if not hasattr(self, "engine") or self.engine is None:
+            return False
+        path = self.engine.promote_prepared_next()
+        if not path:
+            return False
+        self.app_state.last_file = path
+        self._register_library_path(path)
+        filename = os.path.basename(path)
+        self.setWindowTitle(f"{filename} - VoxPlayer")
+        if hasattr(self, "playlist"):
+            idx = self.playlist.find_file_index(path)
+            if idx is not None:
+                self.playlist.setCurrentRow(idx)
+        if hasattr(self, "now_playing"):
+            thumb = self._thumb_map.get(path) or get_thumbnail_path(path)
+            self.now_playing.update_now_playing(
+                path, "native C core (audio)", thumbnail_path=thumb
+            )
+            self._sync_now_playing_queue()
+        if hasattr(self, "controls"):
+            self.controls.set_track_meta(filename, os.path.dirname(path))
+        if hasattr(self, "library_index"):
+            self.library_index.record_play(path)
+            self.library_index.save()
+        self.status_bar.showMessage(f"Gapless → {filename}", 3000)
+        self._multiroom_broadcast("open", {"path": os.path.abspath(path)})
+        self._multiroom_broadcast("play")
+        return True
+
     def _with_multiroom_inbound(self, fn):
         """Run ``fn`` without fanning transport back out to peers."""
         prev = self._multiroom_inbound
@@ -4680,7 +4983,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.15.0")
+    app.setApplicationVersion("1.16.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

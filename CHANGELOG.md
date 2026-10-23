@@ -8,7 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Android / GrapheneOS companion phase
-- Hardware / open-firmware portable-player companion concepts
+- Library UX: Albums / Artists / Tracks / Liked navigation
+- Waveform / spectrum meter as optional transport chrome
+
+## [1.16.0] - 2026-10-23
+
+### Added
+- Gapless queue (best-effort): prefetch next audio on a second MediaPlayer from the same libvlc Instance; promote on natural end (Audio → Playback companion)
+- Bookmark resume: persist per-file positions and seek on reopen; clear near end / Clear all bookmarks
+- On-device library browse for USB `VoxPlayer/` folders (media + M3U) via Media → Portable Devices → Browse On-Device Library…
+
+### Changed
+- Natural track end emits `ended` (auto-advance / gapless); user Stop no longer auto-advances the queue
+- ROADMAP portable-player companion item marked done
 
 ## [1.15.0] - 2026-10-23
 

@@ -28,7 +28,7 @@ Missing paths show a **File Error** dialog. Pass an absolute path if the working
 
 ## Torrent: no supported media file
 
-The torrent must contain at least one supported audio/video extension. Multi-file torrents prioritize streamable media.
+The torrent must look like a media library: at least one supported audio/video extension and/or playlist (`.m3u`, `.cue`, etc.). ISO/distro/installer torrents are rejected before add. Multi-file media torrents prioritize a streamable file.
 
 ## Tests fail without a display
 

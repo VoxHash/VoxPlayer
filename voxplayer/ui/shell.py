@@ -9,7 +9,7 @@ import os
 from typing import Callable, List, Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QPixmap
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -34,7 +34,14 @@ from ..theme import COLORS
 class MediaCard(QFrame):
     clicked = pyqtSignal(str)
 
-    def __init__(self, title: str, subtitle: str, path: str, parent=None):
+    def __init__(
+        self,
+        title: str,
+        subtitle: str,
+        path: str,
+        parent=None,
+        thumbnail_path: Optional[str] = None,
+    ):
         super().__init__(parent)
         self.path = path
         self.setObjectName("MediaCard")
@@ -44,15 +51,18 @@ class MediaCard(QFrame):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
 
-        art = QLabel()
-        art.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        art.setFixedSize(140, 120)
-        art.setStyleSheet(
+        self.art = QLabel()
+        self.art.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.art.setFixedSize(140, 120)
+        self.art.setStyleSheet(
             f"background: {COLORS['bg_input']}; border-radius: 8px; color: {COLORS['accent']}; font-size: 28px;"
         )
         ext = os.path.splitext(path)[1].lower()
-        art.setText("▶" if ext in {".mp4", ".mkv", ".avi", ".mov", ".webm"} else "♪")
-        layout.addWidget(art)
+        if thumbnail_path and os.path.isfile(thumbnail_path):
+            self.set_thumbnail(thumbnail_path)
+        else:
+            self.art.setText("▶" if ext in {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v"} else "♪")
+        layout.addWidget(self.art)
 
         name = QLabel(title)
         name.setWordWrap(True)
@@ -64,6 +74,22 @@ class MediaCard(QFrame):
         sub.setObjectName("MetaMuted")
         sub.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 11px;")
         layout.addWidget(sub)
+
+    def set_thumbnail(self, thumbnail_path: str) -> None:
+        if not thumbnail_path or not os.path.isfile(thumbnail_path):
+            return
+        pix = QPixmap(thumbnail_path)
+        if pix.isNull():
+            return
+        self.art.setText("")
+        self.art.setPixmap(
+            pix.scaled(
+                140,
+                120,
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -204,8 +230,9 @@ class HomeView(QWidget):
             btn.style().polish(btn)
         self.filter_changed.emit(name.lower())
 
-    def set_items(self, paths: List[str]) -> None:
+    def set_items(self, paths: List[str], thumbnails: Optional[dict] = None) -> None:
         self._paths = list(paths)
+        thumbnails = thumbnails or {}
         while self.grid.count():
             item = self.grid.takeAt(0)
             w = item.widget()
@@ -223,7 +250,7 @@ class HomeView(QWidget):
             if len(title) > 42:
                 title = title[:39] + "…"
             sub = os.path.splitext(path)[1].upper().lstrip(".") or "MEDIA"
-            card = MediaCard(title, sub, path)
+            card = MediaCard(title, sub, path, thumbnail_path=thumbnails.get(path))
             card.clicked.connect(self.media_activated.emit)
             self.grid.addWidget(card, i // cols, i % cols)
 
@@ -280,19 +307,53 @@ class NowPlayingPanel(QWidget):
         self.queue.setObjectName("QueueList")
         layout.addWidget(self.queue, 1)
 
-    def update_now_playing(self, path: Optional[str], engine: str = "") -> None:
+    def update_now_playing(
+        self,
+        path: Optional[str],
+        engine: str = "",
+        title: Optional[str] = None,
+        subtitle: Optional[str] = None,
+        thumbnail_path: Optional[str] = None,
+    ) -> None:
         if not path:
             self.title.setText("Nothing playing")
             self.subtitle.setText("Drop a file or pick from Home")
+            self.art.clear()
             self.art.setText("VoxPlayer")
             return
-        name = os.path.basename(path)
+        name = title or os.path.basename(path)
         self.title.setText(name)
-        self.subtitle.setText(os.path.dirname(path))
-        ext = os.path.splitext(path)[1].lower()
-        self.art.setText("▶ VIDEO" if ext in {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v"} else "♪ AUDIO")
+        self.subtitle.setText(subtitle or os.path.dirname(path))
+        if thumbnail_path and os.path.isfile(thumbnail_path):
+            self.set_art_pixmap(thumbnail_path)
+        else:
+            ext = os.path.splitext(path)[1].lower()
+            self.art.clear()
+            self.art.setText(
+                "▶ VIDEO"
+                if ext in {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v"}
+                else "♪ AUDIO"
+            )
         if engine:
             self.engine_label.setText(f"Engine: {engine}")
+
+    def set_art_pixmap(self, image_path: str = "", pixmap: Optional[QPixmap] = None) -> None:
+        pix = pixmap
+        if pix is None and image_path and os.path.isfile(image_path):
+            pix = QPixmap(image_path)
+        if pix is None or pix.isNull():
+            return
+        self.art.setText("")
+        target_w = max(200, self.art.width() or 248)
+        target_h = max(160, self.art.minimumHeight())
+        self.art.setPixmap(
+            pix.scaled(
+                target_w,
+                target_h,
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
 
     def set_queue(self, paths: List[str], current: Optional[str] = None) -> None:
         self.queue.clear()
@@ -407,6 +468,24 @@ class TransportBar(QWidget):
     def set_track_meta(self, title: str, subtitle: str = "") -> None:
         self.track_title.setText(title or "VoxPlayer")
         self.track_artist.setText(subtitle or "Ready")
+
+    def set_track_art(self, image_path: str = "", pixmap: Optional[QPixmap] = None) -> None:
+        pix = pixmap
+        if pix is None and image_path and os.path.isfile(image_path):
+            pix = QPixmap(image_path)
+        if pix is None or pix.isNull():
+            self.track_art.setText("VX")
+            self.track_art.setPixmap(QPixmap())
+            return
+        self.track_art.setText("")
+        self.track_art.setPixmap(
+            pix.scaled(
+                48,
+                48,
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
 
     def toggle_play(self):
         if hasattr(self.parent_window, "toggle_playback"):

@@ -20,9 +20,11 @@ voxplayer
 - **Modern shell**: Left library rail, home/library grid, now-playing panel, bottom transport
 - **Universal format support**: MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MP3, FLAC, WAV, OGG, M4A, AAC, WMA
 - **Hybrid playback**: Qt Multimedia by default; optional libmpv via `pip install "voxplayer[native]"`
-- **True volume amplification**: Up to 200% for quiet media
+- **True volume amplification**: Up to 200% (mpv native / Pulse-boosted Qt path); Media Info matches the slider
+- **Thumbnails & live preview**: ffmpeg-cached posters on library cards; live frame grabs in Now Playing / transport
+- **Metadata enrichment**: embedded tags, MusicBrainz, optional AcoustID / TMDB (see docs/configuration.md)
 - **Queue / playlists**: Search, filtering, import/export
-- **Torrent streaming**: qBittorrent Web UI integration
+- **Torrent streaming**: qBittorrent Web UI integration with media-library gating
 - **File associations**: Double-click media to open with VoxPlayer
 - **Cross-platform**: Windows, macOS, and Linux
 

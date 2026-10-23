@@ -29,6 +29,28 @@ from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QIcon, QPixmap
 from .theme import app_stylesheet, COLORS
 from .ui.shell import LeftRail, HomeView, NowPlayingPanel, TransportBar
 from .engine.playback import PlaybackEngine
+from .media.thumbnails import ThumbnailCache, get_thumbnail_path
+from .media.metadata import MediaMetadata, enrich_metadata
+from .media.torrent_gate import validate_torrent_file, validate_torrent_file_list
+
+
+class MetadataEnrichWorker(QThread):
+    """Background tag / MusicBrainz / AcoustID / TMDB enrichment."""
+
+    finished_meta = pyqtSignal(object)
+
+    def __init__(self, path: str, cover_path: str, parent=None):
+        super().__init__(parent)
+        self.path = path
+        self.cover_path = cover_path
+
+    def run(self):
+        try:
+            meta = enrich_metadata(self.path, cover_dest=self.cover_path)
+        except Exception:
+            meta = MediaMetadata(path=self.path)
+        self.finished_meta.emit(meta)
+
 
 # Data classes for state management
 @dataclass
@@ -323,6 +345,16 @@ class TorrentStreamer(QThread):
         """Enable sequential streaming mode and pick one playable media file."""
         self._set_sequential_download()
         self._set_first_last_piece_priority()
+
+        # Post-metadata gate (magnets / client file list)
+        file_names = []
+        for item in self._torrent_files():
+            name = str(getattr(item, "name", "") or "")
+            if name:
+                file_names.append(name)
+        ok, gate_msg = validate_torrent_file_list(file_names)
+        if not ok:
+            raise RuntimeError(gate_msg)
 
         stream_file = self._pick_stream_file()
         if not stream_file:
@@ -894,7 +926,12 @@ class VoxPlayerMainWindow(QMainWindow):
         # Torrent and update functionality
         self.torrent_streamer = None
         self.update_checker = None
-        self.current_version = "1.1.0"
+        self.current_version = "1.1.1"
+        self.thumb_cache = ThumbnailCache()
+        self._meta_cache: Dict[str, MediaMetadata] = {}
+        self._thumb_map: Dict[str, str] = {}
+        self._preview_timer = None
+        self._enrich_thread = None
 
         # Audio device detection
         self.current_audio_device = None
@@ -1091,7 +1128,22 @@ class VoxPlayerMainWindow(QMainWindow):
             filtered.append(path)
         if filter_name == "recent":
             filtered = filtered[:24]
-        self.home_view.set_items(filtered)
+        thumbs = {}
+        for path in filtered[:48]:
+            cached = self._thumb_map.get(path) or get_thumbnail_path(path)
+            if cached:
+                thumbs[path] = cached
+                self._thumb_map[path] = cached
+            else:
+                # Generate asynchronously-ish for first batch (fast ffmpeg seeks)
+                try:
+                    generated = self.thumb_cache.ensure(path)
+                    if generated:
+                        thumbs[path] = generated
+                        self._thumb_map[path] = generated
+                except Exception:
+                    pass
+        self.home_view.set_items(filtered, thumbnails=thumbs)
         self.home_view.hint.setText(f"{len(filtered)} items")
 
     def apply_home_filter(self, name: str):
@@ -1289,8 +1341,14 @@ class VoxPlayerMainWindow(QMainWindow):
     def _engine_state_changed(self, state: str):
         if state == "playing":
             self.controls.btn_play.setText("⏸")
+            if self._preview_timer and not self._preview_timer.isActive():
+                self._preview_timer.start()
+            # Pulse sink-input often appears only after playback starts
+            QTimer.singleShot(300, self._apply_output_gain_from_state)
         else:
             self.controls.btn_play.setText("▶")
+            if state == "stopped" and self._preview_timer:
+                self._preview_timer.stop()
 
     def setup_shortcuts(self):
         # Space bar for play/pause
@@ -1333,6 +1391,11 @@ class VoxPlayerMainWindow(QMainWindow):
         self.audio_device_timer = QTimer()
         self.audio_device_timer.timeout.connect(self.check_audio_device_changes)
         self.audio_device_timer.start(2000)  # Check every 2 seconds
+
+        # Live preview frames for Now Playing / transport while video plays
+        self._preview_timer = QTimer()
+        self._preview_timer.setInterval(500)
+        self._preview_timer.timeout.connect(self._update_live_preview)
 
     def setup_drag_drop(self):
         """Setup comprehensive drag and drop functionality for all app components"""
@@ -1506,8 +1569,11 @@ For more information, visit the project repository.
 
     def open_torrent_file(self):
         """Open torrent file dialog"""
+        default_dir = os.path.expanduser("~/Downloads/Torrents")
+        if not os.path.isdir(default_dir):
+            default_dir = os.path.expanduser("~/Downloads")
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open Torrent File", "", "Torrent Files (*.torrent)"
+            self, "Open Torrent File", default_dir, "Torrent Files (*.torrent)"
         )
         if file_path:
             self.start_torrent_streaming(torrent_file=file_path)
@@ -1517,6 +1583,19 @@ For more information, visit the project repository.
         if self.torrent_streamer and self.torrent_streamer.isRunning():
             QMessageBox.warning(self, "Torrent Active", "A torrent is already being streamed.")
             return
+
+        # Gate .torrent files before contacting the client
+        if torrent_file:
+            ok, msg, _paths = validate_torrent_file(torrent_file)
+            if not ok:
+                QMessageBox.warning(
+                    self,
+                    "Torrent Rejected",
+                    f"{msg}\n\nVoxPlayer only accepts torrents that look like a "
+                    "video, music, or playlist media library.",
+                )
+                self.status_bar.showMessage("Torrent rejected: not a media library.")
+                return
 
         self.torrent_streamer = TorrentStreamer(magnet_link=magnet_link, torrent_file=torrent_file)
         self.torrent_streamer.progress_updated.connect(self.on_torrent_progress)
@@ -2078,14 +2157,23 @@ For more information, visit the project repository.
 
             filename = os.path.basename(file_path)
             self.setWindowTitle(f"{filename} - VoxPlayer")
+
+            thumb = self.thumb_cache.ensure(file_path)
+            if thumb:
+                self._thumb_map[file_path] = thumb
+
             if hasattr(self, "now_playing"):
                 engine_name = self.engine.backend_name if hasattr(self, "engine") else "qt"
                 label = "libmpv (HW)" if engine_name == "mpv" else "Qt Multimedia"
-                self.now_playing.update_now_playing(file_path, label)
+                self.now_playing.update_now_playing(
+                    file_path, label, thumbnail_path=thumb
+                )
                 queue_paths = [self.playlist.get_file_at_index(i) for i in range(self.playlist.count())]
                 self.now_playing.set_queue([p for p in queue_paths if p], file_path)
             if hasattr(self, "controls"):
                 self.controls.set_track_meta(filename, os.path.dirname(file_path))
+                if thumb:
+                    self.controls.set_track_art(thumb)
 
             # Get file info for status display
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
@@ -2100,17 +2188,108 @@ For more information, visit the project repository.
                 self.subtitle_manager.load_subtitles(subtitle_path)
                 self.status_bar.showMessage(f"Loaded: {filename} + Subtitles ({file_size_mb:.1f}MB, {file_ext})")
 
+            # Enrich metadata (network) without blocking the UI long-term
+            QTimer.singleShot(50, lambda p=file_path: self._enrich_current_media(p))
+
         except Exception as e:
             QMessageBox.critical(self, "Load Error", f"Failed to load media file:\n{str(e)}")
             self.status_bar.showMessage(f"Error loading: {os.path.basename(file_path)}")
+
+    def _enrich_current_media(self, file_path: str):
+        """Run metadata enrichment and refresh Now Playing / Media Info fields."""
+        if not file_path or not os.path.isfile(file_path):
+            return
+        if file_path in self._meta_cache:
+            self._apply_enriched_metadata(self._meta_cache[file_path])
+            return
+
+        cover_dest = self.thumb_cache.path_for(file_path + ".cover")
+        worker = MetadataEnrichWorker(file_path, cover_dest, self)
+        self._enrich_thread = worker
+
+        def _on_done(meta: MediaMetadata):
+            if not meta or meta.path != getattr(self.app_state, "last_file", ""):
+                if meta and meta.path:
+                    self._meta_cache[meta.path] = meta
+                return
+            self._meta_cache[meta.path] = meta
+            self._apply_enriched_metadata(meta)
+
+        worker.finished_meta.connect(_on_done)
+        worker.start()
+
+    def _apply_enriched_metadata(self, meta: MediaMetadata):
+        if not meta:
+            return
+        title = meta.display_title()
+        subtitle = meta.display_subtitle()
+        cover = meta.cover_path or self._thumb_map.get(meta.path) or get_thumbnail_path(meta.path)
+        if cover:
+            self._thumb_map[meta.path] = cover
+        if hasattr(self, "now_playing"):
+            engine_name = self.engine.backend_name if hasattr(self, "engine") else "qt"
+            label = "libmpv (HW)" if engine_name == "mpv" else "Qt Multimedia"
+            self.now_playing.update_now_playing(
+                meta.path,
+                label,
+                title=title,
+                subtitle=subtitle or meta.source,
+                thumbnail_path=cover,
+            )
+        if hasattr(self, "controls"):
+            self.controls.set_track_meta(title, subtitle or os.path.dirname(meta.path))
+            if cover:
+                self.controls.set_track_art(cover)
+        self.setWindowTitle(f"{title} - VoxPlayer")
+        self.status_bar.showMessage(
+            f"Metadata ({meta.source}): {title}" + (f" — {subtitle}" if subtitle else ""),
+            4000,
+        )
+        self.refresh_home_grid()
+
+    def _update_live_preview(self):
+        """Grab the current video surface into Now Playing + transport art."""
+        if not hasattr(self, "video_widget") or not self.app_state.last_file:
+            return
+        ext = os.path.splitext(self.app_state.last_file)[1].lower()
+        video_ext = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v"}
+        if ext not in video_ext:
+            return
+        playing = False
+        if hasattr(self, "engine"):
+            playing = self.engine.is_playing()
+        if not playing:
+            return
+        try:
+            pix = self.video_widget.grab()
+            if pix is None or pix.isNull():
+                return
+            if hasattr(self, "now_playing"):
+                self.now_playing.set_art_pixmap(pixmap=pix)
+            if hasattr(self, "controls"):
+                self.controls.set_track_art(pixmap=pix)
+        except Exception:
+            pass
 
     def load_and_play_media(self, file_path):
         """Load media file and auto-play it"""
         self.load_media(file_path)
         if hasattr(self, "engine") and self.app_state.last_file:
-            QTimer.singleShot(200, self.engine.play)
+            QTimer.singleShot(200, self._start_playback_with_gain)
         elif self.media_player.source().isValid():
-            QTimer.singleShot(200, self.media_player.play)
+            QTimer.singleShot(200, self._start_playback_with_gain)
+
+    def _start_playback_with_gain(self):
+        """Start playback then re-apply volume (Pulse sink-input appears after play)."""
+        if hasattr(self, "engine"):
+            self.engine.play()
+        else:
+            self.media_player.play()
+        # Re-apply logical volume once the audio stream exists
+        QTimer.singleShot(400, self._apply_output_gain_from_state)
+        QTimer.singleShot(1200, self._apply_output_gain_from_state)
+        if self._preview_timer and not self._preview_timer.isActive():
+            self._preview_timer.start()
 
     def previous_media(self):
         """Go to previous media file in playlist"""
@@ -2195,31 +2374,34 @@ For more information, visit the project repository.
         self.controls.btn_mute.setText("🔇" if self.audio_output.isMuted() else "🔊")
 
     def _apply_output_gain_from_state(self):
-        """Apply persisted 0..200 user volume as linear 0.0..2.0 software gain."""
+        """Apply persisted 0..200 user volume with real gain (mpv / Pulse / Qt)."""
         if hasattr(self, "engine"):
             self.engine.set_volume_percent(int(self.app_state.volume))
             return
-        gain = max(0.0, min(2.0, float(self.app_state.volume) / 100.0))
+        gain = max(0.0, min(1.0, float(self.app_state.volume) / 100.0))
         self.audio_output.setVolume(gain)
 
     def set_volume(self, volume):
-        """Set volume (0-200) using linear software preamp gain."""
-        # User-facing 0..200 slider maps to 0.0..2.0 linear gain.
+        """Set volume (0-200) using linear gain; Media Info reports the same %."""
         volume = max(0, min(200, int(volume)))
-        gain = max(0.0, min(2.0, volume / 100.0))
+        gain = volume / 100.0
 
-        # Persist logical volume so keyboard/slider adjustments stay in sync.
+        # Persist logical volume so keyboard/slider/Media Info stay in sync.
         self.app_state.volume = volume
         self.base_volume = min(1.0, gain)
         self.volume_amplification = gain
 
-        # Apply software gain directly to audio backend.
         self._apply_output_gain_from_state()
         self.controls.volume_label.setText(f"{volume}%")
+        # Keep slider aligned when volume is set from keyboard shortcuts
+        if self.controls.volume_slider.value() != volume:
+            self.controls.volume_slider.blockSignals(True)
+            self.controls.volume_slider.setValue(volume)
+            self.controls.volume_slider.blockSignals(False)
 
         if volume > 100:
             self.status_bar.showMessage(
-                f"Volume: {volume}% (Digital preamp, clipping/distortion may occur)",
+                f"Volume: {volume}% (boost active — clipping may occur)",
                 2500,
             )
 
@@ -2443,9 +2625,41 @@ For more information, visit the project repository.
             file_size_mb = file_size / (1024 * 1024)
             file_ext = os.path.splitext(file_path)[1].upper()
 
-            duration = self.media_player.duration()
+            if hasattr(self, "engine"):
+                duration = self.engine.duration()
+                position = self.engine.position()
+                state = "Playing" if self.engine.is_playing() else (
+                    "Paused" if self.engine.backend_name else "Stopped"
+                )
+                if self.engine.backend_name == "qt":
+                    state = self.media_player.playbackState().name
+                muted = self.engine.is_muted()
+                engine_label = "libmpv" if self.engine.backend_name == "mpv" else "Qt Multimedia"
+            else:
+                duration = self.media_player.duration()
+                position = self.media_player.position()
+                state = self.media_player.playbackState().name
+                muted = self.audio_output.isMuted()
+                engine_label = "Qt Multimedia"
+
             duration_min = duration // 60000
             duration_sec = (duration % 60000) // 1000
+            # Always report logical UI volume (0..200), not Qt's clamped 0..1.
+            volume_pct = int(self.app_state.volume)
+            if hasattr(self, "engine"):
+                volume_pct = int(self.engine.volume_percent())
+
+            meta = self._meta_cache.get(file_path)
+            meta_block = ""
+            if meta:
+                meta_block = f"""
+Enriched Metadata:
+Title: {meta.display_title()}
+Artist: {meta.artist or '—'}
+Album: {meta.album or '—'}
+Year: {meta.year or '—'}
+Source: {meta.source}
+"""
 
             info_text = f"""
 Media Information:
@@ -2455,12 +2669,13 @@ Path: {file_path}
 Size: {file_size_mb:.2f} MB
 Format: {file_ext}
 Duration: {duration_min}:{duration_sec:02d}
-Volume: {int(self.audio_output.volume() * 100)}%
-Muted: {'Yes' if self.audio_output.isMuted() else 'No'}
-
+Volume: {volume_pct}%
+Muted: {'Yes' if muted else 'No'}
+Engine: {engine_label}
+{meta_block}
 Player Status:
-State: {self.media_player.playbackState().name}
-Position: {self.media_player.position() // 1000}s
+State: {state}
+Position: {position // 1000}s
             """
 
             QMessageBox.information(self, "Media Information", info_text)

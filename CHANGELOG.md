@@ -11,6 +11,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Persist library roots across sessions
 - Broader subtitle format support where maintainable
 
+## [1.1.1] - 2026-10-22
+
+### Fixed
+- **Volume accuracy**: Media Information reports the same 0–200% logical volume as the transport slider (no longer Qt’s clamped 0–100%)
+- **Volume boost**: Qt path applies PipeWire/PulseAudio per-stream gain above 100%; libmpv uses native volume 0–200
+- **Now Playing / transport art**: live video frame grabs while playing; ffmpeg/cache thumbnails for library cards and transport
+- **Torrent gating**: reject non-media torrents (ISO/distro/archives) before add; re-check after client metadata
+
+### Added
+- Metadata enrichment via ffprobe/mutagen tags, MusicBrainz, optional AcoustID (`ACOUSTID_API_KEY`), optional TMDB (`TMDB_API_KEY`), Cover Art Archive
+- Optional extras: `pip install "voxplayer[metadata]"`
+
 ## [1.1.0] - 2026-10-22
 
 ### Added

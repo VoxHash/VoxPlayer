@@ -52,5 +52,29 @@ Never commit `.env` files or real Web UI passwords. `.gitignore` already exclude
 |----------|---------|-------------|
 | `VOXPLAYER_FORCE_QT` | unset | Set to `1` to always use Qt Multimedia |
 | `VOXPLAYER_ENGINE` | `auto` | `auto`, `qt`, or `mpv` (libmpv embed when available) |
+| `ACOUSTID_API_KEY` | unset | Optional AcoustID client key for audio fingerprint lookup |
+| `TMDB_API_KEY` | unset | Optional TMDB key for video title/poster enrichment |
+| `FPCALC` | `fpcalc` | Path to AcoustID `fpcalc` binary when using fingerprinting |
 
 On Wayland, VoxPlayer defaults to Qt Multimedia unless `VOXPLAYER_ENGINE=mpv` is set.
+
+### Metadata enrichment
+
+VoxPlayer reads embedded tags (ffprobe / optional mutagen), then best-effort network lookup:
+
+1. MusicBrainz recording search (no key; polite User-Agent required)
+2. Cover Art Archive for release front covers
+3. AcoustID when `ACOUSTID_API_KEY` is set (`pip install "voxplayer[metadata]"` + `fpcalc`)
+4. TMDB multi-search when `TMDB_API_KEY` is set
+
+Store keys only in the environment or a local gitignored `.env`. Never commit API keys.
+
+```bash
+export ACOUSTID_API_KEY='your-acoustid-app-key'
+export TMDB_API_KEY='your-tmdb-v3-key'
+pip install "voxplayer[metadata]"
+```
+
+### Torrent media gate
+
+Only torrents whose contents look like a media library (common audio/video extensions and/or playlist files such as `.m3u` / `.cue`) are accepted. ISO/distro/installer torrents are rejected with a clear error before (and after) add.

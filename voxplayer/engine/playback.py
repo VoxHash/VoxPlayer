@@ -9,6 +9,7 @@ window system allows widget embedding; otherwise use Qt Multimedia (FFmpeg).
 from __future__ import annotations
 
 import os
+import subprocess
 from enum import Enum
 from typing import Optional
 
@@ -197,17 +198,71 @@ class PlaybackEngine(QObject):
     def seek_relative(self, seconds: float) -> None:
         self.set_position(max(0, self.position() + int(seconds * 1000)))
 
+    def volume_percent(self) -> int:
+        """Logical user volume 0..200 (not Qt's clamped 0..100)."""
+        return int(self._volume_pct)
+
     def set_volume_percent(self, volume: int) -> None:
-        """0..200 logical volume; >100 uses software gain / mpv volume>100."""
+        """0..200 logical volume with real audible gain on both engines.
+
+        - libmpv: native ``volume`` property (0..200+).
+        - Qt Multimedia: ``QAudioOutput`` only accepts 0.0..1.0, so 0..100%
+          maps there; 101..200% applies PipeWire/PulseAudio per-stream boost
+          (and resets boost when ≤100%).
+        """
         volume = max(0, min(200, int(volume)))
         self._volume_pct = volume
         gain = volume / 100.0
         if self.backend == BackendKind.MPV and self._mpv is not None:
             try:
-                self._mpv.volume = min(200.0, volume)
+                self._mpv.volume = float(volume)
             except Exception:
                 pass
-        self.audio_output.setVolume(min(2.0, gain))
+            # Keep Qt output muted/idle when mpv owns audio.
+            try:
+                self.audio_output.setVolume(0.0)
+            except Exception:
+                pass
+            self._apply_pulse_stream_volume(100)  # reset OS boost; mpv owns gain
+            return
+
+        # Qt path: hardware/software volume capped at 1.0
+        qt_vol = min(1.0, gain)
+        self.audio_output.setVolume(qt_vol)
+        # Amplify beyond unity via PipeWire/Pulse when available
+        self._apply_pulse_stream_volume(volume if volume > 100 else 100)
+
+    def _apply_pulse_stream_volume(self, percent: int) -> None:
+        """Set this process's sink-input volume (100 = unity, 200 = +6 dB linear)."""
+        percent = max(0, min(200, int(percent)))
+        # Pulse uses 65536 as 100%
+        pa_vol = int(65536 * (percent / 100.0))
+        pid = os.getpid()
+        try:
+            list_proc = subprocess.run(
+                ["pactl", "list", "sink-inputs"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            if list_proc.returncode != 0 or not list_proc.stdout:
+                return
+            current_id = None
+            matched_ids = []
+            for line in list_proc.stdout.splitlines():
+                if line.startswith("Sink Input #"):
+                    current_id = line.split("#", 1)[1].strip()
+                elif "application.process.id" in line or "application.process.id =" in line:
+                    if str(pid) in line and current_id is not None:
+                        matched_ids.append(current_id)
+            for sink_id in matched_ids:
+                subprocess.run(
+                    ["pactl", "set-sink-input-volume", sink_id, str(pa_vol)],
+                    capture_output=True,
+                    timeout=2,
+                )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
 
     def set_muted(self, muted: bool) -> None:
         self._muted = bool(muted)

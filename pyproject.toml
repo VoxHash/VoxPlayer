@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxplayer"
-version = "1.1.0"
+version = "1.1.1"
 description = "A modern multimedia player built with PyQt6"
 readme = "README.md"
 license = {text = "MIT"}
@@ -57,6 +57,10 @@ torrent = [
 ]
 native = [
     "python-mpv>=1.0.0",
+]
+metadata = [
+    "mutagen>=1.45.0",
+    "pyacoustid>=1.2.0",
 ]
 
 [project.urls]

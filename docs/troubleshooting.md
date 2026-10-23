@@ -9,25 +9,25 @@ python -c "from PyQt6.QtWidgets import QApplication; print('ok')"
 
 On Linux CI-like hosts, install OpenGL/EGL packages listed in `.github/workflows/ci.yml`.
 
-## App exits: native engine / libmpv required
+## App exits: native engine / native C media core required
 
 ```bash
-.venv/bin/pip install python-mpv
-# Arch: sudo pacman -S mpv
-# Debian/Ubuntu: sudo apt install libmpv2
-# macOS: brew install mpv
+.venv/bin/pip install python-vlc
+# Arch: sudo pacman -S vlc
+# Debian/Ubuntu: sudo apt install vlc libvlc-dev
+# macOS: brew install vlc
 python run.py
 ```
 
 ## Volume or mute does nothing
 
-- Confirm the Now Playing engine label shows **libmpv** (not a missing-engine error)
-- Volume is 0–200 via libmpv; mute toggles `mute` without zeroing the slider
+- Confirm the Now Playing engine label shows **native C core** (not a missing-engine error)
+- Volume is 0–200 via the native C media core; mute toggles `mute` without zeroing the slider
 - Prefer X11/XWayland for video embed; audio volume still works on pure Wayland
 
 ## Black window or no video
 
-- Confirm the file plays with `mpv` or `ffplay`
+- Confirm the file plays with the system media player or `ffplay`
 - Prefer a session with `DISPLAY` (X11/XWayland) for embedded video
 - Try another container (MP4 H.264 + AAC is a reliable baseline)
 - On pure Wayland, audio may still play when embed is limited

@@ -1,4 +1,4 @@
-"""Minimal bencode decoder for .torrent metainfo (no third-party dep)."""
+"""Minimal bencode decoder/encoder for .torrent metainfo (no third-party dep)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,31 @@ def decode(data: bytes) -> Any:
         # Some torrents append junk; accept if we parsed a top-level value.
         pass
     return value
+
+
+def encode(value: Any) -> bytes:
+    """Encode a Python object to bencode (for info-hash computation)."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return b"i" + str(value).encode("ascii") + b"e"
+    if isinstance(value, bytes):
+        return str(len(value)).encode("ascii") + b":" + value
+    if isinstance(value, str):
+        raw = value.encode("utf-8")
+        return str(len(raw)).encode("ascii") + b":" + raw
+    if isinstance(value, list):
+        return b"l" + b"".join(encode(v) for v in value) + b"e"
+    if isinstance(value, dict):
+        items = []
+        for key in sorted(value.keys()):
+            if isinstance(key, str):
+                k = key.encode("utf-8")
+            elif isinstance(key, bytes):
+                k = key
+            else:
+                raise TypeError("bencode dict keys must be bytes or str")
+            items.append(encode(k) + encode(value[key]))
+        return b"d" + b"".join(items) + b"e"
+    raise TypeError(f"Cannot bencode type {type(value)!r}")
 
 
 def _decode_at(data: bytes, i: int) -> Tuple[Any, int]:

@@ -4,6 +4,16 @@ All notable changes to VoxPlayer will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-10-23
+
+### Changed
+- Playback engine rewritten onto the native C media core (python-vlc + system libvlc) with in-app window-ID video embed
+- Volume 0–200% via core volume / media gain; install guidance and docs retargeted to the new engine
+
+### Fixed
+- Black / missing in-app video stage caused by unreliable prior embed path
+- Play/pause race on load that left media stopped after open
+
 ## [Unreleased]
 
 ### Planned
@@ -15,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [1.3.3] - 2026-10-23
 
 ### Fixed
-- In-app video embed: do not open an external mpv window; bind WID before loading video
+- In-app video embed: do not open an external video window; bind WID before loading video
 - Seek scrubbing no longer freezes the UI on large jumps (deferred keyframe seek; exact on release)
 - Torrent picker: select multiple files across folders; ROADMAP scrub of excluded-scope wording
 
@@ -29,12 +39,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Persisted 0% survives reload; mute and 100–200% restore from 0% unchanged
 
 ### Tests
-- `tests/test_volume_zero.py` — UI `set_volume(0)` + libmpv readback across play-start timers
+- `tests/test_volume_zero.py` — UI `set_volume(0)` + native engine readback across play-start timers
 
 ## [1.3.1] - 2026-10-23
 
 ### Fixed
-- libmpv startup segfault under non-C locales (`LC_NUMERIC=C` before engine init)
+- native-engine startup segfault under non-C locales (`LC_NUMERIC=C` before engine init)
 - Native-engine install dialog no longer cites third-party GitHub installation URLs
 
 ## [1.3.0] - 2026-10-23
@@ -42,22 +52,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 - **Zone-aware drag-and-drop**: drop on Home/library grid → **index only**; drop on Now Playing / Up next / bottom transport → **add and play immediately**
 - **Rust `vox_scan` native scanner** (`native/vox_scan`) with Python ctypes loader for parallel folder walks; Python walker remains if the `.so` is not built
-- Clear **libmpv install guidance** on Linux / Windows / macOS when python-mpv or system libmpv is missing (`run.py` preflight + startup dialog)
+- Clear **native-engine install guidance** on Linux / Windows / macOS when python-vlc or system libvlc is missing (`run.py` preflight + startup dialog)
 
 ### Changed
-- **libmpv is the only playback engine** — Qt Multimedia is no longer a playback fallback (PyQt6 remains the UI shell; `QVideoWidget` is an embed surface only)
-- Volume **0–200%** and mute use engine-native libmpv properties only (no Pulse/`pactl` design path)
+- **Native C media core is the only playback engine** — Qt Multimedia is no longer a playback fallback (PyQt6 remains the UI shell; `QVideoWidget` is an embed surface only)
+- Volume **0–200%** and mute use engine-native native-engine properties only (no Pulse/`pactl` design path)
 - Filter tabs **All / Video / Audio / Recent** use understated icon+text controls instead of heavy filled chips
 - Home library and Up next **scrollbars** are wider, higher-contrast, and easier to grab on the dark theme
-- Default logical volume for new installs is **100%**; engine label always reports libmpv (embedded or audio path)
+- Default logical volume for new installs is **100%**; engine label always reports native C core (embedded or audio path)
 - ROADMAP expanded: native Rust/Zig/C phases, skin/daemon/podcast-like feeds, portable-player concepts, Android/GrapheneOS — without third-party brand names
 
 ### Fixed
 - Volume slider and speaker mute fighting each other when the engine was on the old Qt path
-- `run.py` ensuring the project `.venv` (with `python-mpv`) is the interpreter users actually launch
+- `run.py` ensuring the project `.venv` (with `python-vlc`) is the interpreter users actually launch
 
 ### Removed
-- Silent fallback from libmpv failures to Qt Multimedia playback
+- Silent fallback from the native engine failures to Qt Multimedia playback
 - Recursive “accept drops everywhere” behavior that broke zone-specific drop routing
 
 ## [1.2.1] - 2026-10-23
@@ -87,9 +97,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Up next: click to play, right-click remove, Clear Up next and stop, Add to queue from library
 
 ### Changed
-- **libmpv is the default engine** when available — reliable 0–200% volume without requiring `VOXPLAYER_ENGINE` or Pulse-only workarounds for the happy path
+- **Native C media core is the default engine** when available — reliable 0–200% volume without requiring `VOXPLAYER_ENGINE` or Pulse-only workarounds for the happy path
 - **Audio no longer opens the empty center stage**; video stage shows for video playback or when the user expands Now Playing
-- `qbittorrent-api` and `python-mpv` moved into **main install dependencies**
+- `qbittorrent-api` and `python-vlc` moved into **main install dependencies**
 - Up next lives in the Now Playing rail
 
 ### Fixed
@@ -100,7 +110,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 - **Volume accuracy**: Media Information reports the same 0–200% logical volume as the transport slider (no longer Qt’s clamped 0–100%)
-- **Volume boost**: Qt path applies PipeWire/PulseAudio per-stream gain above 100%; libmpv uses native volume 0–200
+- **Volume boost**: Qt path applies PipeWire/PulseAudio per-stream gain above 100%; native C core uses volume 0–200
 - **Now Playing / transport art**: live video frame grabs while playing; ffmpeg/cache thumbnails for library cards and transport
 - **Torrent gating**: reject non-media torrents (ISO/distro/archives) before add; re-check after client metadata
 
@@ -115,8 +125,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Modern shell**: left library rail, center home/stage, now-playing panel, bottom transport bar
 - **VoxPlayer identity**: ember-on-charcoal theme (unique product look)
 - **Home library grid** with All / Video / Audio / Recent filters and search
-- **Playback engine abstraction** with Qt Multimedia default and optional libmpv (`pip install "voxplayer[native]"`)
-- Hardware-decode hints for Qt FFmpeg (`QT_FFMPEG_DECODING_HW_DEVICE_TYPES`) and libmpv `hwdec=auto-safe` when embedded
+- **Playback engine abstraction** with Qt Multimedia default and optional native C media core (`pip install "voxplayer[native]"`)
+- Hardware-decode hints for Qt FFmpeg (`QT_FFMPEG_DECODING_HW_DEVICE_TYPES`) and native-engine hardware decode when embedded
 
 ### Changed
 - Root `app.py` is a thin launcher; packaged implementation remains `voxplayer/app.py`

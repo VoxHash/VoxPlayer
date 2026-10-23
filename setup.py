@@ -18,7 +18,7 @@ def read_requirements():
 
 setup(
     name="voxplayer",
-    version="1.3.3",
+    version="1.4.0",
     author="VoxHash Technologies",
     author_email="contact@voxhash.dev",
     description="A modern multimedia player built with PyQt6",
@@ -60,7 +60,7 @@ setup(
             "qbittorrent-api>=2024.1.0",
         ],
         "native": [
-            "python-mpv>=1.0.0",
+            "python-vlc>=3.0.0",
         ],
         "metadata": [
             "mutagen>=1.45.0",

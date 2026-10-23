@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..theme import COLORS
+from .marquee import MarqueeLabel
 
 
 VIDEO_EXT = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
@@ -632,14 +633,14 @@ class NowPlayingPanel(_MediaDropMixin, QWidget):
         self.art.clicked.connect(self.art_clicked.emit)
         layout.addWidget(self.art)
 
-        self.title = QLabel("Nothing playing")
+        self.title = MarqueeLabel("Nothing playing")
         self.title.setObjectName("MetaPrimary")
-        self.title.setWordWrap(True)
+        self.title.setFixedHeight(22)
         layout.addWidget(self.title)
 
-        self.subtitle = QLabel("Drop a file or pick from Home")
+        self.subtitle = MarqueeLabel("Drop a file or pick from Home")
         self.subtitle.setObjectName("MetaSecondary")
-        self.subtitle.setWordWrap(True)
+        self.subtitle.setFixedHeight(18)
         layout.addWidget(self.subtitle)
 
         self.engine_label = QLabel("Engine: —")
@@ -875,14 +876,19 @@ class TransportBar(_MediaDropMixin, QWidget):
         left.addWidget(self.track_art)
         meta = QVBoxLayout()
         meta.setSpacing(2)
-        self.track_title = QLabel("VoxPlayer")
+        self.track_title = MarqueeLabel("VoxPlayer")
         self.track_title.setStyleSheet(f"color:{COLORS['text']}; font-weight:600; font-size:13px;")
-        self.track_artist = QLabel("Ready")
+        self.track_title.setFixedHeight(18)
+        self.track_artist = MarqueeLabel("Ready")
         self.track_artist.setStyleSheet(f"color:{COLORS['text_muted']}; font-size:11px;")
+        self.track_artist.setFixedHeight(16)
         meta.addWidget(self.track_title)
         meta.addWidget(self.track_artist)
-        left.addLayout(meta)
-        root.addLayout(left, 2)
+        left.addLayout(meta, 1)
+        left_wrap = QWidget()
+        left_wrap.setLayout(left)
+        left_wrap.setMaximumWidth(280)
+        root.addWidget(left_wrap, 2)
 
         center = QVBoxLayout()
         center.setSpacing(4)

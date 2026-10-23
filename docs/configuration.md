@@ -48,7 +48,7 @@ Never commit `.env` files or real Web UI passwords. `.gitignore` already exclude
 
 ## Playback engine
 
-**libmpv is the only playback engine** (`python-mpv` + system libmpv). Volume 0–200% and mute use libmpv properties. There is no Qt Multimedia playback path — missing libmpv exits with install instructions.
+**Native C media core is the only playback engine** (`python-vlc` + system libvlc). Volume 0–200% and mute use native-engine properties. There is no Qt Multimedia playback path — missing native C media core exits with install instructions.
 
 Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video embed. On pure Wayland, audio volume still works; embed may be limited.
 
@@ -60,7 +60,7 @@ Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video 
 | `TMDB_API_KEY` | unset | Optional TMDB key for video title/poster enrichment |
 | `FPCALC` | `fpcalc` | Path to AcoustID `fpcalc` binary when using fingerprinting |
 
-System package: install `mpv` / `libmpv` from your distro (see [installation.md](installation.md)).
+System package: install `vlc` / libvlc from your distro (see [installation.md](installation.md)).
 
 ### Metadata enrichment (offline-first)
 

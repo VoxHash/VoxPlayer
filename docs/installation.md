@@ -15,22 +15,22 @@ Package: [https://pypi.org/project/voxplayer/](https://pypi.org/project/voxplaye
 |------------|-----------|---------|
 | Python 3.8+ (3.10–3.12 recommended) | Yes | Runtime |
 | PyQt6 | Yes (via pip) | Desktop UI shell |
-| **python-mpv** + **system libmpv** | **Yes** | **Only** playback engine (volume 0–200%, mute) |
+| **python-vlc** + **system libvlc** | **Yes** | **Only** playback engine (volume 0–200%, mute) |
 | `ffmpeg` | Recommended | Thumbnails / media inspection |
 | qBittorrent + Web UI | Optional | Torrent streaming |
 | Rust toolchain | Optional | Build `native/vox_scan` for faster folder scans |
 
-**There is no Qt Multimedia playback fallback.** If libmpv is missing, VoxPlayer exits with install instructions.
+**There is no Qt Multimedia playback fallback.** If native C media core is missing, VoxPlayer exits with install instructions.
 
-### libmpv by platform
+### Native C media core by platform
 
 | Platform | Package / notes |
 |----------|-----------------|
-| Arch / Manjaro | `sudo pacman -S mpv` |
-| Debian / Ubuntu | `sudo apt install libmpv2` (or `libmpv1` on older releases) |
-| Fedora | `sudo dnf install mpv-libs` |
-| macOS | `brew install mpv` |
-| Windows | Install libmpv and ensure `mpv-2.dll` is on `PATH` |
+| Arch / Manjaro | `sudo pacman -S vlc` |
+| Debian / Ubuntu | `sudo apt install vlc libvlc-dev` (or `libvlc` on older releases) |
+| Fedora | `sudo dnf install vlc` |
+| macOS | `brew install vlc` |
+| Windows | Install the desktop media suite and ensure `libvlc.dll` is on `PATH` |
 
 Prefer **X11 / XWayland** for embedded video (`DISPLAY` set). On pure Wayland, audio volume still works; video embed may be limited.
 
@@ -42,7 +42,7 @@ cd VoxPlayer
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python run.py               # re-execs into .venv and preflights libmpv
+python run.py               # re-execs into .venv and preflights the native C media core
 ```
 
 Optional native scanner:
@@ -73,6 +73,6 @@ voxplayer
 ## Verify
 
 ```bash
-.venv/bin/python -c "import mpv; p=mpv.MPV(vo='null', video='no', idle='yes'); p.terminate(); print('libmpv ok')"
-QT_QPA_PLATFORM=offscreen .venv/bin/python -c "from voxplayer.engine.playback import require_mpv_module; require_mpv_module(); print('engine import ok')"
+.venv/bin/python -c "import vlc; print('libvlc ok', vlc.libvlc_get_version())"
+QT_QPA_PLATFORM=offscreen .venv/bin/python -c "from voxplayer.engine.playback import require_vlc_module; require_vlc_module(); print('engine import ok')"
 ```

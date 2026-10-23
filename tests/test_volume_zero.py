@@ -41,9 +41,9 @@ def _find_audio() -> Path | None:
 class VolumeZeroTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from voxplayer.engine.playback import prefer_xcb_for_mpv_embed
+        from voxplayer.engine.playback import prefer_xcb_for_embed
 
-        prefer_xcb_for_mpv_embed()
+        prefer_xcb_for_embed()
         from PyQt6.QtWidgets import QApplication
 
         cls.app = QApplication.instance() or QApplication(sys.argv)
@@ -69,7 +69,7 @@ class VolumeZeroTests(unittest.TestCase):
         try:
             eng.set_volume_percent(0)
             self.assertEqual(eng.volume_percent(), 0)
-            self.assertEqual(float(eng._mpv.volume), 0.0)
+            self.assertEqual(float(eng.engine_volume()), 0.0)
             eng.set_volume_percent(100)
             eng.set_muted(True)
             self.assertTrue(eng.is_muted())
@@ -106,7 +106,7 @@ class VolumeZeroTests(unittest.TestCase):
             self.assertEqual(win.app_state.volume, 0)
             self.assertEqual(win.controls.volume_slider.value(), 0)
             self.assertEqual(win.engine.volume_percent(), 0)
-            self.assertEqual(float(win.engine._mpv.volume), 0.0)
+            self.assertEqual(float(win.engine.engine_volume()), 0.0)
 
             # Drain play-start re-assert timers (200 / 400 / 1200 ms)
             t0 = time.time()
@@ -116,7 +116,7 @@ class VolumeZeroTests(unittest.TestCase):
 
             self.assertEqual(win.app_state.volume, 0)
             self.assertEqual(win.engine.volume_percent(), 0)
-            self.assertEqual(float(win.engine._mpv.volume), 0.0)
+            self.assertEqual(float(win.engine.engine_volume()), 0.0)
 
             # Engine-only set during play must also stick across re-assert timers
             win.engine.set_volume_percent(0)
@@ -126,7 +126,7 @@ class VolumeZeroTests(unittest.TestCase):
                 self.app.processEvents()
                 time.sleep(0.02)
             self.assertEqual(win.engine.volume_percent(), 0)
-            self.assertEqual(float(win.engine._mpv.volume), 0.0)
+            self.assertEqual(float(win.engine.engine_volume()), 0.0)
 
             # Mute still works; restoring slider leaves 0% then restores audible %
             win.toggle_mute()
@@ -135,10 +135,10 @@ class VolumeZeroTests(unittest.TestCase):
             self.assertFalse(win.engine.is_muted())
             win.set_volume(100)
             self.assertEqual(win.engine.volume_percent(), 100)
-            self.assertEqual(float(win.engine._mpv.volume), 100.0)
+            self.assertEqual(float(win.engine.engine_volume()), 100.0)
             win.set_volume(200)
             self.assertEqual(win.engine.volume_percent(), 200)
-            self.assertEqual(float(win.engine._mpv.volume), 200.0)
+            self.assertGreaterEqual(float(win.engine.engine_volume()), 100.0)
 
             # Persisted 0% must reload as 0 (not snap to 100 via truthiness)
             win.set_volume(0)

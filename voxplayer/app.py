@@ -23,8 +23,6 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QLineEdit, QStackedWidget, QSizePolicy, QSystemTrayIcon,
                             QStyle, QDialog)
 from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal
-from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput  # QVideoWidget host only; playback is libmpv
 from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QIcon, QPixmap
 
 from .theme import app_stylesheet, COLORS
@@ -265,6 +263,62 @@ class TorrentStreamer(QThread):
         except Exception as e:
             self.error_occurred.emit(f"Error adding magnet link: {str(e)}")
 
+    def _torrent_info_hash(self) -> Optional[str]:
+        """SHA-1 info hash from the local .torrent file (hex)."""
+        if not self.torrent_file:
+            return None
+        try:
+            from .media.bencode import decode as bdecode, encode as bencode
+            import hashlib
+
+            with open(self.torrent_file, "rb") as fh:
+                meta = bdecode(fh.read())
+            info = meta.get(b"info") if isinstance(meta, dict) else None
+            if not isinstance(info, dict):
+                return None
+            return hashlib.sha1(bencode(info)).hexdigest()
+        except Exception:
+            return None
+
+    def _reuse_existing_torrent(self) -> bool:
+        """If qBittorrent already has this torrent, attach and continue streaming."""
+        info_hash = self._torrent_info_hash()
+        if not info_hash or not self.qb_client:
+            return False
+        try:
+            items = self.qb_client.torrents_info(torrent_hashes=info_hash)
+        except Exception:
+            items = []
+        if not items:
+            # Fallback: match by torrent name
+            try:
+                from .media.bencode import decode as bdecode
+
+                with open(self.torrent_file, "rb") as fh:
+                    meta = bdecode(fh.read())
+                name = meta.get(b"info", {}).get(b"name", b"")
+                if isinstance(name, bytes):
+                    name = name.decode("utf-8", errors="replace")
+                for t in self.qb_client.torrents_info():
+                    if str(getattr(t, "name", "")) == name:
+                        items = [t]
+                        break
+            except Exception:
+                items = []
+        if not items:
+            return False
+        self.torrent_hash = str(getattr(items[0], "hash", info_hash) or info_hash)
+        try:
+            self.qb_client.torrents_set_category(
+                torrent_hashes=self.torrent_hash, category=self.stream_category
+            )
+        except Exception:
+            pass
+        self.resume_transfer()
+        self.progress_updated.emit(30, "Reusing existing torrent in qBittorrent")
+        self._monitor_torrent()
+        return True
+
     def _add_torrent_file(self):
         """Add torrent file to qBittorrent"""
         try:
@@ -286,19 +340,36 @@ class TorrentStreamer(QThread):
                 "is_first_last_piece_prio": True,
             }
             try:
-                torrent_info = self.qb_client.torrents_add(**add_kwargs)
-            except TypeError:
-                add_kwargs.pop("is_sequential_download", None)
-                add_kwargs.pop("is_first_last_piece_prio", None)
-                torrent_info = self.qb_client.torrents_add(**add_kwargs)
+                try:
+                    torrent_info = self.qb_client.torrents_add(**add_kwargs)
+                except TypeError:
+                    add_kwargs.pop("is_sequential_download", None)
+                    add_kwargs.pop("is_first_last_piece_prio", None)
+                    torrent_info = self.qb_client.torrents_add(**add_kwargs)
+            except Exception as add_exc:
+                # qBittorrent returns HTTP 409 Conflict when the torrent already exists.
+                msg = str(add_exc).lower()
+                if "conflict" in msg or "already" in msg:
+                    if self._reuse_existing_torrent():
+                        return
+                raise
 
             if self._torrent_add_succeeded(torrent_info):
                 self.progress_updated.emit(30, "Torrent file added successfully")
                 self._monitor_torrent()
             else:
+                # Some builds return Fails when already present — reuse by hash.
+                info_s = str(torrent_info).lower()
+                if "fail" in info_s or "exist" in info_s or torrent_info == "Fails.":
+                    if self._reuse_existing_torrent():
+                        return
                 self.error_occurred.emit(f"Failed to add torrent file: {torrent_info}")
 
         except Exception as e:
+            msg = str(e).lower()
+            if "conflict" in msg or "already" in msg:
+                if self._reuse_existing_torrent():
+                    return
             self.error_occurred.emit(f"Error adding torrent file: {str(e)}")
 
     def _torrent_add_succeeded(self, torrent_info) -> bool:
@@ -317,7 +388,8 @@ class TorrentStreamer(QThread):
     def _monitor_torrent(self):
         """Monitor torrent progress and emit media file once buffer is ready."""
         try:
-            self.torrent_hash = self._wait_for_torrent_hash()
+            if not self.torrent_hash:
+                self.torrent_hash = self._wait_for_torrent_hash()
             if not self.torrent_hash:
                 self.error_occurred.emit("Unable to locate added torrent in qBittorrent.")
                 return
@@ -709,10 +781,17 @@ class Settings:
 
     def load_state(self) -> AppState:
         """Load application state"""
+        if self.settings.contains("volume"):
+            try:
+                vol = max(0, min(200, int(self.settings.value("volume"))))
+            except (TypeError, ValueError):
+                vol = 100
+        else:
+            vol = 100  # first launch default
         return AppState(
             window_geometry=self.settings.value("window_geometry"),
             theme=self.settings.value("theme", "dark"),
-            volume=int(self.settings.value("volume", 50)),
+            volume=vol,
             last_file=self.settings.value("last_file", ""),
             resume_positions=json.loads(self.settings.value("resume_positions", "{}")),
             audio_output_mode=self.settings.value("audio_output_mode", "default"),
@@ -1133,11 +1212,16 @@ class VoxPlayerMainWindow(QMainWindow):
         stage_layout = QVBoxLayout(self.stage_page)
         stage_layout.setContentsMargins(12, 12, 12, 8)
         stage_layout.setSpacing(0)
-        self.video_widget = QVideoWidget()
-        self.video_widget.setStyleSheet("QVideoWidget { background-color: #000000; border-radius: 10px; }")
+        # Plain QWidget host for native window-ID video embed (QVideoWidget can paint black over VO).
+        self.video_widget = QWidget()
+        self.video_widget.setObjectName("VideoSurface")
+        self.video_widget.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+        self.video_widget.setAttribute(Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True)
+        self.video_widget.setStyleSheet("#VideoSurface { background-color: #000000; }")
         self.video_widget.setAcceptDrops(True)
         self.video_widget.mouseDoubleClickEvent = lambda event: self.toggle_fullscreen()
         self.video_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.video_widget.setMinimumSize(160, 90)
         stage_layout.addWidget(self.video_widget)
         self.center_stack.addWidget(self.home_view)
         self.center_stack.addWidget(self.stage_page)
@@ -1758,7 +1842,7 @@ class VoxPlayerMainWindow(QMainWindow):
             show_native_engine_failure(str(exc))
             raise
 
-        # Legacy aliases — playback is libmpv only; these stay None.
+        # Legacy aliases — playback is native C media core only; these stay None.
         self.media_player = None
         self.audio_output = None
 
@@ -1780,16 +1864,16 @@ class VoxPlayerMainWindow(QMainWindow):
 
     def _on_backend_ready(self, name: str):
         embed = getattr(self.engine, "has_embedded_video", False)
-        label = "libmpv (embedded)" if embed else "libmpv (audio)"
-        if name != "mpv":
-            label = "libmpv"
+        label = "native C core (embedded)" if embed else "native C core (audio)"
+        if name not in ("native", "mpv"):
+            label = "native C core"
         if hasattr(self, "now_playing"):
             self.now_playing.engine_label.setText(f"Engine: {label}")
         if hasattr(self, "status_bar"):
             self.status_bar.showMessage(f"Playback engine: {label}", 4000)
 
     def _reassert_engine_volume(self):
-        """Re-push the engine's last logical volume after libmpv opens a stream.
+        """Re-push the engine's last logical volume after the native engine opens a stream.
 
         Uses engine state (not a stale app_state snapshot) so a volume set to 0%
         during the play-start window is not overwritten back to 100%.
@@ -1802,7 +1886,7 @@ class VoxPlayerMainWindow(QMainWindow):
             self.controls.btn_play.setText("⏸")
             if self._preview_timer and not self._preview_timer.isActive():
                 self._preview_timer.start()
-            # Re-apply volume after stream opens (libmpv property timing)
+            # Re-apply volume after stream opens (engine property timing)
             QTimer.singleShot(200, self._reassert_engine_volume)
         else:
             self.controls.btn_play.setText("▶")
@@ -1926,11 +2010,11 @@ class VoxPlayerMainWindow(QMainWindow):
         self.update_audio_device()
 
     def update_audio_device(self):
-        """Audio device selection is handled by libmpv / the OS mixer."""
+        """Audio device selection is handled by the native engine / OS mixer."""
         self._apply_output_gain_from_state()
         mode = self.app_state.audio_output_mode
         self.status_bar.showMessage(
-            f"Audio device: {'Default' if mode == 'default' else 'Manual'} (libmpv / system)",
+            f"Audio device: {'Default' if mode == 'default' else 'Manual'} (native / system)",
             2500,
         )
 
@@ -2381,7 +2465,7 @@ For more information, visit the project repository.
         )
 
     def check_audio_device_changes(self):
-        """libmpv owns the audio device; re-assert volume if a stream is active."""
+        """native engine owns the audio device; re-assert volume if a stream is active."""
         try:
             if hasattr(self, "engine") and self.engine is not None and self.engine.is_playing():
                 self._apply_output_gain_from_state()
@@ -2689,24 +2773,29 @@ For more information, visit the project repository.
                 self.show_shell_page("stage")
                 if hasattr(self, "engine"):
                     # Always re-bind WID after the stage is shown so video stays in-app
-                    # (never an external mpv window).
+                    # (never an external video window).
                     def _rebind():
+                        # Ensure native window exists after the stage is visible.
+                        self.video_widget.show()
+                        self.video_widget.winId()
                         rebound = self.engine.rebind_video_widget()
                         if hasattr(self, "now_playing"):
                             label = (
-                                "libmpv (embedded)"
+                                "native C core (embedded)"
                                 if rebound
-                                else "libmpv (audio)"
+                                else "native C core (audio)"
                             )
                             self.now_playing.engine_label.setText(f"Engine: {label}")
-                        if not rebound:
+                        if rebound:
+                            self.engine.play()
+                        else:
                             self.status_bar.showMessage(
-                                "Video embed limited on this display — audio via libmpv still works",
+                                "Video embed limited on this display — audio via native engine still works",
                                 5000,
                             )
 
-                    QTimer.singleShot(0, _rebind)
-                    QTimer.singleShot(150, _rebind)
+                    QTimer.singleShot(50, _rebind)
+                    QTimer.singleShot(250, _rebind)
             else:
                 self.minimize_now_playing_view()
 
@@ -2724,7 +2813,7 @@ For more information, visit the project repository.
 
             if hasattr(self, "now_playing"):
                 embed = getattr(self.engine, "has_embedded_video", False) if hasattr(self, "engine") else False
-                label = "libmpv (embedded)" if embed else "libmpv (audio)"
+                label = "native C core (embedded)" if embed else "native C core (audio)"
                 self.now_playing.update_now_playing(
                     file_path, label, thumbnail_path=thumb
                 )
@@ -2886,7 +2975,7 @@ For more information, visit the project repository.
             self._thumb_map[meta.path] = cover
         if hasattr(self, "now_playing"):
             embed = getattr(self.engine, "has_embedded_video", False) if hasattr(self, "engine") else False
-            label = "libmpv (embedded)" if embed else "libmpv (audio)"
+            label = "native C core (embedded)" if embed else "native C core (audio)"
             self.now_playing.update_now_playing(
                 meta.path,
                 label,
@@ -2938,7 +3027,7 @@ For more information, visit the project repository.
             QTimer.singleShot(200, self._start_playback_with_gain)
 
     def _start_playback_with_gain(self):
-        """Start playback then re-apply libmpv volume after the stream opens."""
+        """Start playback then re-apply engine volume after the stream opens."""
         if hasattr(self, "engine") and self.engine is not None:
             self.engine.play()
         QTimer.singleShot(400, self._reassert_engine_volume)
@@ -3022,7 +3111,7 @@ For more information, visit the project repository.
             self.torrent_streamer.pause_transfer()
 
     def toggle_mute(self):
-        """Toggle mute via libmpv without fighting the volume slider."""
+        """Toggle mute via native engine without fighting the volume slider."""
         if not hasattr(self, "engine") or self.engine is None:
             return
         muted = not self.engine.is_muted()
@@ -3033,12 +3122,12 @@ For more information, visit the project repository.
         self._apply_output_gain_from_state()
 
     def _apply_output_gain_from_state(self):
-        """Apply persisted 0..200 user volume via libmpv only."""
+        """Apply persisted 0..200 user volume via native engine only."""
         if hasattr(self, "engine") and self.engine is not None:
             self.engine.set_volume_percent(int(self.app_state.volume))
 
     def set_volume(self, volume):
-        """Set volume (0-200) via libmpv; Media Info reports the same %."""
+        """Set volume (0-200) via native engine; Media Info reports the same %."""
         volume = max(0, min(200, int(volume)))
         gain = volume / 100.0
 
@@ -3056,9 +3145,16 @@ For more information, visit the project repository.
             self.controls.volume_slider.setValue(volume)
             self.controls.volume_slider.blockSignals(False)
 
+        # Persist immediately so the next launch restores the last volume.
+        try:
+            self.settings.settings.setValue("volume", volume)
+            self.settings.settings.sync()
+        except Exception:
+            pass
+
         if volume > 100:
             self.status_bar.showMessage(
-                f"Volume: {volume}% (libmpv boost — clipping may occur)",
+                f"Volume: {volume}% (engine boost — clipping may occur)",
                 2500,
             )
 
@@ -3182,7 +3278,7 @@ For more information, visit the project repository.
         self.controls.update_time(0, duration)
 
     def playback_state_changed(self, state):
-        """Handle playback state changes (libmpv string or legacy Qt enum)."""
+        """Handle playback state changes (engine string states)."""
         playing = False
         paused = False
         stopped = False
@@ -3194,12 +3290,12 @@ For more information, visit the project repository.
             playing = self.engine.is_playing()
             paused = not playing and bool(self.engine.source_path())
             stopped = not playing and not paused
-        elif state == QMediaPlayer.PlaybackState.PlayingState:
-            playing = True
-        elif state == QMediaPlayer.PlaybackState.PausedState:
-            paused = True
         else:
             stopped = True
+
+        is_video = False
+        if self.app_state.last_file:
+            is_video = self.is_video_path(self.app_state.last_file)
 
         if playing:
             self.controls.btn_play.setText("⏸")
@@ -3208,7 +3304,8 @@ For more information, visit the project repository.
         elif paused:
             self.controls.btn_play.setText("▶")
             self.status_bar.showMessage("Paused")
-            self.show_logo(True)
+            # Keep video frame visible while paused; logo only for audio/empty.
+            self.show_logo(False if is_video else True)
         else:
             self.controls.btn_play.setText("▶")
             self.status_bar.showMessage("Stopped")
@@ -3273,7 +3370,7 @@ For more information, visit the project repository.
                 state = "Playing" if self.engine.is_playing() else "Paused/Stopped"
                 muted = self.engine.is_muted()
                 embed = "embedded video" if self.engine.has_embedded_video else "audio path"
-                engine_label = f"libmpv ({embed})"
+                engine_label = f"native C core ({embed})"
             else:
                 duration = 0
                 position = 0
@@ -3400,12 +3497,12 @@ Position: {position // 1000}s
         event.accept()
 
 def main():
-    # Prefer X11/XWayland so libmpv WID embed works; volume 0–200% via engine-native API.
+    # Prefer X11/XWayland so native window-ID video embed works; volume 0–200% via engine-native API.
     prefer_xcb_for_mpv_embed()
     # Suppress verbose console output
     os.environ['QT_LOGGING_RULES'] = 'qt.multimedia.ffmpeg.debug=false'
-    # libmpv is the only playback engine (no Qt Multimedia playback fallback)
-    os.environ["VOXPLAYER_ENGINE"] = "mpv"
+    # native C media core is the only playback engine (no Qt Multimedia playback fallback)
+    os.environ["VOXPLAYER_ENGINE"] = "native"
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")

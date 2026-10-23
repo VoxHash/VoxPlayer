@@ -8,13 +8,13 @@ No. It is a conventional PyQt6 media player with optional qBittorrent integratio
 
 Windows, macOS, and Linux. Source installs work wherever Python + PyQt6 run; packaged binaries depend on published GitHub Release assets.
 
-## Do I need FFmpeg / libmpv installed separately?
+## Do I need FFmpeg / the native media library installed separately?
 
-**libmpv is required** for playback (and for 0–200% volume / mute). Install via your OS package manager (`mpv` / `libmpv2`). A system `ffmpeg` binary is useful for thumbnails and debugging but is not the playback engine.
+**The native C media core (libvlc) is required** for playback (and for 0–200% volume / mute). Install via your OS package manager (`vlc` / libvlc). A system `ffmpeg` binary is useful for thumbnails and debugging but is not the playback engine.
 
 ## Why did the app refuse to start?
 
-Usually python-mpv or system libmpv is missing. Use `python run.py` (venv + preflight) and follow the printed install hint. There is no silent Qt playback fallback.
+Usually python-vlc or system libvlc is missing. Use `python run.py` (venv + preflight) and follow the printed install hint. There is no silent Qt playback fallback.
 
 ## Do I need another media player for debugging?
 

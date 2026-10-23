@@ -1,12 +1,12 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.3.3**). Stack: **PyQt6 shell** + **libmpv-only playback** (python-mpv + system libmpv). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.4.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
 - Zone-aware drag-and-drop: Home/library **indexes only**; Now Playing / Up next / transport **play immediately**
 - Scrollbar contrast and grab size on library + Up next; understated All / Video / Audio / Recent filter tabs
-- **Definitive native volume**: libmpv `volume` 0–200 and `mute`; clear install failure if lib missing; `run.py` venv + preflight
+- **Definitive native volume**: native-engine volume 0–200 and mute; clear install failure if lib missing; `run.py` venv + preflight
 - First native hot-path: Rust `vox_scan` cdylib + Python ctypes loader for parallel folder scans
 - Honest Wayland note: prefer X11/XWayland for video embed; audio volume still works on pure Wayland
 
@@ -21,7 +21,7 @@ Status as of October 2026 (**v1.3.3**). Stack: **PyQt6 shell** + **libmpv-only p
 - Audio keeps the library visible; video stage only for video or explicit expand
 - Responsive grid/list library, metadata facet browse, Favorites/local playlists
 - Streaming-style Now Playing header and tray background playback
-- libmpv preferred for 0–200% volume; qbittorrent-api in main deps
+- native C media core preferred for 0–200% volume; qbittorrent-api in main deps
 
 ## Shipped in 1.1.x
 
@@ -40,10 +40,10 @@ Status as of October 2026 (**v1.3.3**). Stack: **PyQt6 shell** + **libmpv-only p
 - Skin / theme variety (bundled palettes + user theme packs under a VoxPlayer config dir)
 - Stronger empty-state and unsupported-format messaging
 
-### Playback (libmpv-only)
+### Playback (native-C-core-only)
 - Harden WID embed on pure Wayland where compositors allow; keep audio volume correct when embed is limited
 - Prefer zero-copy / hardware video surfaces where the platform compositor allows
-- Clearer codec error surfacing from libmpv (no silent engine switches)
+- Clearer codec error surfacing from the native engine (no silent engine switches)
 
 ### Library & indexing
 - Expand Rust `vox_scan` usage (watch folders, incremental re-scan)
@@ -63,7 +63,7 @@ Industry desktop players keep demux → decode → output in C/native code and r
 
 | Phase | Deliverable | Status |
 |-------|-------------|--------|
-| **0** | libmpv as the **only** playback engine; volume/mute via engine properties | **Done (1.3.0)** |
+| **0** | native C media core as the **only** playback engine; volume/mute via engine properties | **Done (1.3.0)** |
 | **1** | Rust `vox_scan` cdylib + ctypes for parallel folder walks | **Done (1.3.0)** — see `native/` |
 | **2** | Rust/C metadata + thumbnail worker pool (queue from Python, results via callbacks) | Next |
 | **3** | Optional Zig experiments for alternate scanners / packagers if Rust artifacts are heavy | Later |
@@ -94,7 +94,7 @@ Build Phase 1 locally: `cargo build --release --manifest-path native/Cargo.toml`
 - Waveform / spectrum meter as optional transport chrome
 
 ### Playback quality
-- Broader codec coverage (HEVC, AV1, Opus) as libmpv allows
+- Broader codec coverage (HEVC, AV1, Opus) as the native C core allows
 - Subtitle expansion (ASS/SSA/VTT) if maintainable on the single engine
 - Accessibility contrast pass on the dark shell
 
@@ -106,7 +106,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 
 1. **Read-only companion**: browse library + remote-control a desktop/daemon instance on the LAN
 2. **On-device library**: local files, offline cache, GrapheneOS-friendly permissions (storage scoped, no Google Play Services required)
-3. **Playback**: prefer a maintained native media backend on Android (ExoPlayer-class or libmpv Android builds) with the same volume/mute semantics as desktop
+3. **Playback**: prefer a maintained native media backend on Android (ExoPlayer-class or a native media core on Android) with the same volume/mute semantics as desktop
 4. **Sync**: optional pull of playlists / podcast feeds from the desktop daemon; no cloud account required
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.
@@ -117,7 +117,7 @@ GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analyti
 
 - Optional plugin hooks that stay out of the core path
 - WebAssembly / TUI clients talking to the local daemon
-- Packaging: ship libmpv (or clear per-OS installers) inside desktop bundles for Windows/macOS/Linux
+- Packaging: ship the native C media core (or clear per-OS installers) inside desktop bundles for Windows/macOS/Linux
 - Continue growing the native (Rust / C / optional Zig) surface area for scan, metadata, and other hot paths so the PyQt6 shell stays light under heavy multitasking
 
 ---

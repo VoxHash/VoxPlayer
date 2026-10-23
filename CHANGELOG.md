@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Android / GrapheneOS companion phase (Later)
 
+### Fixed
+- About / update checker / daemon `version` now read `voxplayer.__version__` instead of a stale hardcoded `1.13.0` string in `app.py`
+- `setup.py` version derived from `voxplayer/__init__.py`
+
 ## [1.24.0] - 2026-10-23
 
 ### Added

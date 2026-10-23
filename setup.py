@@ -16,9 +16,19 @@ def read_requirements():
     with open("requirements.txt", "r", encoding="utf-8") as fh:
         return [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
+
+def read_version():
+    init_path = os.path.join(os.path.dirname(__file__), "voxplayer", "__init__.py")
+    with open(init_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            if line.startswith("__version__"):
+                return line.split("=", 1)[1].strip().strip("\"'")
+    raise RuntimeError("version not found in voxplayer/__init__.py")
+
+
 setup(
     name="voxplayer",
-    version="1.13.0",
+    version=read_version(),
     author="VoxHash Technologies",
     author_email="contact@voxhash.dev",
     description="A modern multimedia player built with PyQt6",

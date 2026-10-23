@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal, QFileSystemWatcher
 from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QActionGroup, QIcon, QPixmap
 
+from . import __version__ as PACKAGE_VERSION
 from .theme import (
     COLORS,
     accessibility_contrast_report,
@@ -1284,7 +1285,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self._torrent_active_paths = set()  # local paths belonging to the active torrent session
         self._pending_torrent_rel_paths: List[str] = []
         self.update_checker = None
-        self.current_version = "1.13.0"
+        self.current_version = PACKAGE_VERSION
         self.thumb_cache = ThumbnailCache()
         self._meta_cache: Dict[str, MediaMetadata] = {}
         self._thumb_map: Dict[str, str] = {}

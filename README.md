@@ -27,6 +27,7 @@ voxplayer
 - **Up next & playlists**: Click Up next to play; icon clear-and-stop; Favorites chips plus named local playlists by file path
 - **Torrent streaming**: qBittorrent API client included in main install deps, with media-library gating
 - **Tray background**: Minimize / close-to-tray while playback continues
+- **Daemon remotes**: `voxplayer-tui` / `voxplayer-ctl` and browser UI at `http://127.0.0.1:17890/ui/`
 - **File associations**: Double-click media to open with VoxPlayer
 - **Cross-platform**: Windows, macOS, and Linux
 

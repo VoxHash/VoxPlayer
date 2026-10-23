@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VoxPlayer — daemon control</title>
+  <style>
+    :root {
+      --bg: #12141a;
+      --fg: #e8eaef;
+      --muted: #9aa3b2;
+      --accent: #5b8def;
+      --border: #2a3040;
+      --danger: #e26d6d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1c2438, var(--bg));
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 3rem;
+    }
+    h1 { font-weight: 600; letter-spacing: 0.02em; margin: 0 0 0.25rem; font-size: 1.5rem; }
+    .sub { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.95rem; }
+    .panel {
+      width: min(420px, 100%);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      background: rgba(18, 20, 26, 0.85);
+    }
+    .now {
+      font-size: 1.05rem;
+      margin-bottom: 0.35rem;
+      word-break: break-all;
+    }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+    button {
+      flex: 1 1 auto;
+      min-width: 4.5rem;
+      border: 1px solid var(--border);
+      background: #1a2030;
+      color: var(--fg);
+      border-radius: 8px;
+      padding: 0.55rem 0.75rem;
+      cursor: pointer;
+      font: inherit;
+    }
+    button:hover { border-color: var(--accent); color: #fff; }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    label { display: block; color: var(--muted); font-size: 0.85rem; margin-bottom: 0.35rem; }
+    input[type="text"], input[type="url"] {
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0e1016;
+      color: var(--fg);
+      font: inherit;
+      margin-bottom: 0.75rem;
+    }
+    .err { color: var(--danger); font-size: 0.85rem; min-height: 1.2em; }
+    .hint { margin-top: 1.25rem; color: var(--muted); font-size: 0.8rem; max-width: 420px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <h1>VoxPlayer</h1>
+  <p class="sub">Browser remote for the local control daemon</p>
+  <div class="panel">
+    <label for="base">Daemon base URL</label>
+    <input id="base" type="url" value="http://127.0.0.1:17890" autocomplete="off" />
+    <div class="now" id="title">(connecting…)</div>
+    <div class="meta" id="meta"></div>
+    <div class="row">
+      <button type="button" data-act="previous">Prev</button>
+      <button type="button" data-act="playpause">Play/Pause</button>
+      <button type="button" data-act="next">Next</button>
+      <button type="button" data-act="stop">Stop</button>
+    </div>
+    <div class="row">
+      <button type="button" data-act="vol-down">Vol −</button>
+      <button type="button" data-act="vol-up">Vol +</button>
+      <button type="button" data-act="seek-back">−5s</button>
+      <button type="button" data-act="seek-fwd">+5s</button>
+    </div>
+    <label for="path">Open local path</label>
+    <input id="path" type="text" placeholder="/path/to/media" />
+    <div class="row">
+      <button type="button" data-act="open">Open</button>
+      <button type="button" data-act="refresh">Refresh</button>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+  <p class="hint">
+    Open this page from the player daemon at <code>/ui</code>, or serve
+    <code>voxplayer/web_client/</code> locally. The desktop app must be running
+    with the control daemon enabled. Same JSON API used by the TUI
+    (<code>voxplayer-tui</code>).
+  </p>
+  <script src="app.js"></script>
+</body>
+</html>

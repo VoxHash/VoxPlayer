@@ -10,20 +10,35 @@ Endpoints (JSON)::
     POST /volume   body: {"percent": 0-200}
     POST /seek     body: {"ms": int} or {"relative_ms": int}
     POST /open     body: {"path": "/abs/or/file"}
+
+Browser / TUI remotes::
+
+    GET  /ui   /ui/   /ui/app.js   — packaged web client (same-origin)
+    CORS headers on all JSON responses for external pages / future WASM hosts
 """
 
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlparse
 
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 17890
+
+_WEB_CLIENT_DIR = Path(__file__).resolve().parent / "web_client"
+_CORS_HEADERS = (
+    ("Access-Control-Allow-Origin", "*"),
+    ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+    ("Access-Control-Allow-Headers", "Content-Type, Accept"),
+    ("Access-Control-Max-Age", "86400"),
+)
 
 
 def daemon_enabled() -> bool:
@@ -71,11 +86,16 @@ class ControlDaemon:
             def log_message(self, fmt, *args):
                 return
 
+            def _cors(self) -> None:
+                for k, v in _CORS_HEADERS:
+                    self.send_header(k, v)
+
             def _json(self, code: int, payload: dict) -> None:
                 body = json.dumps(payload).encode("utf-8")
                 self.send_response(code)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
+                self._cors()
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -90,7 +110,47 @@ class ControlDaemon:
                 except Exception:
                     return {}
 
+            def _serve_ui(self, rel: str) -> bool:
+                """Serve packaged web client under /ui. Returns True if handled."""
+                raw_path = urlparse(self.path).path
+                if raw_path in {"/ui", "/ui/"}:
+                    rel = "index.html"
+                elif raw_path.startswith("/ui/"):
+                    rel = raw_path[len("/ui/") :]
+                else:
+                    return False
+                # Path traversal guard
+                if ".." in rel.split("/") or rel.startswith("/"):
+                    self._json(404, {"error": "not_found"})
+                    return True
+                target = (_WEB_CLIENT_DIR / rel).resolve()
+                try:
+                    target.relative_to(_WEB_CLIENT_DIR.resolve())
+                except ValueError:
+                    self._json(404, {"error": "not_found"})
+                    return True
+                if not target.is_file():
+                    self._json(404, {"error": "not_found"})
+                    return True
+                data = target.read_bytes()
+                ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(data)))
+                self._cors()
+                self.end_headers()
+                self.wfile.write(data)
+                return True
+
+            def do_OPTIONS(self):
+                self.send_response(204)
+                self._cors()
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
             def do_GET(self):
+                if self._serve_ui(""):
+                    return
                 path = urlparse(self.path).path.rstrip("/") or "/"
                 if path == "/status":
                     fn = callbacks.get("status")
@@ -115,6 +175,7 @@ class ControlDaemon:
                                 "/volume",
                                 "/seek",
                                 "/open",
+                                "/ui",
                             ],
                         },
                     )

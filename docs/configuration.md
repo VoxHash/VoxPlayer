@@ -63,7 +63,7 @@ Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video 
 | `VOXPLAYER_TORRENT_BUFFER_PCT` | unset | Override buffer as percent of file size (0–100) |
 | `VOXPLAYER_DAEMON` | `1` | Localhost HTTP control daemon (`0` to disable) |
 | `VOXPLAYER_DAEMON_HOST` | `127.0.0.1` | Bind address (non-loopback needs `VOXPLAYER_DAEMON_ALLOW_LAN=1`) |
-| `VOXPLAYER_DAEMON_PORT` | `17890` | Control daemon port |
+| `VOXPLAYER_DAEMON_PORT` | `17890` | Control daemon port; remotes: `voxplayer-tui`, browser `/ui` |
 | `VOXPLAYER_DISABLE_MPRIS` | unset | Set to `1` to disable MPRIS2 on Linux |
 | `ACOUSTID_API_KEY` | unset | Optional AcoustID client key for audio fingerprint lookup |
 | `TMDB_API_KEY` | unset | Optional TMDB key for video title/poster enrichment |

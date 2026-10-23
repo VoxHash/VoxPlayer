@@ -8,7 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Planned
 - Android / GrapheneOS companion phase (Later)
-- Stretch: WASM/TUI daemon clients; desktop packaging with native core; grow Rust/Zig hot paths
+- Stretch: desktop packaging with native core; grow Rust/Zig hot paths
+
+## [1.22.0] - 2026-10-23
+
+### Added
+- Shared HTTP client for the control daemon (`voxplayer/daemon_client.py`)
+- TUI + one-shot CLI remotes: `voxplayer-tui` / `voxplayer-ctl` (curses transport; Space/n/p/s/±/seek/open)
+- Packaged browser remote under `voxplayer/web_client/`; served same-origin at daemon `GET /ui`
+- CORS + `OPTIONS` on the control daemon so external pages and future WASM hosts can call the JSON API
+
+### Changed
+- ROADMAP Stretch WASM/TUI daemon-clients item marked done
 
 ## [1.21.0] - 2026-10-23
 

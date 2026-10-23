@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxplayer"
-version = "1.21.0"
+version = "1.22.0"
 description = "A modern multimedia player built with PyQt6"
 readme = "README.md"
 license = {text = "MIT"}
@@ -73,13 +73,15 @@ Repository = "https://github.com/VoxHash/VoxPlayer.git"
 
 [project.scripts]
 voxplayer = "voxplayer.app:main"
+voxplayer-tui = "voxplayer.tui_client:main"
+voxplayer-ctl = "voxplayer.tui_client:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["voxplayer*"]
 
 [tool.setuptools.package-data]
-voxplayer = ["*.ico", "*.png", "*.txt", "logo.png"]
+voxplayer = ["*.ico", "*.png", "*.txt", "logo.png", "web_client/*"]
 
 [tool.black]
 line-length = 88

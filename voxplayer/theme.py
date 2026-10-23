@@ -13,21 +13,22 @@ from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 
 # Deep charcoal surfaces with warm ember accent (never industry-green streaming accents).
+# text_muted / border tuned for WCAG 2.2 AA (≥4.5:1 text, ≥3:1 non-text) on bg_app.
 _EMBER: Dict[str, str] = {
     "bg_app": "#0B0F14",
     "bg_panel": "#121820",
     "bg_elevated": "#1A2330",
     "bg_hover": "#243044",
     "bg_input": "#0F141C",
-    "border": "#2A3548",
-    "border_soft": "#1E2836",
+    "border": "#6A7588",
+    "border_soft": "#4A5568",
     "text": "#F2F4F7",
-    "text_secondary": "#9AA6B8",
-    "text_muted": "#6B7789",
+    "text_secondary": "#B0BBCB",
+    "text_muted": "#8A96A8",
     "accent": "#FF8A3D",
     "accent_hover": "#FFB070",
     "accent_pressed": "#E06E28",
-    "accent_soft": "rgba(255, 138, 61, 0.18)",
+    "accent_soft": "rgba(255, 138, 61, 0.22)",
     "focus": "#3DDCFF",
     "danger": "#FF6B6B",
     "success": "#5AD67D",
@@ -42,15 +43,15 @@ _MIDNIGHT: Dict[str, str] = {
     "bg_elevated": "#162032",
     "bg_hover": "#1E2C42",
     "bg_input": "#0A1018",
-    "border": "#2A3A52",
-    "border_soft": "#182433",
+    "border": "#6B7C96",
+    "border_soft": "#4A5A72",
     "text": "#E8EEF7",
-    "text_secondary": "#8FA0B8",
-    "text_muted": "#5E6F86",
+    "text_secondary": "#A8B8D0",
+    "text_muted": "#8A9BB4",
     "accent": "#3DB8FF",
     "accent_hover": "#7AD0FF",
     "accent_pressed": "#2A8FCC",
-    "accent_soft": "rgba(61, 184, 255, 0.18)",
+    "accent_soft": "rgba(61, 184, 255, 0.22)",
     "focus": "#FFC857",
     "danger": "#FF6B6B",
     "success": "#5AD67D",
@@ -65,15 +66,15 @@ _SLATE: Dict[str, str] = {
     "bg_elevated": "#22262C",
     "bg_hover": "#2C323A",
     "bg_input": "#14171A",
-    "border": "#3A424C",
-    "border_soft": "#252A30",
+    "border": "#707880",
+    "border_soft": "#505860",
     "text": "#F0F1F3",
-    "text_secondary": "#A0A6B0",
-    "text_muted": "#6E757F",
+    "text_secondary": "#B4B9C2",
+    "text_muted": "#9098A2",
     "accent": "#D4A05A",
     "accent_hover": "#E8C07A",
     "accent_pressed": "#B8843F",
-    "accent_soft": "rgba(212, 160, 90, 0.18)",
+    "accent_soft": "rgba(212, 160, 90, 0.22)",
     "focus": "#7EC8E3",
     "danger": "#E57373",
     "success": "#81C784",
@@ -88,15 +89,15 @@ _GRAPHITE: Dict[str, str] = {
     "bg_elevated": "#1E1E1E",
     "bg_hover": "#2A2A2A",
     "bg_input": "#121212",
-    "border": "#3A3A3A",
-    "border_soft": "#242424",
+    "border": "#707070",
+    "border_soft": "#505050",
     "text": "#F5F5F5",
-    "text_secondary": "#A8A8A8",
-    "text_muted": "#707070",
+    "text_secondary": "#C0C0C0",
+    "text_muted": "#9A9A9A",
     "accent": "#FF6F61",
     "accent_hover": "#FF948A",
     "accent_pressed": "#E05548",
-    "accent_soft": "rgba(255, 111, 97, 0.18)",
+    "accent_soft": "rgba(255, 111, 97, 0.22)",
     "focus": "#64B5F6",
     "danger": "#EF5350",
     "success": "#66BB6A",
@@ -121,6 +122,7 @@ THEME_LABELS: Dict[str, str] = {
 # Live palette — mutated in place so `from theme import COLORS` stays current.
 COLORS: Dict[str, str] = deepcopy(_EMBER)
 ACTIVE_THEME_ID = "ember"
+HIGH_CONTRAST = False
 
 # Prefer distinctive desktop fonts already common on Linux/Windows/macOS.
 FONT_UI = '"Segoe UI", "Ubuntu", "Noto Sans", "Cantarell", sans-serif'
@@ -229,6 +231,42 @@ def resolve_palette(theme_id: str) -> Dict[str, str]:
     return deepcopy(packed[2]) if packed else deepcopy(_EMBER)
 
 
+def _hex_to_rgb(h: str) -> Tuple[float, float, float]:
+    h = (h or "").lstrip("#")
+    if len(h) != 6:
+        return 0.0, 0.0, 0.0
+    return tuple(int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+def _linearize(c: float) -> float:
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def relative_luminance(hex_color: str) -> float:
+    r, g, b = _hex_to_rgb(hex_color)
+    return 0.2126 * _linearize(r) + 0.7152 * _linearize(g) + 0.0722 * _linearize(b)
+
+
+def contrast_ratio(fg: str, bg: str) -> float:
+    """WCAG relative luminance contrast ratio between two ``#RRGGBB`` colors."""
+    l1, l2 = relative_luminance(fg), relative_luminance(bg)
+    hi, lo = max(l1, l2), min(l1, l2)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _high_contrast_overlay(palette: Dict[str, str]) -> Dict[str, str]:
+    """Boost muted text and borders further for the optional high-contrast mode."""
+    out = deepcopy(palette)
+    out["text"] = "#FFFFFF"
+    out["text_secondary"] = "#E8ECF2"
+    out["text_muted"] = "#C8D0DC"
+    out["border"] = "#A0AAB8"
+    out["border_soft"] = "#808A98"
+    # Keep accent readable; brighten focus ring
+    out["focus"] = "#FFE566"
+    return out
+
+
 def apply_theme_id(theme_id: str) -> str:
     """Apply palette into live ``COLORS``. Returns the resolved theme id."""
     global ACTIVE_THEME_ID
@@ -242,23 +280,68 @@ def apply_theme_id(theme_id: str) -> str:
                 tid = cand_id
                 break
     palette = resolve_palette(tid)
+    if HIGH_CONTRAST:
+        palette = _high_contrast_overlay(palette)
     COLORS.clear()
     COLORS.update(palette)
     ACTIVE_THEME_ID = tid
     return ACTIVE_THEME_ID
 
 
+def set_high_contrast(enabled: bool) -> bool:
+    """Toggle high-contrast overlay and re-apply the active theme. Returns new state."""
+    global HIGH_CONTRAST
+    HIGH_CONTRAST = bool(enabled)
+    apply_theme_id(ACTIVE_THEME_ID)
+    return HIGH_CONTRAST
+
+
+def accessibility_contrast_report(theme_id: Optional[str] = None) -> List[str]:
+    """Human-readable AA checks for the (optionally high-contrast) palette."""
+    tid = theme_id or ACTIVE_THEME_ID
+    base = resolve_palette(tid)
+    pal = _high_contrast_overlay(base) if HIGH_CONTRAST else base
+    bg = pal["bg_app"]
+    lines = [
+        f"Theme: {tid}" + (" (high contrast)" if HIGH_CONTRAST else ""),
+        f"bg_app: {bg}",
+        "",
+        "Text vs bg_app (need ≥4.5:1 AA):",
+    ]
+    for key in ("text", "text_secondary", "text_muted", "accent", "focus"):
+        ratio = contrast_ratio(pal[key], bg)
+        ok = "PASS" if ratio >= 4.5 else "FAIL"
+        lines.append(f"  {key}: {ratio:.2f}:1  [{ok}]")
+    lines.append("")
+    lines.append("Non-text vs bg_app (need ≥3:1):")
+    for key in ("border", "border_soft"):
+        ratio = contrast_ratio(pal[key], bg)
+        ok = "PASS" if ratio >= 3.0 else "FAIL"
+        lines.append(f"  {key}: {ratio:.2f}:1  [{ok}]")
+    return lines
+
+
 def app_stylesheet() -> str:
     c = COLORS
+    focus_w = 3 if HIGH_CONTRAST else 2
     return f"""
     QMainWindow, QDialog {{
         background-color: {c['bg_app']};
         color: {c['text']};
         font-family: {FONT_UI};
-        font-size: 13px;
+        font-size: {'14px' if HIGH_CONTRAST else '13px'};
     }}
     QWidget#ShellRoot {{
         background-color: {c['bg_app']};
+    }}
+    /* WCAG-oriented keyboard focus — visible 2–3px ring (SC 2.4.7 / 2.4.13) */
+    QPushButton:focus, QLineEdit:focus, QSlider:focus, QListWidget:focus,
+    QMenuBar:focus, QAbstractButton:focus {{
+        outline: {focus_w}px solid {c['focus']};
+        outline-offset: 2px;
+    }}
+    QPushButton:focus {{
+        border: {focus_w}px solid {c['focus']};
     }}
     QWidget#LeftRail, QWidget#NowPlayingPanel, QWidget#TransportBar {{
         background-color: {c['bg_panel']};
@@ -370,7 +453,7 @@ def app_stylesheet() -> str:
         background: transparent;
         border: none;
         border-radius: 0;
-        color: {c['text_muted']};
+        color: {c['text_secondary']};
         padding: 4px 10px 6px 10px;
         font-family: {FONT_DISPLAY};
         font-size: 15px;
@@ -570,7 +653,7 @@ def app_stylesheet() -> str:
     }}
     QStatusBar {{
         background: {c['bg_panel']};
-        color: {c['text_muted']};
+        color: {c['text_secondary']};
         border-top: 1px solid {c['border_soft']};
     }}
     QMessageBox {{

@@ -7,8 +7,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Android / GrapheneOS companion phase
-- Accessibility contrast pass on the dark shell
+- Android / GrapheneOS companion phase (Later)
+- Stretch: packaging, plugins, TUI/WASM daemon clients
+
+## [1.20.0] - 2026-10-23
+
+### Added
+- Accessibility contrast pass: bundled dark palettes lift muted text (≥4.5:1) and borders (≥3:1) vs `bg_app` (WCAG 2.2 AA)
+- View → Accessibility → High contrast overlay + Contrast report… (measured ratios)
+- Stronger keyboard focus rings (2–3px `focus` outline) on buttons, fields, and lists
+
+### Changed
+- Status bar and library nav use secondary text for clearer chrome
+- ROADMAP accessibility contrast item marked done; Next playback-quality block complete
 
 ## [1.19.0] - 2026-10-23
 

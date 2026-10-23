@@ -28,9 +28,11 @@ from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QActionGroup, QIcon, Q
 
 from .theme import (
     COLORS,
+    accessibility_contrast_report,
     app_stylesheet,
     apply_theme_id,
     list_themes,
+    set_high_contrast,
     user_themes_dir,
 )
 from .ui.shell import LeftRail, HomeView, NowPlayingPanel, TransportBar, AboutDialog
@@ -140,6 +142,7 @@ class AppState:
     resume_bookmarks_enabled: bool = True
     gapless_queue_enabled: bool = True
     spectrum_meter_enabled: bool = False
+    high_contrast: bool = False
 
     def __post_init__(self):
         if self.resume_positions is None:
@@ -913,6 +916,7 @@ class Settings:
         self.settings.setValue(
             "spectrum_meter_enabled", bool(state.spectrum_meter_enabled)
         )
+        self.settings.setValue("high_contrast", bool(state.high_contrast))
 
     def load_state(self) -> AppState:
         """Load application state"""
@@ -956,6 +960,11 @@ class Settings:
             spectrum = spectrum.strip().lower() in {"1", "true", "yes"}
         else:
             spectrum = bool(spectrum)
+        hc = self.settings.value("high_contrast", False)
+        if isinstance(hc, str):
+            hc = hc.strip().lower() in {"1", "true", "yes"}
+        else:
+            hc = bool(hc)
         return AppState(
             window_geometry=self.settings.value("window_geometry"),
             theme=raw_theme,
@@ -970,6 +979,7 @@ class Settings:
             resume_bookmarks_enabled=resume_bm,
             gapless_queue_enabled=gapless,
             spectrum_meter_enabled=spectrum,
+            high_contrast=hc,
         )
 
 class PlayerControls(TransportBar):
@@ -1308,6 +1318,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.audio_device_menu = None
 
         # Palette must be live before widgets paint (empty-state inline colors, etc.).
+        set_high_contrast(bool(self.app_state.high_contrast))
         apply_theme_id(self.app_state.theme or "ember")
         self.setup_ui()
         self.setup_media_player()
@@ -2345,6 +2356,16 @@ class VoxPlayerMainWindow(QMainWindow):
         # View menu - add media info
         view_menu.addSeparator()
 
+        a11y_menu = view_menu.addMenu("&Accessibility")
+        self._high_contrast_action = QAction("&High contrast", self)
+        self._high_contrast_action.setCheckable(True)
+        self._high_contrast_action.setChecked(bool(self.app_state.high_contrast))
+        self._high_contrast_action.triggered.connect(self.toggle_high_contrast)
+        a11y_menu.addAction(self._high_contrast_action)
+        contrast_report_action = QAction("Contrast &report…", self)
+        contrast_report_action.triggered.connect(self.show_contrast_report)
+        a11y_menu.addAction(contrast_report_action)
+
         theme_menu = view_menu.addMenu("&Theme")
         self._theme_action_group = QActionGroup(self)
         self._theme_action_group.setExclusive(True)
@@ -3249,6 +3270,7 @@ For more information, visit the project repository.
 
     def apply_theme(self):
         """Apply selected palette into COLORS and refresh the shell stylesheet."""
+        set_high_contrast(bool(self.app_state.high_contrast))
         tid = apply_theme_id(getattr(self.app_state, "theme", None) or "ember")
         self.app_state.theme = tid
         self.setStyleSheet(app_stylesheet())
@@ -3256,6 +3278,26 @@ For more information, visit the project repository.
             act = self._theme_actions.get(tid)
             if act is not None:
                 act.setChecked(True)
+
+    def toggle_high_contrast(self, checked: bool = False) -> None:
+        self.app_state.high_contrast = bool(checked)
+        self.settings.save_state(self.app_state)
+        self.apply_theme()
+        if hasattr(self, "home_view"):
+            self.refresh_home_grid()
+        self.status_bar.showMessage(
+            "High contrast on" if checked else "High contrast off", 3000
+        )
+
+    def show_contrast_report(self) -> None:
+        lines = accessibility_contrast_report(self.app_state.theme)
+        QMessageBox.information(
+            self,
+            "Contrast report",
+            "\n".join(lines)
+            + "\n\nTargets: WCAG 2.2 AA — text ≥4.5:1, UI borders ≥3:1.\n"
+            "Toggle View → Accessibility → High contrast for a stronger pass.",
+        )
 
     def _on_theme_chosen(self, theme_id: str) -> None:
         self.app_state.theme = theme_id
@@ -5217,7 +5259,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("VoxPlayer")
-    app.setApplicationVersion("1.19.0")
+    app.setApplicationVersion("1.20.0")
     app.setQuitOnLastWindowClosed(False)
 
     # Set application properties

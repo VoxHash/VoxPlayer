@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.19.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.20.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -103,7 +103,7 @@ Build Phase 3 (optional lighter scanner): `native/vox_scan_zig/build.sh` → `na
 ### Playback quality
 - Broader codec coverage (HEVC, AV1, Opus) as the native C core allows (**Done 1.19.0** — extensions + avcodec/hw hints; Help → Codec support)
 - Subtitle expansion (ASS/SSA/VTT) if maintainable on the single engine (**Done 1.13.0**)
-- Accessibility contrast pass on the dark shell
+- Accessibility contrast pass on the dark shell (**Done 1.20.0** — AA palette lift; View → Accessibility → High contrast)
 
 ---
 

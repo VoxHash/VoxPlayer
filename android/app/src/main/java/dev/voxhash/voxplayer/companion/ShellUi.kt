@@ -147,10 +147,11 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
 
     BoxWithConstraints(Modifier.fillMaxSize().background(VoxColors.BgApp)) {
         val wide = maxWidth >= WIDE_SHELL_MIN_DP.dp
+        val carMode = maxWidth >= CAR_SHELL_MIN_DP.dp && maxWidth > maxHeight * 1.15f
         Scaffold(
             containerColor = VoxColors.BgApp,
             bottomBar = {
-                TransportBar(
+                if (!carMode) TransportBar(
                     state = state,
                     wide = wide,
                     onConnect = { vm.openConnect(true) },
@@ -199,7 +200,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                     onConnect = { vm.openConnect(true) },
                 )
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    ShellHeader(state = state, wide = wide)
+                    if (!carMode) ShellHeader(state = state, wide = wide)
                     if (state.error.isNotBlank()) {
                         Text(
                             state.error,
@@ -208,7 +209,27 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                         )
                     }
-                    Row(Modifier.weight(1f).fillMaxWidth()) {
+                    if (carMode && state.tab == AppTab.Local) {
+                        CarDrivingPane(
+                            state = state,
+                            onPlayPause = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remotePlayPause()
+                                else vm.localPlayPause()
+                            },
+                            onPrev = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remotePrev()
+                                else vm.localPrev()
+                            },
+                            onNext = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remoteNext()
+                                else vm.localNext()
+                            },
+                            onVolDown = vm::localVolDown,
+                            onVolUp = vm::localVolUp,
+                            onPlayHistory = vm::playHistory,
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                        )
+                    } else Row(Modifier.weight(1f).fillMaxWidth()) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             when (state.tab) {
                                 AppTab.Local -> LocalLibraryPane(
@@ -243,7 +264,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 AppTab.Connect -> DesktopRemotePane(state, vm, wide)
                             }
                         }
-                        if (wide) {
+                        if (wide && !carMode) {
                             NowPlayingPane(
                                 state = state,
                                 player = player,
@@ -302,6 +323,107 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                     }
                 },
             )
+        }
+    }
+}
+
+@Composable
+@Composable
+private fun CarDrivingPane(
+    state: PlayerUiState,
+    onPlayPause: () -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onVolDown: () -> Unit,
+    onVolUp: () -> Unit,
+    onPlayHistory: (PlayHistoryStore.Entry) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val desktop = state.activeOutput.startsWith("Desktop")
+    val title = if (desktop) state.remoteTitle else state.localTitle
+    val artist = if (desktop) "" else state.localArtist
+    val playing = if (desktop) state.remotePlaying else state.localPlaying
+    val pos = if (desktop) state.remotePositionLabel else state.localPositionLabel
+
+    Row(
+        modifier
+            .padding(horizontal = 28.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(28.dp),
+    ) {
+        Column(
+            Modifier.weight(1.4f).fillMaxHeight(),
+            verticalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            Text("Driving layout", style = MaterialTheme.typography.labelLarge, color = VoxColors.TextMuted)
+            Text(
+                title,
+                style = MaterialTheme.typography.displaySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = VoxColors.Text,
+            )
+            if (artist.isNotBlank()) {
+                Text(
+                    artist,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = VoxColors.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(pos, style = MaterialTheme.typography.titleLarge, color = VoxColors.Accent)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AccentButton("Prev", onPrev, Modifier.weight(1f).height(72.dp))
+                AccentButton(
+                    if (playing) "Pause" else "Play",
+                    onPlayPause,
+                    Modifier.weight(1.4f).height(88.dp),
+                )
+                AccentButton("Next", onNext, Modifier.weight(1f).height(72.dp))
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                QuietButton("Vol −", onVolDown, Modifier.weight(1f).height(56.dp))
+                QuietButton("Vol +", onVolUp, Modifier.weight(1f).height(56.dp))
+            }
+            Text(
+                "No Google Auto — large landscape controls only",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+        }
+        Column(
+            Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("Recent", style = MaterialTheme.typography.titleLarge, color = VoxColors.Accent)
+            if (state.historyRecent.isEmpty()) {
+                Text(
+                    "Play something to fill Recent",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = VoxColors.TextSecondary,
+                )
+            }
+            state.historyRecent.take(8).forEach { entry ->
+                Text(
+                    entry.title,
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(VoxShapes.card)
+                        .background(VoxColors.BgElevated)
+                        .clickable { onPlayHistory(entry) }
+                        .padding(horizontal = 16.dp, vertical = 18.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

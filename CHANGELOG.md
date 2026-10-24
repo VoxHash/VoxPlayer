@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (Android Auto-free car mode layout for large landscape)
+- Further Android companion polish (Quest panel / foldable multi-window edge cases)
+
+## [1.44.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS: landscape driving layout (≥900dp wide landscape) — oversized Play/Pause/Prev/Next and Recent list; no Google Automotive
 
 ## [1.43.0] - 2026-10-24
 

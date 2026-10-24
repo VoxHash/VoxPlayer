@@ -113,6 +113,9 @@ fun voxColorScheme() = darkColorScheme(
 /** Quest / tablet shell when width is at least this (Meta default panel is 1024dp). */
 const val WIDE_SHELL_MIN_DP = 700
 
+/** Landscape car / dash layout without GMS Auto (wide + landscape). */
+const val CAR_SHELL_MIN_DP = 900
+
 @Composable
 fun VoxTheme(content: @Composable () -> Unit) {
     androidx.compose.material3.MaterialTheme(

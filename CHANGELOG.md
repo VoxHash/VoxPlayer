@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Further Android companion polish (Quest panel / foldable multi-window edge cases)
 
+## [1.44.1] - 2026-10-24
+
+### Fixed
+- Android: duplicate `@Composable` on driving layout that broke the 1.44.0 debug APK build
+
 ## [1.44.0] - 2026-10-24
 
 ### Added

@@ -328,7 +328,6 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
 }
 
 @Composable
-@Composable
 private fun CarDrivingPane(
     state: PlayerUiState,
     onPlayPause: () -> Unit,

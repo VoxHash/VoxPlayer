@@ -2,8 +2,11 @@ package dev.voxhash.voxplayer.companion
 
 import android.Manifest
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -118,6 +121,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var remotePoll: Job? = null
     private var localTick: Job? = null
     private var pendingPlay: (() -> Unit)? = null
+    private val devicesReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != AudioRoute.ACTION_DEVICES_CHANGED) return
+            refreshAudioDevices()
+            _state.update {
+                it.copy(preferredAudioDeviceId = AudioRoute.loadPreferredId(getApplication()))
+            }
+        }
+    }
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -154,11 +166,27 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     init {
         connectLocalPlayer()
         refreshAudioDevices()
+        registerDevicesReceiver()
         localTick = viewModelScope.launch {
             while (isActive) {
                 refreshLocalClock()
                 delay(500)
             }
+        }
+    }
+
+    private fun registerDevicesReceiver() {
+        val app = getApplication<Application>()
+        val filter = IntentFilter(AudioRoute.ACTION_DEVICES_CHANGED)
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                app.registerReceiver(devicesReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                app.registerReceiver(devicesReceiver, filter)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "registerDevicesReceiver failed", e)
         }
     }
 
@@ -558,6 +586,26 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Quest panel refocus / activity resume: refresh sinks and re-bind audio chain. */
+    fun reapplyLocalAudio() {
+        refreshAudioDevices()
+        _state.update {
+            it.copy(
+                localVolume = LocalVolume.loadPercent(getApplication()),
+                localMuted = LocalVolume.loadMuted(getApplication()),
+                preferredAudioDeviceId = AudioRoute.loadPreferredId(getApplication()),
+                eqPreset = EqualizerControl.loadPreset(getApplication()),
+            )
+        }
+        pushLocalVolumeToService()
+        val controller = player as? MediaController ?: return
+        try {
+            controller.sendCustomCommand(AudioRoute.CMD_REAPPLY, Bundle.EMPTY)
+        } catch (e: Exception) {
+            Log.w(TAG, "REAPPLY_AUDIO failed", e)
+        }
+    }
+
     private fun queueRowsFromPlayer(p: Player): List<QueueRow> {
         if (p.mediaItemCount <= 0) return emptyList()
         val current = p.currentMediaItemIndex
@@ -918,6 +966,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         remotePoll?.cancel()
         localTick?.cancel()
         bt.disconnect()
+        try {
+            getApplication<Application>().unregisterReceiver(devicesReceiver)
+        } catch (_: Exception) {
+        }
         _player.value?.removeListener(playerListener)
         val future = controllerFuture
         if (future != null) {

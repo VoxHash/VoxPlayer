@@ -25,6 +25,13 @@ object AudioRoute {
     val CMD_SET: SessionCommand = SessionCommand(ACTION_SET, Bundle.EMPTY)
     const val EXTRA_DEVICE_ID = "device_id"
 
+    /** Quest / activity resume: reload prefs and re-bind route + effects. */
+    const val ACTION_REAPPLY = "dev.voxhash.voxplayer.REAPPLY_AUDIO"
+    val CMD_REAPPLY: SessionCommand = SessionCommand(ACTION_REAPPLY, Bundle.EMPTY)
+
+    /** Broadcast when sinks are added/removed (package-scoped). */
+    const val ACTION_DEVICES_CHANGED = "dev.voxhash.voxplayer.AUDIO_DEVICES_CHANGED"
+
     data class Device(
         val id: Int,
         val name: String,

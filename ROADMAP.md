@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.35.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.36.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -123,6 +123,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 9. **On-device repeat / shuffle + queue reorder**: Media3 `REPEAT_MODE_*` + shuffle; Up Next list with move up/down / remove (**Done 1.33.0** — prefs persist modes; transport + Now Playing controls)
 10. **On-device volume 0–200 + mute**: desktop-parity logical volume; 0–100% via ExoPlayer volume, 101–200% via AOSP `LoudnessEnhancer` (~+6 dB at 200%); mute toggle (**Done 1.34.0**)
 11. **On-device sound output + EQ**: `AudioManager` output device picker (speaker / wired / BT A2DP / USB / HDMI) via Media3 `setPreferredAudioDevice`; AOSP `Equalizer` presets (Off/Flat/Bass/Treble/Vocal/Loud) (**Done 1.35.0** — no GMS)
+12. **Headset / Car media buttons + Quest route edge cases**: Media3 ±15s seek media-button preferences for Bluetooth AVRCP / System UI (no GMS Auto); `AudioDeviceCallback` re-applies preferred sink or falls back when it disconnects; activity resume re-binds audio chain (**Done 1.36.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

@@ -7,7 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (Car / headset media button polish, Quest audio route edge cases)
+- Further Android companion polish (local sleep timer / bookmarks if useful without cloud)
+
+## [1.36.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: headset & System UI media-button polish — Media3 ±15s seek preferences (`COMMAND_SEEK_BACK` / `FORWARD`) for Bluetooth AVRCP; no Google Automotive / Auto SDK
+- Quest / route edge cases: `AudioDeviceCallback` re-applies preferred sink or falls back to system default when it disconnects; activity resume re-binds volume/EQ/route
 
 ## [1.35.0] - 2026-10-24
 

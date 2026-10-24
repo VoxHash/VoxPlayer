@@ -33,6 +33,12 @@ class MainActivity : ComponentActivity() {
         applyConnectExtras(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Quest panel refocus / phone return: re-bind preferred sink + EQ/volume.
+        vm.reapplyLocalAudio()
+    }
+
     private fun applyConnectExtras(intent: Intent?) {
         val extras = intent?.extras ?: return
         val host = extras.getString("host").orEmpty()

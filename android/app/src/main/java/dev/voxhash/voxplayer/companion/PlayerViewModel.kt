@@ -70,6 +70,7 @@ data class PlayerUiState(
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("voxplayer", Context.MODE_PRIVATE)
     private val syncStore = SyncStore(app)
+    private val queueStore = PlaybackQueueStore(app)
     private val bt = BluetoothControl(app)
     private val _state = MutableStateFlow(
         PlayerUiState(
@@ -122,6 +123,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     val controller = future.get()
                     controller.addListener(playerListener)
                     _player.value = controller
+                    syncUiFromPlayer(controller)
                     _state.update { it.copy(playerReady = true) }
                     pendingPlay?.invoke()
                     pendingPlay = null
@@ -206,6 +208,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             p.setMediaItem(mediaItem(item.uri, item.title))
             p.prepare()
             p.play()
+            queueStore.save(item.uri.toString(), item.title, 0L, item.isVideo)
         }
         _state.update {
             it.copy(
@@ -225,6 +228,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             p.setMediaItem(mediaItem(uri, title))
             p.prepare()
             p.play()
+            queueStore.save(uri.toString(), title, 0L, isVideo)
         }
         _state.update {
             it.copy(
@@ -251,7 +255,34 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun localStop() {
         withPlayer { it.stop() }
+        queueStore.clear()
         _state.update { it.copy(localPlaying = false, localTitle = "(nothing loaded)") }
+    }
+
+    private fun syncUiFromPlayer(p: Player) {
+        val item = p.currentMediaItem
+        if (item != null) {
+            val title = item.mediaMetadata.title?.toString()
+                ?: item.localConfiguration?.uri?.lastPathSegment
+                ?: "(resumed)"
+            val snap = queueStore.load()
+            _state.update {
+                it.copy(
+                    localTitle = title,
+                    localIsVideo = snap?.isVideo ?: false,
+                    localPlaying = p.isPlaying,
+                    activeOutput = if (p.isPlaying) "This device" else it.activeOutput,
+                )
+            }
+            return
+        }
+        val snap = queueStore.load() ?: return
+        _state.update {
+            it.copy(
+                localTitle = snap.title,
+                localIsVideo = snap.isVideo,
+            )
+        }
     }
 
     fun localSeekBy(ms: Long) {

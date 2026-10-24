@@ -58,6 +58,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Background playback:** on-device Media3 audio runs in a `mediaPlayback` foreground service with a system media notification. Force-stop or strict battery limits can still stop playback; there is no proprietary keep-alive SDK.
 
+**Playback resumption:** last local URI + position are stored in app prefs. After process death, headset / media-key play can restart via Media3 `MediaButtonReceiver` + `onPlaybackResumption` if the URI is still readable. Stop clears the store.
+
 When a desktop VPN (e.g. ProtonVPN) steals RFC1918 routes, keep LAN local:
 
 ```bash

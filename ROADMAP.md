@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.30.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.31.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -118,10 +118,11 @@ A **separate Android app phase** (not a thin WebView wrapper):
 4. **Sync**: optional pull of playlists / podcast feeds from the desktop daemon; no cloud account required (**Done 1.28.0** — `GET /playlists` + `GET /podcasts`; companion Sync over Wi‑Fi or Bluetooth RFCOMM; on-device cache under app files)
 5. **Bluetooth control**: dedicated RFCOMM profile for GrapheneOS (no Google Nearby) (**Done 1.28.0** — desktop `voxplayer.bt_control` SPP UUID + channel 5; Android Connect sheet pairs → RFCOMM)
 6. **Background playback**: keep on-device audio playing when the UI is backgrounded (**Done 1.30.0** — Media3 `MediaSessionService` + `mediaPlayback` foreground service; system media notification; MediaController in the activity)
+7. **Playback resumption**: restore last on-device item + position after process death via Media3 `MediaButtonReceiver` + `onPlaybackResumption` (**Done 1.31.0** — local prefs queue store; headset / media-key resume; intentional Stop clears the store)
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.
 
-**Background / battery (honest limits):** Local playback uses a standard Android `mediaPlayback` foreground service and a media-style notification (no proprietary keep-alive or analytics SDKs). Force-stop, denying notifications (on Android 13+), or aggressive battery restrictions can still end playback. Quest / Horizon OS may suspend or resize the 2D panel when unfocused; audio continues while the session service remains running.
+**Background / battery (honest limits):** Local playback uses a standard Android `mediaPlayback` foreground service and a media-style notification (no proprietary keep-alive or analytics SDKs). Force-stop, denying notifications (on Android 13+), or aggressive battery restrictions can still end playback. Quest / Horizon OS may suspend or resize the 2D panel when unfocused; audio continues while the session service remains running. Resumption after process death relies on the last URI still being readable (scoped storage / SAF grants); force-stop may block automatic resume until the user opens the app again.
 
 ---
 

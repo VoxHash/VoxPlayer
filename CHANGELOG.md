@@ -7,7 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (playback resumption after process death)
+- Further Android companion polish (gapless local queues, richer Now Playing metadata)
+
+## [1.31.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: playback resumption after process death — persist last URI/title/position; Media3 `MediaButtonReceiver` + `onPlaybackResumption` restores the queue for headset / media-key play
+- Intentional Stop clears the resumable store so empty resume requests fail cleanly (avoids empty-playlist FGS timeouts)
 
 ## [1.30.0] - 2026-10-24
 

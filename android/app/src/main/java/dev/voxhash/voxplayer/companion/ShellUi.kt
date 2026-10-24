@@ -53,6 +53,8 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
 import androidx.media3.common.Player as Media3Player
 import androidx.compose.material3.Button
@@ -170,6 +172,17 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                     },
                     onShuffle = { if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalShuffle() },
                     onRepeat = { if (!state.activeOutput.startsWith("Desktop")) vm.cycleLocalRepeat() },
+                    onVolDown = {
+                        if (state.activeOutput.startsWith("Desktop")) vm.remoteVolDown()
+                        else vm.localVolDown()
+                    },
+                    onVolUp = {
+                        if (state.activeOutput.startsWith("Desktop")) vm.remoteVolUp()
+                        else vm.localVolUp()
+                    },
+                    onMute = {
+                        if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalMute()
+                    },
                 )
             },
         ) { pad ->
@@ -230,6 +243,9 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 },
                                 onShuffle = vm::toggleLocalShuffle,
                                 onRepeat = vm::cycleLocalRepeat,
+                                onVolDown = vm::localVolDown,
+                                onVolUp = vm::localVolUp,
+                                onMute = vm::toggleLocalMute,
                                 onPlayQueueIndex = vm::playQueueIndex,
                                 onMoveQueue = vm::moveQueueItem,
                                 onRemoveQueue = vm::removeQueueItem,
@@ -534,6 +550,9 @@ private fun NowPlayingPane(
     onPlayPause: () -> Unit,
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
+    onVolDown: () -> Unit,
+    onVolUp: () -> Unit,
+    onMute: () -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (Int, Int) -> Unit,
     onRemoveQueue: (Int) -> Unit,
@@ -610,6 +629,18 @@ private fun NowPlayingPane(
             modifier = Modifier.fillMaxWidth(),
         )
         if (!desktop) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                QuietButton("Vol −", onVolDown, Modifier.weight(1f))
+                QuietButton(
+                    if (state.localMuted) "Muted" else "Vol ${state.localVolume}%",
+                    onMute,
+                    Modifier.weight(1.2f),
+                )
+                QuietButton("Vol +", onVolUp, Modifier.weight(1f))
+            }
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -816,11 +847,19 @@ private fun TransportBar(
     onStop: () -> Unit,
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
+    onVolDown: () -> Unit,
+    onVolUp: () -> Unit,
+    onMute: () -> Unit,
 ) {
     val playing = if (state.activeOutput.startsWith("Desktop")) state.remotePlaying else state.localPlaying
     val title = if (state.activeOutput.startsWith("Desktop")) state.remoteTitle else state.localTitle
     val pos = if (state.activeOutput.startsWith("Desktop")) state.remotePositionLabel else state.localPositionLabel
     val local = !state.activeOutput.startsWith("Desktop")
+    val volLabel = if (local) {
+        if (state.localMuted) "muted" else "vol ${state.localVolume}%"
+    } else {
+        "vol ${state.remoteVolume}%"
+    }
 
     Row(
         Modifier
@@ -855,9 +894,25 @@ private fun TransportBar(
                     append(state.localQueueSize)
                 }
                 append(" · ")
+                append(volLabel)
+                append(" · ")
                 append(state.activeOutput)
             }
             Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+        }
+        if (wide) {
+            IconButton(onClick = onVolDown) {
+                Icon(Icons.Default.VolumeOff, "Volume down", tint = VoxColors.TextSecondary, modifier = Modifier.size(20.dp))
+            }
+            Text(
+                if (local && state.localMuted) "Mute" else if (local) "${state.localVolume}" else "${state.remoteVolume}",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (local && state.localMuted) VoxColors.Accent else VoxColors.TextSecondary,
+                modifier = Modifier.clickable(onClick = onMute),
+            )
+            IconButton(onClick = onVolUp) {
+                Icon(Icons.Default.VolumeUp, "Volume up", tint = VoxColors.TextSecondary)
+            }
         }
         if (wide && local) {
             IconButton(onClick = onShuffle) {

@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (on-device volume 0–200 parity with desktop)
+- Further Android companion polish (on-device EQ / output device picker if maintainable without GMS)
+
+## [1.34.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: local volume **0–200%** + mute matching desktop semantics — ExoPlayer volume for 0–100%, AOSP `LoudnessEnhancer` for boost above 100% (~+6 dB at 200%); prefs persist; transport + Now Playing controls
 
 ## [1.33.0] - 2026-10-24
 

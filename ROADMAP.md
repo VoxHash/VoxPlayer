@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.33.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.34.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -114,13 +114,14 @@ A **separate Android app phase** (not a thin WebView wrapper):
 
 1. **Read-only companion**: browse library + remote-control a desktop/daemon instance on the LAN (**Done 1.25.0** — `android/` Compose+OkHttp companion; daemon `GET /library`; LAN or `adb reverse`)
 2. **On-device library**: local files, offline cache, GrapheneOS-friendly permissions (storage scoped, no Google Play Services required) (**Done 1.27.0** — MediaStore + SAF; READ_MEDIA_* )
-3. **Playback**: prefer a maintained native media backend on Android (ExoPlayer-class or a native media core on Android) with the same volume/mute semantics as desktop (**Done 1.27.0** — Media3 ExoPlayer; Connect sheet for Wi‑Fi desktop discovery)
+3. **Playback**: prefer a maintained native media backend on Android (ExoPlayer-class or a native media core on Android) with the same volume/mute semantics as desktop (**Done 1.27.0** — Media3 ExoPlayer; Connect sheet for Wi‑Fi desktop discovery; volume 0–200 parity in **1.34.0**)
 4. **Sync**: optional pull of playlists / podcast feeds from the desktop daemon; no cloud account required (**Done 1.28.0** — `GET /playlists` + `GET /podcasts`; companion Sync over Wi‑Fi or Bluetooth RFCOMM; on-device cache under app files)
 5. **Bluetooth control**: dedicated RFCOMM profile for GrapheneOS (no Google Nearby) (**Done 1.28.0** — desktop `voxplayer.bt_control` SPP UUID + channel 5; Android Connect sheet pairs → RFCOMM)
 6. **Background playback**: keep on-device audio playing when the UI is backgrounded (**Done 1.30.0** — Media3 `MediaSessionService` + `mediaPlayback` foreground service; system media notification; MediaController in the activity)
 7. **Playback resumption**: restore last on-device item + position after process death via Media3 `MediaButtonReceiver` + `onPlaybackResumption` (**Done 1.31.0** — local prefs queue store; headset / media-key resume; intentional Stop clears the store)
 8. **Gapless local queues + richer Now Playing**: play tapped library item as a Media3 playlist (same-kind continuity); prev/next track; artist/album/queue index in Now Playing (**Done 1.32.0** — `setMediaItems` gapless transitions where encoder delay/padding allows; MediaStore album tags)
 9. **On-device repeat / shuffle + queue reorder**: Media3 `REPEAT_MODE_*` + shuffle; Up Next list with move up/down / remove (**Done 1.33.0** — prefs persist modes; transport + Now Playing controls)
+10. **On-device volume 0–200 + mute**: desktop-parity logical volume; 0–100% via ExoPlayer volume, 101–200% via AOSP `LoudnessEnhancer` (~+6 dB at 200%); mute toggle (**Done 1.34.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

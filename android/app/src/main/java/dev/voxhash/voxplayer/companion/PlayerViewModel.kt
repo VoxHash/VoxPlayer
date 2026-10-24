@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -55,6 +56,9 @@ data class PlayerUiState(
     /** Player.REPEAT_MODE_OFF / ONE / ALL */
     val localRepeatMode: Int = Player.REPEAT_MODE_OFF,
     val localShuffle: Boolean = false,
+    /** Desktop-parity logical volume 0–200 */
+    val localVolume: Int = LocalVolume.DEFAULT_PERCENT,
+    val localMuted: Boolean = false,
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localIsVideo: Boolean = false,
@@ -93,6 +97,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             remotePort = prefs.getString("port", "17890") ?: "17890",
             localRepeatMode = prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF),
             localShuffle = prefs.getBoolean(PREF_SHUFFLE, false),
+            localVolume = LocalVolume.loadPercent(app),
+            localMuted = LocalVolume.loadMuted(app),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
         ),
@@ -164,6 +170,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     controller.shuffleModeEnabled = prefs.getBoolean(PREF_SHUFFLE, false)
                     _player.value = controller
                     syncUiFromPlayer(controller)
+                    pushLocalVolumeToService()
                     _state.update { it.copy(playerReady = true) }
                     pendingPlay?.invoke()
                     pendingPlay = null
@@ -470,6 +477,39 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             if (index < 0 || index >= p.mediaItemCount) return@withPlayer
             p.seekTo(index, 0L)
             p.play()
+        }
+    }
+
+    fun setLocalVolume(percent: Int) {
+        val pct = percent.coerceIn(0, 200)
+        val unmute = pct > 0 && _state.value.localMuted
+        val muted = if (unmute) false else _state.value.localMuted
+        _state.update { it.copy(localVolume = pct, localMuted = muted) }
+        LocalVolume.save(getApplication(), pct, muted)
+        pushLocalVolumeToService()
+    }
+
+    fun localVolUp() = setLocalVolume(_state.value.localVolume + 5)
+
+    fun localVolDown() = setLocalVolume(_state.value.localVolume - 5)
+
+    fun toggleLocalMute() {
+        val muted = !_state.value.localMuted
+        _state.update { it.copy(localMuted = muted) }
+        LocalVolume.save(getApplication(), _state.value.localVolume, muted)
+        pushLocalVolumeToService()
+    }
+
+    private fun pushLocalVolumeToService() {
+        val controller = player as? MediaController ?: return
+        val args = Bundle().apply {
+            putInt(LocalVolume.EXTRA_PERCENT, _state.value.localVolume)
+            putBoolean(LocalVolume.EXTRA_MUTED, _state.value.localMuted)
+        }
+        try {
+            controller.sendCustomCommand(LocalVolume.CMD_SET, args)
+        } catch (e: Exception) {
+            Log.w(TAG, "SET_LOCAL_VOLUME failed", e)
         }
     }
 

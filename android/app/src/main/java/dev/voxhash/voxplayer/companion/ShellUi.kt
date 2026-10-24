@@ -151,11 +151,11 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                     },
                     onPrev = {
                         if (state.activeOutput.startsWith("Desktop")) vm.remotePrev()
-                        else vm.localSeekBy(-15_000)
+                        else vm.localPrev()
                     },
                     onNext = {
                         if (state.activeOutput.startsWith("Desktop")) vm.remoteNext()
-                        else vm.localSeekBy(15_000)
+                        else vm.localNext()
                     },
                     onStop = {
                         if (state.activeOutput.startsWith("Desktop")) vm.remoteStop()
@@ -493,7 +493,22 @@ private fun MediaCard(item: LocalMediaItem, onClick: () -> Unit) {
             style = MaterialTheme.typography.titleMedium,
         )
         if (item.artist.isNotBlank()) {
-            Text(item.artist, maxLines = 1, style = MaterialTheme.typography.bodySmall)
+            Text(
+                item.artist,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextSecondary,
+            )
+        }
+        if (item.album.isNotBlank()) {
+            Text(
+                item.album,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
         }
     }
 }
@@ -539,7 +554,32 @@ private fun NowPlayingPane(
             }
         }
         Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (!desktop && state.localArtist.isNotBlank()) {
+            Text(
+                state.localArtist,
+                style = MaterialTheme.typography.titleMedium,
+                color = VoxColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (!desktop && state.localAlbum.isNotBlank()) {
+            Text(
+                state.localAlbum,
+                style = MaterialTheme.typography.bodyMedium,
+                color = VoxColors.TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Text(pos, style = MaterialTheme.typography.bodySmall)
+        if (!desktop && state.localQueueSize > 0) {
+            Text(
+                "Queue ${state.localQueueIndex + 1} / ${state.localQueueSize} · gapless Media3 playlist",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+        }
         Text(
             if (playing) "Playing" else if (title == "(nothing loaded)" || title == "(desktop idle)") "Nothing playing" else "Paused",
             style = MaterialTheme.typography.bodyMedium,
@@ -690,7 +730,22 @@ private fun TransportBar(
         }
         Column(Modifier.weight(1f)) {
             Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
-            Text("$pos · ${state.activeOutput}", style = MaterialTheme.typography.bodySmall)
+            val subtitle = buildString {
+                if (!state.activeOutput.startsWith("Desktop") && state.localArtist.isNotBlank()) {
+                    append(state.localArtist)
+                    append(" · ")
+                }
+                append(pos)
+                if (!state.activeOutput.startsWith("Desktop") && state.localQueueSize > 1) {
+                    append(" · ")
+                    append(state.localQueueIndex + 1)
+                    append('/')
+                    append(state.localQueueSize)
+                }
+                append(" · ")
+                append(state.activeOutput)
+            }
+            Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
         }
         if (wide) {
             IconButton(onClick = onPrev) {

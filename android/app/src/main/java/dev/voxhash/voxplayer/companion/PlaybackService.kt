@@ -74,7 +74,9 @@ class PlaybackService : MediaSessionService() {
                 /* handleAudioFocus = */ true,
             )
             .setHandleAudioBecomingNoisy(true)
+            // Playlist API transitions (gapless where encoder delay/padding allows)
             .build()
+        player.repeatMode = Player.REPEAT_MODE_OFF
         player.addListener(persistListener)
         mediaSession = MediaSession.Builder(this, player)
             .setId("voxplayer-local")

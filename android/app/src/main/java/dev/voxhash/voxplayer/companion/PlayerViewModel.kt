@@ -40,6 +40,10 @@ data class PlayerUiState(
     val localFilter: String = "all", // all|audio|video
     val permissionNeeded: Boolean = false,
     val localTitle: String = "(nothing loaded)",
+    val localArtist: String = "",
+    val localAlbum: String = "",
+    val localQueueIndex: Int = 0,
+    val localQueueSize: Int = 0,
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localIsVideo: Boolean = false,
@@ -99,6 +103,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     activeOutput = if (isPlaying) "This device" else it.activeOutput,
                 )
             }
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            player?.let { syncUiFromPlayer(it) }
+            player?.let { queueStore.saveFromPlayer(it) }
         }
     }
 
@@ -191,29 +200,97 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun mediaItem(uri: Uri, title: String): MediaItem =
+    private fun mediaItemFromLocal(item: LocalMediaItem): MediaItem =
+        MediaItem.Builder()
+            .setUri(item.uri)
+            .setMediaId("${if (item.isVideo) "v" else "a"}:${item.id}")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(item.title)
+                    .setArtist(item.artist.ifBlank { "VoxPlayer" })
+                    .apply {
+                        if (item.album.isNotBlank()) setAlbumTitle(item.album)
+                        setMediaType(
+                            if (item.isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
+                            else MediaMetadata.MEDIA_TYPE_MUSIC,
+                        )
+                    }
+                    .setIsPlayable(true)
+                    .build(),
+            )
+            .build()
+
+    private fun mediaItem(
+        uri: Uri,
+        title: String,
+        artist: String = "",
+        album: String = "",
+        isVideo: Boolean = false,
+    ): MediaItem =
         MediaItem.Builder()
             .setUri(uri)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(title)
-                    .setArtist("VoxPlayer")
+                    .setArtist(artist.ifBlank { "VoxPlayer" })
+                    .apply {
+                        if (album.isNotBlank()) setAlbumTitle(album)
+                        setMediaType(
+                            if (isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
+                            else MediaMetadata.MEDIA_TYPE_MUSIC,
+                        )
+                    }
+                    .setIsPlayable(true)
                     .build(),
             )
             .build()
 
+    private fun filteredLibrary(): List<LocalMediaItem> {
+        val s = _state.value
+        return when (s.localFilter) {
+            "audio" -> s.localItems.filter { !it.isVideo }
+            "video" -> s.localItems.filter { it.isVideo }
+            else -> s.localItems
+        }
+    }
+
     fun playLocal(item: LocalMediaItem) {
+        // Gapless queue: filtered library as Media3 playlist, start at the tapped item.
+        // Same-kind continuity when filter is "all" (audio→audio / video→video from tap).
+        val pool = filteredLibrary().let { list ->
+            if (sFilterIsAll()) list.filter { it.isVideo == item.isVideo } else list
+        }
+        val start = pool.indexOfFirst { it.id == item.id && it.isVideo == item.isVideo }
+            .let { if (it >= 0) it else 0 }
+        val queue = if (pool.isEmpty()) listOf(item) else pool
+        val startIndex = start.coerceIn(0, queue.lastIndex)
         withPlayer { p ->
-            p.stop()
-            p.setMediaItem(mediaItem(item.uri, item.title))
+            p.setMediaItems(queue.map { mediaItemFromLocal(it) }, startIndex, /* startPositionMs = */ 0L)
             p.prepare()
             p.play()
-            queueStore.save(item.uri.toString(), item.title, 0L, item.isVideo)
+            queueStore.saveQueue(
+                queue.map {
+                    PlaybackQueueStore.Entry(
+                        uri = it.uri.toString(),
+                        title = it.title,
+                        artist = it.artist,
+                        album = it.album,
+                        isVideo = it.isVideo,
+                    )
+                },
+                startIndex,
+                0L,
+            )
         }
+        val current = queue[startIndex]
         _state.update {
             it.copy(
-                localTitle = item.title,
-                localIsVideo = item.isVideo,
+                localTitle = current.title,
+                localArtist = current.artist,
+                localAlbum = current.album,
+                localQueueIndex = startIndex,
+                localQueueSize = queue.size,
+                localIsVideo = current.isVideo,
                 localPlaying = true,
                 activeOutput = "This device",
                 tab = AppTab.Local,
@@ -222,10 +299,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun sFilterIsAll(): Boolean = _state.value.localFilter == "all"
+
     fun playUri(uri: Uri, title: String = uri.lastPathSegment ?: "Media", isVideo: Boolean = true) {
         withPlayer { p ->
-            p.stop()
-            p.setMediaItem(mediaItem(uri, title))
+            p.setMediaItems(listOf(mediaItem(uri, title, isVideo = isVideo)), 0, 0L)
             p.prepare()
             p.play()
             queueStore.save(uri.toString(), title, 0L, isVideo)
@@ -233,6 +311,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 localTitle = title,
+                localArtist = "",
+                localAlbum = "",
+                localQueueIndex = 0,
+                localQueueSize = 1,
                 localIsVideo = isVideo,
                 localPlaying = true,
                 activeOutput = "This device",
@@ -254,22 +336,65 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun localStop() {
-        withPlayer { it.stop() }
+        withPlayer {
+            it.stop()
+            it.clearMediaItems()
+        }
         queueStore.clear()
-        _state.update { it.copy(localPlaying = false, localTitle = "(nothing loaded)") }
+        _state.update {
+            it.copy(
+                localPlaying = false,
+                localTitle = "(nothing loaded)",
+                localArtist = "",
+                localAlbum = "",
+                localQueueIndex = 0,
+                localQueueSize = 0,
+            )
+        }
+    }
+
+    fun localNext() {
+        withPlayer { p ->
+            if (p.hasNextMediaItem()) {
+                p.seekToNextMediaItem()
+            } else {
+                p.seekTo((p.currentPosition + 15_000).coerceAtLeast(0L))
+            }
+        }
+    }
+
+    fun localPrev() {
+        withPlayer { p ->
+            if (p.currentPosition > 3_000L) {
+                p.seekTo(0L)
+            } else if (p.hasPreviousMediaItem()) {
+                p.seekToPreviousMediaItem()
+            } else {
+                p.seekTo(0L)
+            }
+        }
     }
 
     private fun syncUiFromPlayer(p: Player) {
         val item = p.currentMediaItem
         if (item != null) {
-            val title = item.mediaMetadata.title?.toString()
+            val md = item.mediaMetadata
+            val title = md.title?.toString()
                 ?: item.localConfiguration?.uri?.lastPathSegment
                 ?: "(resumed)"
-            val snap = queueStore.load()
+            val artist = md.artist?.toString().orEmpty().let { if (it == "VoxPlayer") "" else it }
+            val album = md.albumTitle?.toString().orEmpty()
+            val isVideo = md.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO
+                || md.mediaType == MediaMetadata.MEDIA_TYPE_MOVIE
+                || queueStore.load()?.current?.isVideo == true
             _state.update {
                 it.copy(
                     localTitle = title,
-                    localIsVideo = snap?.isVideo ?: false,
+                    localArtist = artist,
+                    localAlbum = album,
+                    localQueueIndex = p.currentMediaItemIndex.coerceAtLeast(0),
+                    localQueueSize = p.mediaItemCount.coerceAtLeast(0),
+                    localIsVideo = isVideo,
                     localPlaying = p.isPlaying,
                     activeOutput = if (p.isPlaying) "This device" else it.activeOutput,
                 )
@@ -277,10 +402,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val snap = queueStore.load() ?: return
+        val cur = snap.current ?: return
         _state.update {
             it.copy(
-                localTitle = snap.title,
-                localIsVideo = snap.isVideo,
+                localTitle = cur.title,
+                localArtist = cur.artist,
+                localAlbum = cur.album,
+                localQueueIndex = snap.index,
+                localQueueSize = snap.entries.size,
+                localIsVideo = cur.isVideo,
             )
         }
     }

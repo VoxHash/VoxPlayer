@@ -7,7 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (gapless local queues, richer Now Playing metadata)
+- Further Android companion polish (queue reorder / repeat modes on-device)
+
+## [1.32.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: gapless local library queues via Media3 `setMediaItems` (play from tapped item; same-kind continuity under All filter; transport prev/next skips tracks)
+- Richer Now Playing: MediaStore artist + album on cards and side panel; queue index (`n / N`) in transport and Now Playing
+- Playback queue store persists the full playlist for process-death resumption
 
 ## [1.31.0] - 2026-10-24
 

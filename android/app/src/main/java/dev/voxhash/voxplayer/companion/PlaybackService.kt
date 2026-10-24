@@ -83,10 +83,12 @@ class PlaybackService : MediaSessionService() {
     private val persistListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             persistQueue()
+            notifyWidget()
         }
 
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
             persistQueue()
+            notifyWidget()
             // Soft fade-in on auto / repeat advances — reduces clicks across mixed codecs.
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
@@ -271,6 +273,34 @@ class PlaybackService : MediaSessionService() {
         applyAudioChain()
         val pendingSleep = SleepTimer.loadEndEpochMs(this)
         if (pendingSleep > 0L) scheduleSleepTimer(pendingSleep)
+        notifyWidget()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            PlaybackWidgetProvider.ACTION_PLAY_PAUSE -> {
+                val player = mediaSession?.player
+                if (player != null) {
+                    if (player.isPlaying) player.pause() else {
+                        if (player.mediaItemCount == 0) {
+                            // Cold start from widget: rely on Media3 playback resumption store.
+                            player.prepare()
+                        }
+                        player.play()
+                    }
+                }
+                notifyWidget()
+            }
+            PlaybackWidgetProvider.ACTION_PREV -> {
+                mediaSession?.player?.seekToPreviousMediaItem()
+                notifyWidget()
+            }
+            PlaybackWidgetProvider.ACTION_NEXT -> {
+                mediaSession?.player?.seekToNextMediaItem()
+                notifyWidget()
+            }
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
@@ -388,6 +418,18 @@ class PlaybackService : MediaSessionService() {
             return
         }
         queueStore.saveFromPlayer(player)
+    }
+
+    private fun notifyWidget() {
+        val player = mediaSession?.player
+        val title = player?.currentMediaItem?.mediaMetadata?.title?.toString()
+        val artist = player?.currentMediaItem?.mediaMetadata?.artist?.toString()
+        PlaybackWidgetProvider.notify(
+            this,
+            title = title,
+            subtitle = artist,
+            playing = player?.isPlaying == true,
+        )
     }
 
     companion object {

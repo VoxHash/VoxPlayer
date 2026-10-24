@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (widget / glance media controls without GMS)
+- Further Android companion polish (car / Bluetooth AVRCP metadata richness)
+
+## [1.42.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS: home-screen media widget (classic AppWidget, no GMS Glance) — title + play/pause / previous / next driven by `PlaybackService`
 
 ## [1.41.0] - 2026-10-24
 

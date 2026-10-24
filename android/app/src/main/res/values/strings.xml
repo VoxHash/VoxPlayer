@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">VoxPlayer</string>
+    <string name="widget_description">VoxPlayer media controls (no Google services)</string>
+    <string name="widget_idle">VoxPlayer</string>
+    <string name="widget_hint">Play / pause · prev · next</string>
+    <string name="widget_prev">Previous</string>
+    <string name="widget_next">Next</string>
+    <string name="widget_play_pause">Play or pause</string>
 </resources>

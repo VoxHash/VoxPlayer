@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (local lyrics / timed text when files provide them)
+- Further Android companion polish (crossfade / gapless edge cases for mixed codecs)
+
+## [1.40.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: local lyrics from sidecar `.lrc` / `.srt` / `.vtt` / `.txt` next to the media (MediaStore sibling or file path); Now Playing timed highlight; no cloud scrape
 
 ## [1.39.0] - 2026-10-24
 

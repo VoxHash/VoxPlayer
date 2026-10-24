@@ -1075,6 +1075,43 @@ private fun NowPlayingPane(
                     }
                 }
             }
+            Text("Lyrics", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            if (state.lyricsLines.isEmpty()) {
+                Text(
+                    "No sidecar .lrc / .srt / .vtt / .txt next to this file",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.TextMuted,
+                )
+            } else {
+                Text(
+                    "${state.lyricsSource}${if (state.lyricsTimed) " · timed" else " · plain"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.TextMuted,
+                )
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp)
+                        .verticalScroll(rememberScrollState())
+                        .clip(VoxShapes.card)
+                        .background(VoxColors.BgElevated)
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    state.lyricsLines.forEachIndexed { i, line ->
+                        val active = state.lyricsTimed && i == state.lyricsActiveIndex
+                        Text(
+                            line,
+                            style = if (active) {
+                                MaterialTheme.typography.titleSmall
+                            } else {
+                                MaterialTheme.typography.bodySmall
+                            },
+                            color = if (active) VoxColors.Accent else VoxColors.TextSecondary,
+                        )
+                    }
+                }
+            }
             if (state.localQueue.size > 1) {
                 Text("Up next", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
                 LazyColumn(

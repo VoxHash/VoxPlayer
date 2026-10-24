@@ -28,7 +28,7 @@ voxplayer
 - **Torrent streaming**: qBittorrent API client included in main install deps, with media-library gating
 - **Tray background**: Minimize / close-to-tray while playback continues
 - **Daemon remotes**: `voxplayer-tui` / `voxplayer-ctl` and browser UI at `http://127.0.0.1:17890/ui/`
-- **Android / Quest app**: desktop-matched ember shell; Quest panel 1024×640; background Media3 session, gapless queues, repeat/shuffle, queue reorder, volume 0–200%, sound output + AOSP EQ, headset ±15s seek, Quest route fallback, sleep timer, local bookmarks, on-device Recent/Top history, playlist folders + smart lists, playback resumption, richer Now Playing; Connect via Wi‑Fi or Bluetooth RFCOMM; playlist/podcast sync; no GMS
+- **Android / Quest app**: desktop-matched ember shell; Quest panel 1024×640; background Media3 session, gapless queues, repeat/shuffle, queue reorder, volume 0–200%, sound output + AOSP EQ, headset ±15s seek, Quest route fallback, sleep timer, local bookmarks, on-device Recent/Top history, playlist folders + smart lists, local lyrics sidecars, playback resumption, richer Now Playing; Connect via Wi‑Fi or Bluetooth RFCOMM; playlist/podcast sync; no GMS
 - **LAN VPN bypass**: `voxplayer-lan-bypass` keeps home/RFC1918 traffic off the VPN path for phone/Quest remotes
 - **Desktop bundles**: onedir builds can ship the native C media core; clear per-OS installers under `packaging/`
 - **File associations**: Double-click media to open with VoxPlayer

@@ -73,8 +73,13 @@ data class PlayerUiState(
     val localPlaylists: List<LocalPlaylistStore.Playlist> = emptyList(),
     /** When filter=lists, null = folder index; else browse that playlist id or smart:* */
     val listsBrowseId: String? = null,
+    val lyricsSource: String = "",
+    val lyricsTimed: Boolean = false,
+    val lyricsLines: List<String> = emptyList(),
+    val lyricsActiveIndex: Int = -1,
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
+    val localPositionMs: Long = 0L,
     val localIsVideo: Boolean = false,
     val playerReady: Boolean = false,
     val error: String = "",
@@ -731,10 +736,12 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 localPlaying = p.isPlaying,
                 localPositionLabel = "${fmt(pos)} / ${fmt(dur)}",
+                localPositionMs = pos,
                 sleepEndEpochMs = sleepEnd,
                 sleepRemainingLabel = SleepTimer.remainingLabel(sleepEnd),
             )
         }
+        refreshLyricsFor(currentPlayerUri(p), pos)
         // Auto-save resume bookmark ~every 5s while playing (desktop companion parity).
         if (p.isPlaying && pos >= 1_500L && System.currentTimeMillis() / 5_000L != lastBookmarkAutosaveBucket) {
             lastBookmarkAutosaveBucket = System.currentTimeMillis() / 5_000L
@@ -748,11 +755,58 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private var lastBookmarkAutosaveBucket = -1L
     private var lastHistoryRecordedUri: String? = null
+    private var lastLyricsUri: String? = null
+    private var loadedLyrics: LyricsLoader.Lyrics? = null
 
     private fun currentPlayerUri(p: Player): String? {
         val item = p.currentMediaItem ?: return null
         return item.localConfiguration?.uri?.toString()
             ?: item.requestMetadata.mediaUri?.toString()
+    }
+
+    private fun refreshLyricsFor(uri: String?, positionMs: Long) {
+        if (uri.isNullOrBlank()) {
+            lastLyricsUri = null
+            loadedLyrics = null
+            _state.update {
+                it.copy(
+                    lyricsSource = "",
+                    lyricsTimed = false,
+                    lyricsLines = emptyList(),
+                    lyricsActiveIndex = -1,
+                )
+            }
+            return
+        }
+        if (uri != lastLyricsUri) {
+            lastLyricsUri = uri
+            loadedLyrics = try {
+                LyricsLoader.load(getApplication(), Uri.parse(uri))
+            } catch (_: Exception) {
+                null
+            }
+        }
+        val lyr = loadedLyrics
+        if (lyr == null) {
+            _state.update {
+                it.copy(
+                    lyricsSource = "",
+                    lyricsTimed = false,
+                    lyricsLines = emptyList(),
+                    lyricsActiveIndex = -1,
+                )
+            }
+            return
+        }
+        val idx = lyr.activeIndex(positionMs)
+        _state.update {
+            it.copy(
+                lyricsSource = lyr.sourceLabel,
+                lyricsTimed = lyr.timed,
+                lyricsLines = lyr.lines.map { line -> line.text },
+                lyricsActiveIndex = idx,
+            )
+        }
     }
 
     private fun maybeRecordHistory(p: Player) {

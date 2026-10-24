@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (crossfade / gapless edge cases for mixed codecs)
+- Further Android companion polish (widget / glance media controls without GMS)
+
+## [1.41.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: soft fade-in (~450ms) on auto track transitions; optional ExoPlayer skip-silence; same-kind continuity when a playlist mixes audio and video
 
 ## [1.40.0] - 2026-10-24
 

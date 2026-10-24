@@ -261,6 +261,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onEqPreset = vm::setEqPreset,
                                 onSleepMinutes = vm::setSleepTimerMinutes,
                                 onClearSleep = vm::clearSleepTimer,
+                                onToggleCrossfade = { vm.setCrossfadeEnabled(!state.crossfadeEnabled) },
+                                onToggleSkipSilence = { vm.setSkipSilence(!state.skipSilence) },
                                 onBookmarkNow = vm::bookmarkNow,
                                 onPlayBookmark = vm::playBookmark,
                                 onRemoveBookmark = vm::removeBookmark,
@@ -839,6 +841,8 @@ private fun NowPlayingPane(
     onEqPreset: (String) -> Unit,
     onSleepMinutes: (Int) -> Unit,
     onClearSleep: () -> Unit,
+    onToggleCrossfade: () -> Unit,
+    onToggleSkipSilence: () -> Unit,
     onBookmarkNow: () -> Unit,
     onPlayBookmark: (BookmarkStore.Bookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
@@ -1016,6 +1020,22 @@ private fun NowPlayingPane(
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
+            Text("Transitions", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                QuietButton(
+                    if (state.crossfadeEnabled) "Fade-in on" else "Fade-in off",
+                    onToggleCrossfade,
+                    Modifier.weight(1f),
+                )
+                QuietButton(
+                    if (state.skipSilence) "Skip silence on" else "Skip silence",
+                    onToggleSkipSilence,
+                    Modifier.weight(1f),
+                )
+            }
             Text("Sleep timer", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
             Text(
                 if (state.sleepEndEpochMs > 0L) "Ends in ${state.sleepRemainingLabel}" else "Off · fades then pauses",

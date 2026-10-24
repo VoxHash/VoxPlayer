@@ -44,6 +44,9 @@ class PlaybackService : MediaSessionService() {
     private var preferredDeviceId: Int = AudioRoute.DEFAULT_DEVICE_ID
     private var eqPreset: String = EqualizerControl.PRESET_OFF
     private var sleepEndEpochMs: Long = 0L
+    private var crossfadeEnabled: Boolean = true
+    private var skipSilence: Boolean = false
+    private val crossfadeApplier = CrossfadeApplier()
     private var audioManager: AudioManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val sleepTick = object : Runnable {
@@ -84,6 +87,14 @@ class PlaybackService : MediaSessionService() {
 
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
             persistQueue()
+            // Soft fade-in on auto / repeat advances — reduces clicks across mixed codecs.
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
+            ) {
+                val player = mediaSession?.player ?: return
+                val target = LocalVolume.playerVolume(volumePercent, muted = false)
+                crossfadeApplier.onAutoTransition(player, crossfadeEnabled, target, volumeMuted)
+            }
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -106,6 +117,7 @@ class PlaybackService : MediaSessionService() {
                 .add(EqualizerControl.CMD_SET)
                 .add(AudioRoute.CMD_REAPPLY)
                 .add(SleepTimer.CMD_SET)
+                .add(CrossfadeControl.CMD_SET)
                 .build()
             val playerCmds = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
                 .add(Player.COMMAND_SEEK_BACK)
@@ -170,6 +182,13 @@ class PlaybackService : MediaSessionService() {
                     }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
+                CrossfadeControl.ACTION_SET -> {
+                    crossfadeEnabled = args.getBoolean(CrossfadeControl.EXTRA_CROSSFADE, crossfadeEnabled)
+                    skipSilence = args.getBoolean(CrossfadeControl.EXTRA_SKIP_SILENCE, skipSilence)
+                    CrossfadeControl.save(this@PlaybackService, crossfadeEnabled, skipSilence)
+                    applySkipSilence()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
         }
@@ -199,6 +218,8 @@ class PlaybackService : MediaSessionService() {
         preferredDeviceId = AudioRoute.loadPreferredId(this)
         eqPreset = EqualizerControl.loadPreset(this)
         equalizerApplier.setPreset(eqPreset)
+        crossfadeEnabled = CrossfadeControl.loadCrossfade(this)
+        skipSilence = CrossfadeControl.loadSkipSilence(this)
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         audioManager?.registerAudioDeviceCallback(deviceCallback, mainHandler)
@@ -216,6 +237,7 @@ class PlaybackService : MediaSessionService() {
             .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
             .build()
         player.repeatMode = Player.REPEAT_MODE_OFF
+        player.skipSilenceEnabled = skipSilence
         player.addListener(persistListener)
         player.addAnalyticsListener(
             object : AnalyticsListener {
@@ -269,6 +291,7 @@ class PlaybackService : MediaSessionService() {
         } catch (_: Exception) {
         }
         persistQueue()
+        crossfadeApplier.release()
         volumeApplier.release()
         equalizerApplier.release()
         mediaSession?.run {
@@ -326,6 +349,11 @@ class PlaybackService : MediaSessionService() {
         sendBroadcast(Intent(SleepTimer.ACTION_FIRED).setPackage(packageName))
     }
 
+    private fun applySkipSilence() {
+        val player = mediaSession?.player as? ExoPlayer ?: return
+        player.skipSilenceEnabled = skipSilence
+    }
+
     private fun applyAudioChain() {
         val player = mediaSession?.player ?: return
         // If preferred id is stale (not in current sinks), clear to default.
@@ -336,9 +364,16 @@ class PlaybackService : MediaSessionService() {
             preferredDeviceId = AudioRoute.DEFAULT_DEVICE_ID
             AudioRoute.savePreferredId(this, preferredDeviceId)
         }
-        volumeApplier.apply(player, volumePercent, volumeMuted)
+        // Don't stomp an in-progress soft fade-in / sleep fade.
+        if (!crossfadeApplier.isActive() && sleepEndEpochMs <= 0L) {
+            volumeApplier.apply(player, volumePercent, volumeMuted)
+        } else if (!crossfadeApplier.isActive()) {
+            // Sleep timer may own volume; still attach enhancer/route when muted path needed.
+            if (volumeMuted) volumeApplier.apply(player, volumePercent, true)
+        }
         routeApplier.apply(player, preferredDeviceId)
         equalizerApplier.apply(player)
+        applySkipSilence()
     }
 
     private fun notifyDevicesChanged() {

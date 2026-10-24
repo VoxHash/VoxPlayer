@@ -77,6 +77,8 @@ data class PlayerUiState(
     val lyricsTimed: Boolean = false,
     val lyricsLines: List<String> = emptyList(),
     val lyricsActiveIndex: Int = -1,
+    val crossfadeEnabled: Boolean = true,
+    val skipSilence: Boolean = false,
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localPositionMs: Long = 0L,
@@ -129,6 +131,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             historyRecent = historyStore.recentlyPlayed(),
             historyTop = historyStore.mostPlayed(),
             localPlaylists = playlistStore.load(),
+            crossfadeEnabled = CrossfadeControl.loadCrossfade(app),
+            skipSilence = CrossfadeControl.loadSkipSilence(app),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
         ),
@@ -1036,12 +1040,46 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         isVideo = isVideo,
     )
 
+    fun setCrossfadeEnabled(enabled: Boolean) {
+        val skip = _state.value.skipSilence
+        CrossfadeControl.save(getApplication(), enabled, skip)
+        _state.update { it.copy(crossfadeEnabled = enabled) }
+        sendCrossfadeCommand(enabled, skip)
+    }
+
+    fun setSkipSilence(enabled: Boolean) {
+        val cross = _state.value.crossfadeEnabled
+        CrossfadeControl.save(getApplication(), cross, enabled)
+        _state.update { it.copy(skipSilence = enabled) }
+        sendCrossfadeCommand(cross, enabled)
+    }
+
+    private fun sendCrossfadeCommand(crossfade: Boolean, skipSilence: Boolean) {
+        val controller = player as? MediaController ?: return
+        val args = Bundle().apply {
+            putBoolean(CrossfadeControl.EXTRA_CROSSFADE, crossfade)
+            putBoolean(CrossfadeControl.EXTRA_SKIP_SILENCE, skipSilence)
+        }
+        try {
+            controller.sendCustomCommand(CrossfadeControl.CMD_SET, args)
+        } catch (e: Exception) {
+            Log.w(TAG, "SET_CROSSFADE failed", e)
+        }
+    }
+
     private fun playTrackQueue(tracks: List<LocalPlaylistStore.Track>, startIndex: Int) {
         if (tracks.isEmpty()) return
-        val idx = startIndex.coerceIn(0, tracks.lastIndex)
+        // Mixed audio/video playlists: keep same-kind continuity from the start track
+        // so ExoPlayer avoids hard A/V renderer swaps mid-queue.
+        var idx = startIndex.coerceIn(0, tracks.lastIndex)
+        val kindVideo = tracks[idx].isVideo
+        val sameKind = tracks.filter { it.isVideo == kindVideo }
+        if (sameKind.isEmpty()) return
+        idx = sameKind.indexOfFirst { it.uri == tracks[idx].uri }.let { if (it >= 0) it else 0 }
+        val queue = sameKind
         withPlayer { p ->
             p.setMediaItems(
-                tracks.map {
+                queue.map {
                     mediaItem(
                         Uri.parse(it.uri),
                         it.title,
@@ -1056,7 +1094,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             p.prepare()
             p.play()
             queueStore.saveQueue(
-                tracks.map {
+                queue.map {
                     PlaybackQueueStore.Entry(
                         uri = it.uri,
                         title = it.title,
@@ -1069,14 +1107,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 0L,
             )
         }
-        val cur = tracks[idx]
+        val cur = queue[idx]
         _state.update {
             it.copy(
                 localTitle = cur.title,
                 localArtist = cur.artist,
                 localAlbum = cur.album,
                 localQueueIndex = idx,
-                localQueueSize = tracks.size,
+                localQueueSize = queue.size,
                 localIsVideo = cur.isVideo,
                 localPlaying = true,
                 activeOutput = "This device",

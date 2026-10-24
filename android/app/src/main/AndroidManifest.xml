@@ -64,5 +64,15 @@
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
+
+        <!-- Background / lock-screen local playback (Media3 MediaSessionService) -->
+        <service
+            android:name=".PlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

@@ -56,6 +56,8 @@ Trusted LAN: set `VOXPLAYER_DAEMON_ALLOW_LAN=1` and `VOXPLAYER_DAEMON_HOST=0.0.0
 
 On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**1024×640 dp** by default, resizable). Wide layouts show the desktop-style Home grid + Now Playing column.
 
+**Background playback:** on-device Media3 audio runs in a `mediaPlayback` foreground service with a system media notification. Force-stop or strict battery limits can still stop playback; there is no proprietary keep-alive SDK.
+
 When a desktop VPN (e.g. ProtonVPN) steals RFC1918 routes, keep LAN local:
 
 ```bash

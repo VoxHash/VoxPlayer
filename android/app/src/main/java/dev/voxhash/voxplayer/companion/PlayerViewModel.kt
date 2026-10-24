@@ -2,6 +2,7 @@ package dev.voxhash.voxplayer.companion
 
 import android.Manifest
 import android.app.Application
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -11,8 +12,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -39,6 +43,7 @@ data class PlayerUiState(
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localIsVideo: Boolean = false,
+    val playerReady: Boolean = false,
     val error: String = "",
     // Connect / desktop remote
     val connectOpen: Boolean = false,
@@ -55,7 +60,7 @@ data class PlayerUiState(
     val remoteVolume: Int = 50,
     val remoteVersion: String = "",
     val remoteLibrary: List<DaemonClient.LibraryItem> = emptyList(),
-    val activeOutput: String = "This device", // "This device" or "Desktop · host" / "Desktop · BT"
+    val activeOutput: String = "This device",
     val syncedPlaylists: List<SyncStore.SyncedPlaylist> = emptyList(),
     val syncedFeeds: List<SyncStore.SyncedFeed> = emptyList(),
     val syncBusy: Boolean = false,
@@ -76,28 +81,65 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     )
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
-    val player: ExoPlayer = ExoPlayer.Builder(app).build().also { p ->
-        p.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _state.update {
-                    it.copy(
-                        localPlaying = isPlaying,
-                        activeOutput = if (isPlaying) "This device" else it.activeOutput,
-                    )
-                }
-            }
-        })
-    }
+    private val _player = MutableStateFlow<Player?>(null)
+    val player: Player? get() = _player.value
+    val playerFlow: StateFlow<Player?> = _player.asStateFlow()
 
+    private var controllerFuture: ListenableFuture<MediaController>? = null
     private var remotePoll: Job? = null
     private var localTick: Job? = null
+    private var pendingPlay: (() -> Unit)? = null
+
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _state.update {
+                it.copy(
+                    localPlaying = isPlaying,
+                    activeOutput = if (isPlaying) "This device" else it.activeOutput,
+                )
+            }
+        }
+    }
 
     init {
+        connectLocalPlayer()
         localTick = viewModelScope.launch {
             while (isActive) {
                 refreshLocalClock()
                 delay(500)
             }
+        }
+    }
+
+    private fun connectLocalPlayer() {
+        val app = getApplication<Application>()
+        val token = SessionToken(app, ComponentName(app, PlaybackService::class.java))
+        val future = MediaController.Builder(app, token).buildAsync()
+        controllerFuture = future
+        future.addListener(
+            {
+                try {
+                    val controller = future.get()
+                    controller.addListener(playerListener)
+                    _player.value = controller
+                    _state.update { it.copy(playerReady = true) }
+                    pendingPlay?.invoke()
+                    pendingPlay = null
+                } catch (e: Exception) {
+                    Log.e(TAG, "MediaController connect failed", e)
+                    _state.update { it.copy(error = e.message ?: e.toString(), playerReady = false) }
+                }
+            },
+            ContextCompat.getMainExecutor(app),
+        )
+    }
+
+    private fun withPlayer(block: (Player) -> Unit) {
+        val p = player
+        if (p != null) {
+            block(p)
+        } else {
+            pendingPlay = { player?.let(block) }
         }
     }
 
@@ -147,11 +189,24 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun mediaItem(uri: Uri, title: String): MediaItem =
+        MediaItem.Builder()
+            .setUri(uri)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setArtist("VoxPlayer")
+                    .build(),
+            )
+            .build()
+
     fun playLocal(item: LocalMediaItem) {
-        player.stop()
-        player.setMediaItem(MediaItem.fromUri(item.uri))
-        player.prepare()
-        player.play()
+        withPlayer { p ->
+            p.stop()
+            p.setMediaItem(mediaItem(item.uri, item.title))
+            p.prepare()
+            p.play()
+        }
         _state.update {
             it.copy(
                 localTitle = item.title,
@@ -165,10 +220,12 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun playUri(uri: Uri, title: String = uri.lastPathSegment ?: "Media", isVideo: Boolean = true) {
-        player.stop()
-        player.setMediaItem(MediaItem.fromUri(uri))
-        player.prepare()
-        player.play()
+        withPlayer { p ->
+            p.stop()
+            p.setMediaItem(mediaItem(uri, title))
+            p.prepare()
+            p.play()
+        }
         _state.update {
             it.copy(
                 localTitle = title,
@@ -189,25 +246,28 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun localPlayPause() {
-        if (player.isPlaying) player.pause() else player.play()
+        withPlayer { p -> if (p.isPlaying) p.pause() else p.play() }
     }
 
     fun localStop() {
-        player.stop()
+        withPlayer { it.stop() }
         _state.update { it.copy(localPlaying = false, localTitle = "(nothing loaded)") }
     }
 
     fun localSeekBy(ms: Long) {
-        val pos = (player.currentPosition + ms).coerceAtLeast(0L)
-        player.seekTo(pos)
+        withPlayer { p ->
+            val pos = (p.currentPosition + ms).coerceAtLeast(0L)
+            p.seekTo(pos)
+        }
     }
 
     private fun refreshLocalClock() {
-        val pos = player.currentPosition.coerceAtLeast(0L)
-        val dur = player.duration.coerceAtLeast(0L).let { if (it < 0) 0 else it }
+        val p = player ?: return
+        val pos = p.currentPosition.coerceAtLeast(0L)
+        val dur = p.duration.coerceAtLeast(0L).let { if (it < 0) 0 else it }
         _state.update {
             it.copy(
-                localPlaying = player.isPlaying,
+                localPlaying = p.isPlaying,
                 localPositionLabel = "${fmt(pos)} / ${fmt(dur)}",
             )
         }
@@ -251,7 +311,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
         prefs.edit().putString("host", host).putString("port", port.toString()).apply()
-        if (player.isPlaying) player.pause()
+        withPlayer { if (it.isPlaying) it.pause() }
         startRemotePoll()
     }
 
@@ -275,7 +335,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     bt.connect(address)
                 }
                 Log.i(TAG, "BT connected to $address hello=$hello")
-                if (player.isPlaying) player.pause()
+                withPlayer { if (it.isPlaying) it.pause() }
                 _state.update {
                     it.copy(
                         connectOpen = false,
@@ -287,7 +347,6 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         error = "",
                     )
                 }
-                // Smoke: status + playlists over RFCOMM
                 withContext(Dispatchers.IO) {
                     val st = bt.status()
                     Log.i(TAG, "BT status ok playing=${st.optBoolean("playing")} v=${st.optString("version")}")
@@ -308,10 +367,6 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
-    }
-
-    companion object {
-        private const val TAG = "VoxPlayerBT"
     }
 
     fun disconnectRemote() {
@@ -496,7 +551,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         remotePoll?.cancel()
         localTick?.cancel()
         bt.disconnect()
-        player.release()
+        _player.value?.removeListener(playerListener)
+        val future = controllerFuture
+        if (future != null) {
+            MediaController.releaseFuture(future)
+        } else {
+            (_player.value as? MediaController)?.release()
+        }
+        _player.value = null
         super.onCleared()
+    }
+
+    companion object {
+        private const val TAG = "VoxPlayerBT"
     }
 }

@@ -7,7 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (background playback limits)
+- Further Android companion polish (playback resumption after process death)
+
+## [1.30.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: Media3 `PlaybackService` (`MediaSessionService`) so on-device audio continues in the background with a system media notification
+- Activity uses `MediaController` against the session service (lock screen / headset controls)
+- ROADMAP Later item 6 (background playback) + honest battery / GrapheneOS limits note
 
 ## [1.29.1] - 2026-10-23
 

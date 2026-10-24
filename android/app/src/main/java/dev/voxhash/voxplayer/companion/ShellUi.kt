@@ -79,13 +79,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VoxPlayerApp(vm: PlayerViewModel) {
     val state by vm.state.collectAsState()
+    val player by vm.playerFlow.collectAsState()
     val context = LocalContext.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -113,14 +114,25 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
     }
 
     LaunchedEffect(Unit) {
-        if (vm.hasMediaPermission()) vm.reloadLocalLibrary()
-        else {
-            val perms = if (Build.VERSION.SDK_INT >= 33) {
-                arrayOf(Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_VIDEO)
-            } else {
-                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        val mediaPerms = if (Build.VERSION.SDK_INT >= 33) {
+            mutableListOf(
+                Manifest.permission.READ_MEDIA_AUDIO,
+                Manifest.permission.READ_MEDIA_VIDEO,
+            )
+        } else {
+            mutableListOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        // Android 13+: media notification for background PlaybackService
+        if (Build.VERSION.SDK_INT >= 33) {
+            mediaPerms.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (vm.hasMediaPermission()) {
+            vm.reloadLocalLibrary()
+            if (Build.VERSION.SDK_INT >= 33) {
+                permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
             }
-            permissionLauncher.launch(perms)
+        } else {
+            permissionLauncher.launch(mediaPerms.toTypedArray())
         }
     }
 
@@ -179,7 +191,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                             when (state.tab) {
                                 AppTab.Local -> LocalLibraryPane(
                                     state = state,
-                                    player = vm.player,
+                                    player = player,
                                     wide = wide,
                                     onPlay = vm::playLocal,
                                     onFilter = vm::setLocalFilter,
@@ -202,7 +214,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                         if (wide) {
                             NowPlayingPane(
                                 state = state,
-                                player = vm.player,
+                                player = player,
                                 onPlayPause = {
                                     if (state.activeOutput.startsWith("Desktop")) vm.remotePlayPause()
                                     else vm.localPlayPause()
@@ -338,7 +350,7 @@ private fun ShellHeader(state: PlayerUiState, wide: Boolean) {
 @Composable
 private fun LocalLibraryPane(
     state: PlayerUiState,
-    player: ExoPlayer,
+    player: Player?,
     wide: Boolean,
     onPlay: (LocalMediaItem) -> Unit,
     onFilter: (String) -> Unit,
@@ -362,7 +374,7 @@ private fun LocalLibraryPane(
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        if (state.localIsVideo && (state.localPlaying || state.localTitle != "(nothing loaded)")) {
+        if (player != null && state.localIsVideo && (state.localPlaying || state.localTitle != "(nothing loaded)")) {
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
@@ -489,7 +501,7 @@ private fun MediaCard(item: LocalMediaItem, onClick: () -> Unit) {
 @Composable
 private fun NowPlayingPane(
     state: PlayerUiState,
-    player: ExoPlayer,
+    player: Player?,
     onPlayPause: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -511,7 +523,7 @@ private fun NowPlayingPane(
                 .background(VoxColors.BgElevated),
             contentAlignment = Alignment.Center,
         ) {
-            if (!desktop && state.localIsVideo && title != "(nothing loaded)") {
+            if (player != null && !desktop && state.localIsVideo && title != "(nothing loaded)") {
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {

@@ -7,7 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (on-device EQ / output device picker if maintainable without GMS)
+- Further Android companion polish (Car / headset media button polish, Quest audio route edge cases)
+
+## [1.35.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: Sound Output device picker via `AudioManager` (no GMS) — system default or preferred sink routed with Media3 `setPreferredAudioDevice`
+- AOSP `Equalizer` presets (Off / Flat / Bass / Treble / Vocal / Loud) attached to the Media3 audio session; Now Playing controls; prefs persist
 
 ## [1.34.0] - 2026-10-24
 

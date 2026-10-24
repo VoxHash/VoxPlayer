@@ -246,6 +246,9 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onVolDown = vm::localVolDown,
                                 onVolUp = vm::localVolUp,
                                 onMute = vm::toggleLocalMute,
+                                onRefreshDevices = vm::refreshAudioDevices,
+                                onSelectDevice = vm::setPreferredAudioDevice,
+                                onEqPreset = vm::setEqPreset,
                                 onPlayQueueIndex = vm::playQueueIndex,
                                 onMoveQueue = vm::moveQueueItem,
                                 onRemoveQueue = vm::removeQueueItem,
@@ -553,6 +556,9 @@ private fun NowPlayingPane(
     onVolDown: () -> Unit,
     onVolUp: () -> Unit,
     onMute: () -> Unit,
+    onRefreshDevices: () -> Unit,
+    onSelectDevice: (Int) -> Unit,
+    onEqPreset: (String) -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (Int, Int) -> Unit,
     onRemoveQueue: (Int) -> Unit,
@@ -660,6 +666,72 @@ private fun NowPlayingPane(
                     Modifier.weight(1f),
                 )
             }
+            Text("Sound output", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                QuietButton("Refresh", onRefreshDevices)
+            }
+            val selectedName = when {
+                state.preferredAudioDeviceId == AudioRoute.DEFAULT_DEVICE_ID -> "System default"
+                else -> state.audioDevices.firstOrNull { it.id == state.preferredAudioDeviceId }
+                    ?.let { "${it.name} · ${it.typeLabel}" }
+                    ?: "System default"
+            }
+            Text(selectedName, style = MaterialTheme.typography.bodySmall, color = VoxColors.TextMuted)
+            QuietButton(
+                "System default",
+                { onSelectDevice(AudioRoute.DEFAULT_DEVICE_ID) },
+                Modifier.fillMaxWidth(),
+            )
+            state.audioDevices.take(8).forEach { dev ->
+                val selected = state.preferredAudioDeviceId == dev.id
+                Text(
+                    "${dev.name} · ${dev.typeLabel}",
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(VoxShapes.card)
+                        .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
+                        .clickable { onSelectDevice(dev.id) }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (selected) VoxColors.Accent else VoxColors.Text,
+                )
+            }
+            Text("Equalizer", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                EqualizerControl.PRESETS.take(3).forEach { (id, label) ->
+                    QuietButton(
+                        label,
+                        { onEqPreset(id) },
+                        Modifier.weight(1f),
+                    )
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                EqualizerControl.PRESETS.drop(3).forEach { (id, label) ->
+                    QuietButton(
+                        if (state.eqPreset == id) "· $label" else label,
+                        { onEqPreset(id) },
+                        Modifier.weight(1f),
+                    )
+                }
+            }
+            Text(
+                "EQ: ${EqualizerControl.PRESETS.firstOrNull { it.first == state.eqPreset }?.second ?: "Off"} · AOSP effect",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
             if (state.localQueue.size > 1) {
                 Text("Up next", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
                 LazyColumn(

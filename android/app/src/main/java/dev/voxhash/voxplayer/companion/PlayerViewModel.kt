@@ -59,6 +59,9 @@ data class PlayerUiState(
     /** Desktop-parity logical volume 0–200 */
     val localVolume: Int = LocalVolume.DEFAULT_PERCENT,
     val localMuted: Boolean = false,
+    val audioDevices: List<AudioRoute.Device> = emptyList(),
+    val preferredAudioDeviceId: Int = AudioRoute.DEFAULT_DEVICE_ID,
+    val eqPreset: String = EqualizerControl.PRESET_OFF,
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localIsVideo: Boolean = false,
@@ -99,6 +102,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             localShuffle = prefs.getBoolean(PREF_SHUFFLE, false),
             localVolume = LocalVolume.loadPercent(app),
             localMuted = LocalVolume.loadMuted(app),
+            preferredAudioDeviceId = AudioRoute.loadPreferredId(app),
+            eqPreset = EqualizerControl.loadPreset(app),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
         ),
@@ -148,6 +153,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         connectLocalPlayer()
+        refreshAudioDevices()
         localTick = viewModelScope.launch {
             while (isActive) {
                 refreshLocalClock()
@@ -171,6 +177,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     _player.value = controller
                     syncUiFromPlayer(controller)
                     pushLocalVolumeToService()
+                    setPreferredAudioDevice(_state.value.preferredAudioDeviceId)
+                    setEqPreset(_state.value.eqPreset)
                     _state.update { it.copy(playerReady = true) }
                     pendingPlay?.invoke()
                     pendingPlay = null
@@ -510,6 +518,43 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             controller.sendCustomCommand(LocalVolume.CMD_SET, args)
         } catch (e: Exception) {
             Log.w(TAG, "SET_LOCAL_VOLUME failed", e)
+        }
+    }
+
+    fun refreshAudioDevices() {
+        val ctx = getApplication<Application>()
+        val devices = try {
+            AudioRoute.listOutputDevices(ctx)
+        } catch (e: Exception) {
+            Log.w(TAG, "listOutputDevices failed", e)
+            emptyList()
+        }
+        _state.update { it.copy(audioDevices = devices) }
+    }
+
+    fun setPreferredAudioDevice(deviceId: Int) {
+        _state.update { it.copy(preferredAudioDeviceId = deviceId) }
+        AudioRoute.savePreferredId(getApplication(), deviceId)
+        val controller = player as? MediaController ?: return
+        val args = Bundle().apply { putInt(AudioRoute.EXTRA_DEVICE_ID, deviceId) }
+        try {
+            controller.sendCustomCommand(AudioRoute.CMD_SET, args)
+        } catch (e: Exception) {
+            Log.w(TAG, "SET_AUDIO_DEVICE failed", e)
+        }
+    }
+
+    fun setEqPreset(preset: String) {
+        val id = preset.takeIf { p -> EqualizerControl.PRESETS.any { it.first == p } }
+            ?: EqualizerControl.PRESET_OFF
+        _state.update { it.copy(eqPreset = id) }
+        EqualizerControl.savePreset(getApplication(), id)
+        val controller = player as? MediaController ?: return
+        val args = Bundle().apply { putString(EqualizerControl.EXTRA_PRESET, id) }
+        try {
+            controller.sendCustomCommand(EqualizerControl.CMD_SET, args)
+        } catch (e: Exception) {
+            Log.w(TAG, "SET_EQ_PRESET failed", e)
         }
     }
 

@@ -58,6 +58,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Background playback:** on-device Media3 audio runs in a `mediaPlayback` foreground service with a system media notification. Force-stop or strict battery limits can still stop playback; there is no proprietary keep-alive SDK.
 
+**Sound output / EQ:** Now Playing lists `AudioManager` sinks (speaker, wired, Bluetooth A2DP, USB, HDMI) and routes via Media3 `setPreferredAudioDevice`. AOSP `Equalizer` presets attach to the playback session; GrapheneOS may omit effects — Off still works. No GMS.
+
 **Volume 0–200%:** local playback uses the same logical scale as desktop (mute + 0–200). Above 100% uses AOSP `LoudnessEnhancer` (no proprietary boost SDK); GrapheneOS may omit the effect — 0–100% still applies.
 
 **Repeat / shuffle / queue reorder:** transport and Now Playing expose Media3 repeat (off/all/one) and shuffle; Up Next supports move up/down and remove. Modes persist in app prefs.

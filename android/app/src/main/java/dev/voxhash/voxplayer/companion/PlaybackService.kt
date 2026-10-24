@@ -24,18 +24,19 @@ import com.google.common.util.concurrent.ListenableFuture
  * service with a system media notification. Aggressive battery restrictions or
  * force-stop still end playback — we do not use proprietary keep-alive SDKs.
  *
- * Playback resumption: last item + position are stored locally; headset /
- * [androidx.media3.session.MediaButtonReceiver] can restart via
- * [MediaSession.Callback.onPlaybackResumption] after process death.
- *
- * Volume: desktop-parity 0–200% via [LocalVolume] + AOSP LoudnessEnhancer.
+ * Volume / route / EQ: desktop-parity 0–200% ([LocalVolume] + LoudnessEnhancer),
+ * [AudioRoute] preferred output, AOSP [EqualizerControl] presets — no GMS.
  */
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private lateinit var queueStore: PlaybackQueueStore
     private val volumeApplier = LocalVolumeApplier()
+    private lateinit var routeApplier: AudioRouteApplier
+    private val equalizerApplier = EqualizerApplier()
     private var volumePercent: Int = LocalVolume.DEFAULT_PERCENT
     private var volumeMuted: Boolean = false
+    private var preferredDeviceId: Int = AudioRoute.DEFAULT_DEVICE_ID
+    private var eqPreset: String = EqualizerControl.PRESET_OFF
 
     private val persistListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -50,7 +51,7 @@ class PlaybackService : MediaSessionService() {
             if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
                 persistQueue()
             }
-            applyVolume()
+            applyAudioChain()
         }
     }
 
@@ -62,6 +63,8 @@ class PlaybackService : MediaSessionService() {
         ): MediaSession.ConnectionResult {
             val cmds = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                 .add(LocalVolume.CMD_SET)
+                .add(AudioRoute.CMD_SET)
+                .add(EqualizerControl.CMD_SET)
                 .build()
             return MediaSession.ConnectionResult.accept(
                 cmds,
@@ -75,12 +78,28 @@ class PlaybackService : MediaSessionService() {
             customCommand: androidx.media3.session.SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
-            if (customCommand.customAction == LocalVolume.ACTION_SET) {
-                volumePercent = args.getInt(LocalVolume.EXTRA_PERCENT, volumePercent).coerceIn(0, 200)
-                volumeMuted = args.getBoolean(LocalVolume.EXTRA_MUTED, volumeMuted)
-                LocalVolume.save(this@PlaybackService, volumePercent, volumeMuted)
-                applyVolume()
-                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            when (customCommand.customAction) {
+                LocalVolume.ACTION_SET -> {
+                    volumePercent = args.getInt(LocalVolume.EXTRA_PERCENT, volumePercent).coerceIn(0, 200)
+                    volumeMuted = args.getBoolean(LocalVolume.EXTRA_MUTED, volumeMuted)
+                    LocalVolume.save(this@PlaybackService, volumePercent, volumeMuted)
+                    applyAudioChain()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                AudioRoute.ACTION_SET -> {
+                    preferredDeviceId = args.getInt(AudioRoute.EXTRA_DEVICE_ID, preferredDeviceId)
+                    AudioRoute.savePreferredId(this@PlaybackService, preferredDeviceId)
+                    applyAudioChain()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                EqualizerControl.ACTION_SET -> {
+                    eqPreset = args.getString(EqualizerControl.EXTRA_PRESET, eqPreset)
+                        ?: EqualizerControl.PRESET_OFF
+                    EqualizerControl.savePreset(this@PlaybackService, eqPreset)
+                    equalizerApplier.setPreset(eqPreset)
+                    applyAudioChain()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
         }
@@ -104,8 +123,12 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         queueStore = PlaybackQueueStore(this)
+        routeApplier = AudioRouteApplier(this)
         volumePercent = LocalVolume.loadPercent(this)
         volumeMuted = LocalVolume.loadMuted(this)
+        preferredDeviceId = AudioRoute.loadPreferredId(this)
+        eqPreset = EqualizerControl.loadPreset(this)
+        equalizerApplier.setPreset(eqPreset)
         val player = ExoPlayer.Builder(this)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -124,7 +147,7 @@ class PlaybackService : MediaSessionService() {
                     eventTime: AnalyticsListener.EventTime,
                     audioSessionId: Int,
                 ) {
-                    applyVolume()
+                    applyAudioChain()
                 }
             },
         )
@@ -132,7 +155,7 @@ class PlaybackService : MediaSessionService() {
             .setId("voxplayer-local")
             .setCallback(sessionCallback)
             .build()
-        applyVolume()
+        applyAudioChain()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
@@ -149,6 +172,7 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         persistQueue()
         volumeApplier.release()
+        equalizerApplier.release()
         mediaSession?.run {
             player.removeListener(persistListener)
             player.release()
@@ -158,9 +182,11 @@ class PlaybackService : MediaSessionService() {
         super.onDestroy()
     }
 
-    private fun applyVolume() {
+    private fun applyAudioChain() {
         val player = mediaSession?.player ?: return
         volumeApplier.apply(player, volumePercent, volumeMuted)
+        routeApplier.apply(player, preferredDeviceId)
+        equalizerApplier.apply(player)
     }
 
     private fun persistQueue() {

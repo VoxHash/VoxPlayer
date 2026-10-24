@@ -68,6 +68,8 @@ data class PlayerUiState(
     val sleepEndEpochMs: Long = 0L,
     val sleepRemainingLabel: String = "Off",
     val bookmarks: List<BookmarkStore.Bookmark> = emptyList(),
+    val historyRecent: List<PlayHistoryStore.Entry> = emptyList(),
+    val historyTop: List<PlayHistoryStore.Entry> = emptyList(),
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localIsVideo: Boolean = false,
@@ -100,6 +102,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val syncStore = SyncStore(app)
     private val queueStore = PlaybackQueueStore(app)
     private val bookmarkStore = BookmarkStore(app)
+    private val historyStore = PlayHistoryStore(app)
     private val bt = BluetoothControl(app)
     private val _state = MutableStateFlow(
         PlayerUiState(
@@ -114,6 +117,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             sleepEndEpochMs = SleepTimer.loadEndEpochMs(app),
             sleepRemainingLabel = SleepTimer.remainingLabel(SleepTimer.loadEndEpochMs(app)),
             bookmarks = bookmarkStore.load(),
+            historyRecent = historyStore.recentlyPlayed(),
+            historyTop = historyStore.mostPlayed(),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
         ),
@@ -342,7 +347,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         return when (s.localFilter) {
             "audio" -> s.localItems.filter { !it.isVideo }
             "video" -> s.localItems.filter { it.isVideo }
+            "recent", "top" -> s.localItems // history facets play via playHistory; queue uses all
             else -> s.localItems
+        }
+    }
+
+    private fun refreshHistoryFacets() {
+        _state.update {
+            it.copy(
+                historyRecent = historyStore.recentlyPlayed(),
+                historyTop = historyStore.mostPlayed(),
+            )
         }
     }
 
@@ -714,9 +729,38 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             lastBookmarkAutosaveBucket = System.currentTimeMillis() / 5_000L
             autosaveBookmark(p)
         }
+        // Scrobble-free history: one count per media URI after ~3s of play.
+        if (p.isPlaying && pos >= 3_000L) {
+            maybeRecordHistory(p)
+        }
     }
 
     private var lastBookmarkAutosaveBucket = -1L
+    private var lastHistoryRecordedUri: String? = null
+
+    private fun currentPlayerUri(p: Player): String? {
+        val item = p.currentMediaItem ?: return null
+        return item.localConfiguration?.uri?.toString()
+            ?: item.requestMetadata.mediaUri?.toString()
+    }
+
+    private fun maybeRecordHistory(p: Player) {
+        val uri = currentPlayerUri(p) ?: return
+        if (uri == lastHistoryRecordedUri) return
+        lastHistoryRecordedUri = uri
+        val md = p.currentMediaItem?.mediaMetadata
+        historyStore.recordPlay(
+            uri = uri,
+            title = md?.title?.toString()
+                ?: _state.value.localTitle.takeIf { it != "(nothing loaded)" }
+                ?: Uri.parse(uri).lastPathSegment
+                ?: "Media",
+            artist = md?.artist?.toString() ?: _state.value.localArtist,
+            album = md?.albumTitle?.toString() ?: _state.value.localAlbum,
+            isVideo = _state.value.localIsVideo,
+        )
+        refreshHistoryFacets()
+    }
 
     private fun autosaveBookmark(p: Player) {
         val item = p.currentMediaItem ?: return
@@ -802,6 +846,24 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun clearBookmarks() {
         bookmarkStore.clear()
         _state.update { it.copy(bookmarks = emptyList()) }
+    }
+
+    fun playHistory(entry: PlayHistoryStore.Entry) {
+        val match = _state.value.localItems.find { it.uri.toString() == entry.uri }
+        if (match != null) {
+            playLocal(match)
+            return
+        }
+        playUri(Uri.parse(entry.uri), entry.title, entry.isVideo)
+        _state.update {
+            it.copy(localArtist = entry.artist, localAlbum = entry.album)
+        }
+    }
+
+    fun clearPlayHistory() {
+        historyStore.clear()
+        lastHistoryRecordedUri = null
+        refreshHistoryFacets()
     }
 
     fun scanDesktops() {

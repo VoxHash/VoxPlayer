@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (scrobble-free play history facets on-device)
+- Further Android companion polish (on-device playlist folders / smart lists without cloud)
+
+## [1.38.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: scrobble-free play history — local JSON counts + last-played; Home **Recent** / **Top** facets; Clear history; no Last.fm / cloud
 
 ## [1.37.0] - 2026-10-24
 

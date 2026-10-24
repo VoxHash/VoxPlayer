@@ -216,6 +216,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     player = player,
                                     wide = wide,
                                     onPlay = vm::playLocal,
+                                    onPlayHistory = vm::playHistory,
+                                    onClearHistory = vm::clearPlayHistory,
                                     onFilter = vm::setLocalFilter,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
@@ -392,6 +394,8 @@ private fun LocalLibraryPane(
     player: Player?,
     wide: Boolean,
     onPlay: (LocalMediaItem) -> Unit,
+    onPlayHistory: (PlayHistoryStore.Entry) -> Unit,
+    onClearHistory: () -> Unit,
     onFilter: (String) -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
@@ -436,7 +440,13 @@ private fun LocalLibraryPane(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            listOf("all" to "All", "audio" to "Audio", "video" to "Video").forEach { (k, label) ->
+            listOf(
+                "all" to "All",
+                "audio" to "Audio",
+                "video" to "Video",
+                "recent" to "Recent",
+                "top" to "Top",
+            ).forEach { (k, label) ->
                 FilterChip(
                     selected = state.localFilter == k,
                     onClick = { onFilter(k) },
@@ -459,19 +469,40 @@ private fun LocalLibraryPane(
             QuietButton("Open", onOpenFile)
         }
 
+        val historyFacet = state.localFilter == "recent" || state.localFilter == "top"
+        val historyRows = remember(state.historyRecent, state.historyTop, state.localFilter) {
+            when (state.localFilter) {
+                "recent" -> state.historyRecent
+                "top" -> state.historyTop
+                else -> emptyList()
+            }
+        }
         val filtered = remember(state.localItems, state.localFilter) {
             when (state.localFilter) {
                 "audio" -> state.localItems.filter { !it.isVideo }
                 "video" -> state.localItems.filter { it.isVideo }
+                "recent", "top" -> emptyList()
                 else -> state.localItems
             }
         }
 
-        Text(
-            "Home · ${filtered.size} items",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                when (state.localFilter) {
+                    "recent" -> "Recently played · ${historyRows.size}"
+                    "top" -> "Most played · ${historyRows.size}"
+                    else -> "Home · ${filtered.size} items"
+                },
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            if (historyFacet && (state.historyRecent.isNotEmpty() || state.historyTop.isNotEmpty())) {
+                QuietButton("Clear history", onClearHistory)
+            }
+        }
 
         val cols = if (wide) 4 else 2
         LazyVerticalGrid(
@@ -481,10 +512,59 @@ private fun LocalLibraryPane(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(filtered, key = { "${it.isVideo}-${it.id}" }) { item ->
-                MediaCard(item = item, onClick = { onPlay(item) })
+            if (historyFacet) {
+                items(historyRows, key = { "h-${it.uri}" }) { entry ->
+                    HistoryCard(entry = entry, facet = state.localFilter, onClick = { onPlayHistory(entry) })
+                }
+            } else {
+                items(filtered, key = { "${it.isVideo}-${it.id}" }) { item ->
+                    MediaCard(item = item, onClick = { onPlay(item) })
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun HistoryCard(
+    entry: PlayHistoryStore.Entry,
+    facet: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        Modifier
+            .clip(VoxShapes.card)
+            .background(VoxColors.BgElevated)
+            .clickable(onClick = onClick)
+            .padding(10.dp),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(VoxShapes.art)
+                .background(VoxColors.BgPanel),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (entry.isVideo) "Video" else "Audio",
+                color = VoxColors.TextMuted,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            entry.title,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 2,
+            color = VoxColors.Text,
+        )
+        val sub = when {
+            facet == "top" -> "${entry.playCount}× played"
+            entry.artist.isNotBlank() -> entry.artist
+            else -> if (entry.isVideo) "Video" else "Audio"
+        }
+        Text(sub, style = MaterialTheme.typography.bodySmall, color = VoxColors.TextSecondary, maxLines = 1)
     }
 }
 

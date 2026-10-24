@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.42.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.43.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -130,6 +130,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 16. **Local lyrics / timed text**: sidecar `.lrc` / `.srt` / `.vtt` / `.txt` beside the media file; Now Playing panel with timed highlight; no cloud scrape (**Done 1.40.0**)
 17. **Crossfade / gapless mixed-codec polish**: soft fade-in on auto transitions; optional skip-silence; same-kind queue filter for mixed A/V playlists (**Done 1.41.0**)
 18. **Home-screen media widget**: classic AppWidget (no GMS Glance) — title + play/pause / prev / next via `PlaybackService` foreground intents (**Done 1.42.0**)
+19. **Bluetooth AVRCP metadata richness**: Media3 session metadata with display title, subtitle, duration, album-art URI for headset / car / System UI (no GMS Auto) (**Done 1.43.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

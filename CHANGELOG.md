@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (car / Bluetooth AVRCP metadata richness)
+- Further Android companion polish (Android Auto-free car mode layout for large landscape)
+
+## [1.43.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS: richer Media3 session metadata for Bluetooth AVRCP / System UI — display title, artist·album subtitle, duration, MediaStore album-art URI (no GMS Auto)
 
 ## [1.42.0] - 2026-10-24
 

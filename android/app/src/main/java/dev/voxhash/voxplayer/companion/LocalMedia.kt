@@ -14,6 +14,8 @@ data class LocalMediaItem(
     val album: String,
     val durationMs: Long,
     val isVideo: Boolean,
+    /** MediaStore album id for AVRCP artwork URI (audio only; 0 if unknown). */
+    val albumId: Long = 0L,
 )
 
 object LocalMediaStore {
@@ -29,6 +31,7 @@ object LocalMediaStore {
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.ALBUM_ID,
         )
         val out = ArrayList<LocalMediaItem>()
         context.contentResolver.query(
@@ -43,6 +46,7 @@ object LocalMediaStore {
             val artistCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
             val albumCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
             val durCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+            val albumIdCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
             while (c.moveToNext() && out.size < limit) {
                 val id = c.getLong(idCol)
                 out.add(
@@ -54,6 +58,7 @@ object LocalMediaStore {
                         album = c.getString(albumCol)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: "",
                         durationMs = c.getLong(durCol).coerceAtLeast(0L),
                         isVideo = false,
+                        albumId = c.getLong(albumIdCol).coerceAtLeast(0L),
                     ),
                 )
             }

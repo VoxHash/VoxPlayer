@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -313,21 +314,36 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         MediaItem.Builder()
             .setUri(item.uri)
             .setMediaId("${if (item.isVideo) "v" else "a"}:${item.id}")
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(item.title)
-                    .setArtist(item.artist.ifBlank { "VoxPlayer" })
-                    .apply {
-                        if (item.album.isNotBlank()) setAlbumTitle(item.album)
-                        setMediaType(
-                            if (item.isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
-                            else MediaMetadata.MEDIA_TYPE_MUSIC,
-                        )
-                    }
-                    .setIsPlayable(true)
-                    .build(),
-            )
+            .setMediaMetadata(richMetadata(item))
             .build()
+
+    /** Richer session metadata for Bluetooth AVRCP / System UI / car head units (no GMS Auto). */
+    private fun richMetadata(item: LocalMediaItem): MediaMetadata {
+        val artist = item.artist.ifBlank { "VoxPlayer" }
+        return MediaMetadata.Builder()
+            .setTitle(item.title)
+            .setDisplayTitle(item.title)
+            .setArtist(artist)
+            .setSubtitle(listOf(artist, item.album).filter { it.isNotBlank() }.joinToString(" · "))
+            .apply {
+                if (item.album.isNotBlank()) setAlbumTitle(item.album)
+                if (item.durationMs > 0L) setDurationMs(item.durationMs)
+                if (!item.isVideo && item.albumId > 0L) {
+                    setArtworkUri(
+                        ContentUris.withAppendedId(
+                            Uri.parse("content://media/external/audio/albumart"),
+                            item.albumId,
+                        ),
+                    )
+                }
+                setMediaType(
+                    if (item.isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
+                    else MediaMetadata.MEDIA_TYPE_MUSIC,
+                )
+            }
+            .setIsPlayable(true)
+            .build()
+    }
 
     private fun mediaItem(
         uri: Uri,
@@ -335,15 +351,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         artist: String = "",
         album: String = "",
         isVideo: Boolean = false,
+        durationMs: Long = 0L,
     ): MediaItem =
         MediaItem.Builder()
             .setUri(uri)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(title)
+                    .setDisplayTitle(title)
                     .setArtist(artist.ifBlank { "VoxPlayer" })
                     .apply {
                         if (album.isNotBlank()) setAlbumTitle(album)
+                        if (durationMs > 0L) setDurationMs(durationMs)
                         setMediaType(
                             if (isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
                             else MediaMetadata.MEDIA_TYPE_MUSIC,

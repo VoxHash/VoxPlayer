@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.38.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.39.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -126,6 +126,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 12. **Headset / Car media buttons + Quest route edge cases**: Media3 ±15s seek media-button preferences for Bluetooth AVRCP / System UI (no GMS Auto); `AudioDeviceCallback` re-applies preferred sink or falls back when it disconnects; activity resume re-binds audio chain (**Done 1.36.0**)
 13. **Sleep timer + local bookmarks**: service-backed sleep timer (15–90 min, fade then pause); per-URI resume bookmarks stored on-device (autosave while playing, Now Playing list) (**Done 1.37.0** — no cloud)
 14. **On-device play history facets**: scrobble-free Recently / Most-played from local JSON; Home filter chips; no Last.fm / cloud (**Done 1.38.0**)
+15. **On-device playlist folders + smart lists**: manual playlist folders (add Now Playing); smart lists (New / Recent / Top / Short ≤3 min); no cloud (**Done 1.39.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

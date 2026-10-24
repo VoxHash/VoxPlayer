@@ -70,6 +70,9 @@ data class PlayerUiState(
     val bookmarks: List<BookmarkStore.Bookmark> = emptyList(),
     val historyRecent: List<PlayHistoryStore.Entry> = emptyList(),
     val historyTop: List<PlayHistoryStore.Entry> = emptyList(),
+    val localPlaylists: List<LocalPlaylistStore.Playlist> = emptyList(),
+    /** When filter=lists, null = folder index; else browse that playlist id or smart:* */
+    val listsBrowseId: String? = null,
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localIsVideo: Boolean = false,
@@ -103,6 +106,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val queueStore = PlaybackQueueStore(app)
     private val bookmarkStore = BookmarkStore(app)
     private val historyStore = PlayHistoryStore(app)
+    private val playlistStore = LocalPlaylistStore(app)
     private val bt = BluetoothControl(app)
     private val _state = MutableStateFlow(
         PlayerUiState(
@@ -119,6 +123,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             bookmarks = bookmarkStore.load(),
             historyRecent = historyStore.recentlyPlayed(),
             historyTop = historyStore.mostPlayed(),
+            localPlaylists = playlistStore.load(),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
         ),
@@ -263,8 +268,6 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateRemoteHost(v: String) = _state.update { it.copy(remoteHost = v.trim()) }
     fun updateRemotePort(v: String) = _state.update { it.copy(remotePort = v.trim()) }
-    fun setLocalFilter(f: String) = _state.update { it.copy(localFilter = f) }
-
     fun hasMediaPermission(): Boolean {
         val ctx = getApplication<Application>()
         return if (Build.VERSION.SDK_INT >= 33) {
@@ -347,7 +350,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         return when (s.localFilter) {
             "audio" -> s.localItems.filter { !it.isVideo }
             "video" -> s.localItems.filter { it.isVideo }
-            "recent", "top" -> s.localItems // history facets play via playHistory; queue uses all
+            "recent", "top", "lists" -> s.localItems // facets / lists play their own queues
             else -> s.localItems
         }
     }
@@ -359,6 +362,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 historyTop = historyStore.mostPlayed(),
             )
         }
+    }
+
+    private fun refreshPlaylists() {
+        _state.update { it.copy(localPlaylists = playlistStore.load()) }
+    }
+
+    fun setLocalFilter(f: String) = _state.update {
+        it.copy(localFilter = f, listsBrowseId = if (f == "lists") it.listsBrowseId else null)
     }
 
     fun playLocal(item: LocalMediaItem) {
@@ -864,6 +875,162 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         historyStore.clear()
         lastHistoryRecordedUri = null
         refreshHistoryFacets()
+    }
+
+    fun openListsBrowse(id: String?) {
+        _state.update { it.copy(listsBrowseId = id, localFilter = "lists") }
+    }
+
+    fun createLocalPlaylist() {
+        val n = playlistStore.load().size + 1
+        playlistStore.create("Playlist $n")
+        refreshPlaylists()
+    }
+
+    fun deleteLocalPlaylist(id: String) {
+        playlistStore.delete(id)
+        _state.update {
+            it.copy(
+                localPlaylists = playlistStore.load(),
+                listsBrowseId = if (it.listsBrowseId == id) null else it.listsBrowseId,
+            )
+        }
+    }
+
+    fun addNowPlayingToPlaylist(id: String) {
+        val p = player ?: return
+        val uri = currentPlayerUri(p) ?: return
+        val md = p.currentMediaItem?.mediaMetadata
+        playlistStore.addTrack(
+            id,
+            LocalPlaylistStore.Track(
+                uri = uri,
+                title = md?.title?.toString()
+                    ?: _state.value.localTitle.takeIf { it != "(nothing loaded)" }
+                    ?: Uri.parse(uri).lastPathSegment
+                    ?: "Track",
+                artist = md?.artist?.toString() ?: _state.value.localArtist,
+                album = md?.albumTitle?.toString() ?: _state.value.localAlbum,
+                isVideo = _state.value.localIsVideo,
+            ),
+        )
+        refreshPlaylists()
+    }
+
+    fun removeFromLocalPlaylist(playlistId: String, uri: String) {
+        playlistStore.removeTrack(playlistId, uri)
+        refreshPlaylists()
+    }
+
+    fun playSmartList(kind: String) {
+        val queue = smartListTracks(kind)
+        if (queue.isEmpty()) {
+            _state.update { it.copy(error = "Smart list is empty") }
+            return
+        }
+        playTrackQueue(queue, 0)
+    }
+
+    fun playLocalPlaylist(id: String, startIndex: Int = 0) {
+        val pl = playlistStore.load().find { it.id == id } ?: return
+        if (pl.tracks.isEmpty()) {
+            _state.update { it.copy(error = "Playlist is empty — add the Now Playing track") }
+            return
+        }
+        playTrackQueue(pl.tracks, startIndex.coerceIn(0, pl.tracks.lastIndex))
+    }
+
+    fun playListsBrowseTrack(uri: String) {
+        val browse = _state.value.listsBrowseId ?: return
+        when {
+            browse.startsWith("smart:") -> {
+                val q = smartListTracks(browse)
+                val idx = q.indexOfFirst { it.uri == uri }.coerceAtLeast(0)
+                playTrackQueue(q, idx)
+            }
+            else -> {
+                val pl = _state.value.localPlaylists.find { it.id == browse } ?: return
+                val idx = pl.tracks.indexOfFirst { it.uri == uri }.coerceAtLeast(0)
+                playTrackQueue(pl.tracks, idx)
+            }
+        }
+    }
+
+    private fun smartListTracks(kind: String): List<LocalPlaylistStore.Track> {
+        val s = _state.value
+        return when (kind) {
+            LocalPlaylistStore.SMART_NEW -> s.localItems.take(40).map { it.toPlaylistTrack() }
+            LocalPlaylistStore.SMART_RECENT -> s.historyRecent.map {
+                LocalPlaylistStore.Track(it.uri, it.title, it.artist, it.album, it.isVideo)
+            }
+            LocalPlaylistStore.SMART_TOP -> s.historyTop.map {
+                LocalPlaylistStore.Track(it.uri, it.title, it.artist, it.album, it.isVideo)
+            }
+            LocalPlaylistStore.SMART_SHORT -> s.localItems
+                .filter { !it.isVideo && it.durationMs in 1L..180_000L }
+                .take(40)
+                .map { it.toPlaylistTrack() }
+            else -> emptyList()
+        }
+    }
+
+    private fun LocalMediaItem.toPlaylistTrack() = LocalPlaylistStore.Track(
+        uri = uri.toString(),
+        title = title,
+        artist = artist,
+        album = album,
+        isVideo = isVideo,
+    )
+
+    private fun playTrackQueue(tracks: List<LocalPlaylistStore.Track>, startIndex: Int) {
+        if (tracks.isEmpty()) return
+        val idx = startIndex.coerceIn(0, tracks.lastIndex)
+        withPlayer { p ->
+            p.setMediaItems(
+                tracks.map {
+                    mediaItem(
+                        Uri.parse(it.uri),
+                        it.title,
+                        it.artist,
+                        it.album,
+                        it.isVideo,
+                    )
+                },
+                idx,
+                0L,
+            )
+            p.prepare()
+            p.play()
+            queueStore.saveQueue(
+                tracks.map {
+                    PlaybackQueueStore.Entry(
+                        uri = it.uri,
+                        title = it.title,
+                        artist = it.artist,
+                        album = it.album,
+                        isVideo = it.isVideo,
+                    )
+                },
+                idx,
+                0L,
+            )
+        }
+        val cur = tracks[idx]
+        _state.update {
+            it.copy(
+                localTitle = cur.title,
+                localArtist = cur.artist,
+                localAlbum = cur.album,
+                localQueueIndex = idx,
+                localQueueSize = tracks.size,
+                localIsVideo = cur.isVideo,
+                localPlaying = true,
+                activeOutput = "This device",
+                tab = AppTab.Local,
+                connectOpen = false,
+                error = "",
+            )
+        }
     }
 
     fun scanDesktops() {

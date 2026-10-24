@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (on-device playlist folders / smart lists without cloud)
+- Further Android companion polish (local lyrics / timed text when files provide them)
+
+## [1.39.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: Home **Lists** — manual playlist folders (New list + Add Now Playing) and smart lists (New on device, Recently / Most played, Short audio ≤3 min); local JSON only, no cloud
 
 ## [1.38.0] - 2026-10-24
 

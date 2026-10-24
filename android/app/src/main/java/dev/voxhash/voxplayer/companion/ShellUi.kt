@@ -218,6 +218,14 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onPlay = vm::playLocal,
                                     onPlayHistory = vm::playHistory,
                                     onClearHistory = vm::clearPlayHistory,
+                                    onOpenListsBrowse = vm::openListsBrowse,
+                                    onCreatePlaylist = vm::createLocalPlaylist,
+                                    onDeletePlaylist = vm::deleteLocalPlaylist,
+                                    onPlaySmartList = vm::playSmartList,
+                                    onPlayLocalPlaylist = { id -> vm.playLocalPlaylist(id) },
+                                    onPlayListsTrack = vm::playListsBrowseTrack,
+                                    onRemovePlaylistTrack = vm::removeFromLocalPlaylist,
+                                    onAddNowPlayingTo = vm::addNowPlayingToPlaylist,
                                     onFilter = vm::setLocalFilter,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
@@ -396,6 +404,14 @@ private fun LocalLibraryPane(
     onPlay: (LocalMediaItem) -> Unit,
     onPlayHistory: (PlayHistoryStore.Entry) -> Unit,
     onClearHistory: () -> Unit,
+    onOpenListsBrowse: (String?) -> Unit,
+    onCreatePlaylist: () -> Unit,
+    onDeletePlaylist: (String) -> Unit,
+    onPlaySmartList: (String) -> Unit,
+    onPlayLocalPlaylist: (String) -> Unit,
+    onPlayListsTrack: (String) -> Unit,
+    onRemovePlaylistTrack: (String, String) -> Unit,
+    onAddNowPlayingTo: (String) -> Unit,
     onFilter: (String) -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
@@ -446,6 +462,7 @@ private fun LocalLibraryPane(
                 "video" to "Video",
                 "recent" to "Recent",
                 "top" to "Top",
+                "lists" to "Lists",
             ).forEach { (k, label) ->
                 FilterChip(
                     selected = state.localFilter == k,
@@ -470,6 +487,7 @@ private fun LocalLibraryPane(
         }
 
         val historyFacet = state.localFilter == "recent" || state.localFilter == "top"
+        val listsFacet = state.localFilter == "lists"
         val historyRows = remember(state.historyRecent, state.historyTop, state.localFilter) {
             when (state.localFilter) {
                 "recent" -> state.historyRecent
@@ -481,7 +499,7 @@ private fun LocalLibraryPane(
             when (state.localFilter) {
                 "audio" -> state.localItems.filter { !it.isVideo }
                 "video" -> state.localItems.filter { it.isVideo }
-                "recent", "top" -> emptyList()
+                "recent", "top", "lists" -> emptyList()
                 else -> state.localItems
             }
         }
@@ -491,9 +509,11 @@ private fun LocalLibraryPane(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                when (state.localFilter) {
-                    "recent" -> "Recently played · ${historyRows.size}"
-                    "top" -> "Most played · ${historyRows.size}"
+                when {
+                    state.localFilter == "recent" -> "Recently played · ${historyRows.size}"
+                    state.localFilter == "top" -> "Most played · ${historyRows.size}"
+                    listsFacet && state.listsBrowseId != null -> "List"
+                    listsFacet -> "Lists · ${state.localPlaylists.size} folders"
                     else -> "Home · ${filtered.size} items"
                 },
                 style = MaterialTheme.typography.titleMedium,
@@ -502,6 +522,27 @@ private fun LocalLibraryPane(
             if (historyFacet && (state.historyRecent.isNotEmpty() || state.historyTop.isNotEmpty())) {
                 QuietButton("Clear history", onClearHistory)
             }
+            if (listsFacet && state.listsBrowseId == null) {
+                QuietButton("New list", onCreatePlaylist)
+            }
+            if (listsFacet && state.listsBrowseId != null) {
+                QuietButton("Back", { onOpenListsBrowse(null) })
+            }
+        }
+
+        if (listsFacet) {
+            ListsPane(
+                state = state,
+                onOpenListsBrowse = onOpenListsBrowse,
+                onDeletePlaylist = onDeletePlaylist,
+                onPlaySmartList = onPlaySmartList,
+                onPlayLocalPlaylist = onPlayLocalPlaylist,
+                onPlayListsTrack = onPlayListsTrack,
+                onRemovePlaylistTrack = onRemovePlaylistTrack,
+                onAddNowPlayingTo = onAddNowPlayingTo,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+            return
         }
 
         val cols = if (wide) 4 else 2
@@ -520,6 +561,157 @@ private fun LocalLibraryPane(
                 items(filtered, key = { "${it.isVideo}-${it.id}" }) { item ->
                     MediaCard(item = item, onClick = { onPlay(item) })
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListsPane(
+    state: PlayerUiState,
+    onOpenListsBrowse: (String?) -> Unit,
+    onDeletePlaylist: (String) -> Unit,
+    onPlaySmartList: (String) -> Unit,
+    onPlayLocalPlaylist: (String) -> Unit,
+    onPlayListsTrack: (String) -> Unit,
+    onRemovePlaylistTrack: (String, String) -> Unit,
+    onAddNowPlayingTo: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val browse = state.listsBrowseId
+    if (browse == null) {
+        Column(
+            modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Smart lists", style = MaterialTheme.typography.labelLarge, color = VoxColors.TextMuted)
+            listOf(
+                LocalPlaylistStore.SMART_NEW to "New on device",
+                LocalPlaylistStore.SMART_RECENT to "Recently played",
+                LocalPlaylistStore.SMART_TOP to "Most played",
+                LocalPlaylistStore.SMART_SHORT to "Short audio (≤3 min)",
+            ).forEach { (id, label) ->
+                ListFolderRow(
+                    title = label,
+                    subtitle = "Smart · tap to open",
+                    onOpen = { onOpenListsBrowse(id) },
+                    onPlay = { onPlaySmartList(id) },
+                    onDelete = null,
+                )
+            }
+            Text(
+                "Your folders",
+                style = MaterialTheme.typography.labelLarge,
+                color = VoxColors.TextMuted,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            if (state.localPlaylists.isEmpty()) {
+                Text(
+                    "No playlists yet — New list, then add Now Playing.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.TextSecondary,
+                )
+            }
+            state.localPlaylists.forEach { pl ->
+                ListFolderRow(
+                    title = pl.name,
+                    subtitle = "${pl.tracks.size} tracks",
+                    onOpen = { onOpenListsBrowse(pl.id) },
+                    onPlay = { onPlayLocalPlaylist(pl.id) },
+                    onDelete = { onDeletePlaylist(pl.id) },
+                )
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+        return
+    }
+
+    val tracks: List<LocalPlaylistStore.Track> = when {
+        browse == LocalPlaylistStore.SMART_NEW -> state.localItems.take(40).map {
+            LocalPlaylistStore.Track(it.uri.toString(), it.title, it.artist, it.album, it.isVideo)
+        }
+        browse == LocalPlaylistStore.SMART_RECENT -> state.historyRecent.map {
+            LocalPlaylistStore.Track(it.uri, it.title, it.artist, it.album, it.isVideo)
+        }
+        browse == LocalPlaylistStore.SMART_TOP -> state.historyTop.map {
+            LocalPlaylistStore.Track(it.uri, it.title, it.artist, it.album, it.isVideo)
+        }
+        browse == LocalPlaylistStore.SMART_SHORT -> state.localItems
+            .filter { !it.isVideo && it.durationMs in 1L..180_000L }
+            .take(40)
+            .map { LocalPlaylistStore.Track(it.uri.toString(), it.title, it.artist, it.album, it.isVideo) }
+        else -> state.localPlaylists.find { it.id == browse }?.tracks.orEmpty()
+    }
+    val isUser = !browse.startsWith("smart:")
+    val canAdd = isUser && state.localTitle != "(nothing loaded)"
+
+    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (canAdd) {
+            QuietButton("Add Now Playing", { onAddNowPlayingTo(browse) }, Modifier.fillMaxWidth())
+        }
+        if (tracks.isEmpty()) {
+            Text(
+                if (isUser) "Empty — play something, then Add Now Playing."
+                else "Nothing in this smart list yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextSecondary,
+            )
+        }
+        tracks.forEach { t ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(VoxShapes.card)
+                    .background(VoxColors.BgElevated)
+                    .clickable { onPlayListsTrack(t.uri) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(t.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    Text(
+                        t.artist.ifBlank { if (t.isVideo) "Video" else "Audio" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VoxColors.TextSecondary,
+                        maxLines = 1,
+                    )
+                }
+                if (isUser) {
+                    IconButton(onClick = { onRemovePlaylistTrack(browse, t.uri) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Close, "Remove", tint = VoxColors.TextMuted)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun ListFolderRow(
+    title: String,
+    subtitle: String,
+    onOpen: () -> Unit,
+    onPlay: () -> Unit,
+    onDelete: (() -> Unit)?,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(VoxShapes.card)
+            .background(VoxColors.BgElevated)
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = VoxColors.TextSecondary)
+        }
+        QuietButton("Play", onPlay)
+        if (onDelete != null) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Close, "Delete list", tint = VoxColors.TextMuted)
             }
         }
     }

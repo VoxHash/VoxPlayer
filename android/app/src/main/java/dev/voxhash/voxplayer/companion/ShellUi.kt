@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,15 +40,21 @@ import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Wifi
+import androidx.media3.common.Player as Media3Player
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -161,6 +168,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                         if (state.activeOutput.startsWith("Desktop")) vm.remoteStop()
                         else vm.localStop()
                     },
+                    onShuffle = { if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalShuffle() },
+                    onRepeat = { if (!state.activeOutput.startsWith("Desktop")) vm.cycleLocalRepeat() },
                 )
             },
         ) { pad ->
@@ -219,6 +228,11 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     if (state.activeOutput.startsWith("Desktop")) vm.remotePlayPause()
                                     else vm.localPlayPause()
                                 },
+                                onShuffle = vm::toggleLocalShuffle,
+                                onRepeat = vm::cycleLocalRepeat,
+                                onPlayQueueIndex = vm::playQueueIndex,
+                                onMoveQueue = vm::moveQueueItem,
+                                onRemoveQueue = vm::removeQueueItem,
                                 modifier = Modifier
                                     .width(300.dp)
                                     .fillMaxHeight()
@@ -518,6 +532,11 @@ private fun NowPlayingPane(
     state: PlayerUiState,
     player: Player?,
     onPlayPause: () -> Unit,
+    onShuffle: () -> Unit,
+    onRepeat: () -> Unit,
+    onPlayQueueIndex: (Int) -> Unit,
+    onMoveQueue: (Int, Int) -> Unit,
+    onRemoveQueue: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val desktop = state.activeOutput.startsWith("Desktop")
@@ -527,7 +546,7 @@ private fun NowPlayingPane(
 
     Column(
         modifier.padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("Now playing", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
         Box(
@@ -575,7 +594,8 @@ private fun NowPlayingPane(
         Text(pos, style = MaterialTheme.typography.bodySmall)
         if (!desktop && state.localQueueSize > 0) {
             Text(
-                "Queue ${state.localQueueIndex + 1} / ${state.localQueueSize} · gapless Media3 playlist",
+                "Queue ${state.localQueueIndex + 1} / ${state.localQueueSize}" +
+                    if (state.localShuffle) " · shuffle" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
@@ -589,10 +609,99 @@ private fun NowPlayingPane(
             onPlayPause,
             modifier = Modifier.fillMaxWidth(),
         )
+        if (!desktop) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                QuietButton(
+                    if (state.localShuffle) "Shuffle on" else "Shuffle",
+                    onShuffle,
+                    Modifier.weight(1f),
+                )
+                QuietButton(
+                    when (state.localRepeatMode) {
+                        Media3Player.REPEAT_MODE_ONE -> "Repeat one"
+                        Media3Player.REPEAT_MODE_ALL -> "Repeat all"
+                        else -> "Repeat off"
+                    },
+                    onRepeat,
+                    Modifier.weight(1f),
+                )
+            }
+            if (state.localQueue.size > 1) {
+                Text("Up next", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+                LazyColumn(
+                    Modifier.weight(1f, fill = false).heightIn(max = 280.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(state.localQueue, key = { it.index to it.title }) { row ->
+                        QueueRowItem(
+                            row = row,
+                            canMoveUp = row.index > 0,
+                            canMoveDown = row.index < state.localQueue.lastIndex,
+                            onPlay = { onPlayQueueIndex(row.index) },
+                            onMoveUp = { onMoveQueue(row.index, row.index - 1) },
+                            onMoveDown = { onMoveQueue(row.index, row.index + 1) },
+                            onRemove = { onRemoveQueue(row.index) },
+                        )
+                    }
+                }
+            }
+        }
         Text(
             "Engine: Media3 on-device · desktop via Wi‑Fi / Bluetooth",
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+@Composable
+private fun QueueRowItem(
+    row: QueueRow,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onPlay: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(VoxShapes.card)
+            .background(if (row.isCurrent) VoxColors.AccentSoft else VoxColors.BgElevated)
+            .clickable(onClick = onPlay)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                row.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (row.isCurrent) VoxColors.Accent else VoxColors.Text,
+            )
+            if (row.artist.isNotBlank()) {
+                Text(
+                    row.artist,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.TextMuted,
+                )
+            }
+        }
+        IconButton(onClick = onMoveUp, enabled = canMoveUp, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Default.KeyboardArrowUp, "Move up", tint = VoxColors.TextSecondary)
+        }
+        IconButton(onClick = onMoveDown, enabled = canMoveDown, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Default.KeyboardArrowDown, "Move down", tint = VoxColors.TextSecondary)
+        }
+        IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Default.Close, "Remove", tint = VoxColors.TextMuted)
+        }
     }
 }
 
@@ -705,10 +814,13 @@ private fun TransportBar(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onStop: () -> Unit,
+    onShuffle: () -> Unit,
+    onRepeat: () -> Unit,
 ) {
     val playing = if (state.activeOutput.startsWith("Desktop")) state.remotePlaying else state.localPlaying
     val title = if (state.activeOutput.startsWith("Desktop")) state.remoteTitle else state.localTitle
     val pos = if (state.activeOutput.startsWith("Desktop")) state.remotePositionLabel else state.localPositionLabel
+    val local = !state.activeOutput.startsWith("Desktop")
 
     Row(
         Modifier
@@ -717,7 +829,7 @@ private fun TransportBar(
             .border(width = 0.dp, color = VoxColors.BorderSoft)
             .padding(horizontal = 14.dp, vertical = if (wide) 12.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(
             Modifier
@@ -731,12 +843,12 @@ private fun TransportBar(
         Column(Modifier.weight(1f)) {
             Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
             val subtitle = buildString {
-                if (!state.activeOutput.startsWith("Desktop") && state.localArtist.isNotBlank()) {
+                if (local && state.localArtist.isNotBlank()) {
                     append(state.localArtist)
                     append(" · ")
                 }
                 append(pos)
-                if (!state.activeOutput.startsWith("Desktop") && state.localQueueSize > 1) {
+                if (local && state.localQueueSize > 1) {
                     append(" · ")
                     append(state.localQueueIndex + 1)
                     append('/')
@@ -746,6 +858,30 @@ private fun TransportBar(
                 append(state.activeOutput)
             }
             Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+        }
+        if (wide && local) {
+            IconButton(onClick = onShuffle) {
+                Icon(
+                    Icons.Default.Shuffle,
+                    "Shuffle",
+                    tint = if (state.localShuffle) VoxColors.Accent else VoxColors.TextSecondary,
+                )
+            }
+            IconButton(onClick = onRepeat) {
+                Icon(
+                    if (state.localRepeatMode == Media3Player.REPEAT_MODE_ONE) {
+                        Icons.Default.RepeatOne
+                    } else {
+                        Icons.Default.Repeat
+                    },
+                    "Repeat",
+                    tint = if (state.localRepeatMode != Media3Player.REPEAT_MODE_OFF) {
+                        VoxColors.Accent
+                    } else {
+                        VoxColors.TextSecondary
+                    },
+                )
+            }
         }
         if (wide) {
             IconButton(onClick = onPrev) {

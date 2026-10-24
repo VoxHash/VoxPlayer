@@ -7,7 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (queue reorder / repeat modes on-device)
+- Further Android companion polish (on-device volume 0–200 parity with desktop)
+
+## [1.33.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: local repeat (off / all / one) and shuffle modes via Media3; modes persist in prefs
+- Up Next queue panel: tap to play, move up/down, remove; transport shuffle/repeat icons on wide layouts
 
 ## [1.32.0] - 2026-10-24
 

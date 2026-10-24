@@ -34,6 +34,13 @@ enum class AppTab { Local, Connect }
 
 enum class RemoteLink { None, Wifi, Bluetooth }
 
+data class QueueRow(
+    val index: Int,
+    val title: String,
+    val artist: String,
+    val isCurrent: Boolean,
+)
+
 data class PlayerUiState(
     val tab: AppTab = AppTab.Local,
     val localItems: List<LocalMediaItem> = emptyList(),
@@ -44,6 +51,10 @@ data class PlayerUiState(
     val localAlbum: String = "",
     val localQueueIndex: Int = 0,
     val localQueueSize: Int = 0,
+    val localQueue: List<QueueRow> = emptyList(),
+    /** Player.REPEAT_MODE_OFF / ONE / ALL */
+    val localRepeatMode: Int = Player.REPEAT_MODE_OFF,
+    val localShuffle: Boolean = false,
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localIsVideo: Boolean = false,
@@ -80,6 +91,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         PlayerUiState(
             remoteHost = prefs.getString("host", "192.168.1.1") ?: "192.168.1.1",
             remotePort = prefs.getString("port", "17890") ?: "17890",
+            localRepeatMode = prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF),
+            localShuffle = prefs.getBoolean(PREF_SHUFFLE, false),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
         ),
@@ -109,6 +122,22 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             player?.let { syncUiFromPlayer(it) }
             player?.let { queueStore.saveFromPlayer(it) }
         }
+
+        override fun onRepeatModeChanged(repeatMode: Int) {
+            prefs.edit().putInt(PREF_REPEAT, repeatMode).apply()
+            _state.update { it.copy(localRepeatMode = repeatMode) }
+        }
+
+        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+            prefs.edit().putBoolean(PREF_SHUFFLE, shuffleModeEnabled).apply()
+            _state.update { it.copy(localShuffle = shuffleModeEnabled) }
+            player?.let { syncUiFromPlayer(it) }
+        }
+
+        override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+            player?.let { syncUiFromPlayer(it) }
+            player?.let { queueStore.saveFromPlayer(it) }
+        }
     }
 
     init {
@@ -131,6 +160,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val controller = future.get()
                     controller.addListener(playerListener)
+                    controller.repeatMode = prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF)
+                    controller.shuffleModeEnabled = prefs.getBoolean(PREF_SHUFFLE, false)
                     _player.value = controller
                     syncUiFromPlayer(controller)
                     _state.update { it.copy(playerReady = true) }
@@ -349,6 +380,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 localAlbum = "",
                 localQueueIndex = 0,
                 localQueueSize = 0,
+                localQueue = emptyList(),
             )
         }
     }
@@ -375,7 +407,90 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun cycleLocalRepeat() {
+        withPlayer { p ->
+            val next = when (p.repeatMode) {
+                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                else -> Player.REPEAT_MODE_OFF
+            }
+            p.repeatMode = next
+            prefs.edit().putInt(PREF_REPEAT, next).apply()
+            _state.update { it.copy(localRepeatMode = next) }
+        }
+    }
+
+    fun toggleLocalShuffle() {
+        withPlayer { p ->
+            val enabled = !p.shuffleModeEnabled
+            p.shuffleModeEnabled = enabled
+            prefs.edit().putBoolean(PREF_SHUFFLE, enabled).apply()
+            _state.update { it.copy(localShuffle = enabled) }
+            syncUiFromPlayer(p)
+        }
+    }
+
+    fun moveQueueItem(from: Int, to: Int) {
+        withPlayer { p ->
+            if (from < 0 || to < 0 || from >= p.mediaItemCount || to >= p.mediaItemCount || from == to) {
+                return@withPlayer
+            }
+            p.moveMediaItem(from, to)
+            queueStore.saveFromPlayer(p)
+            syncUiFromPlayer(p)
+        }
+    }
+
+    fun removeQueueItem(index: Int) {
+        withPlayer { p ->
+            if (index < 0 || index >= p.mediaItemCount) return@withPlayer
+            p.removeMediaItem(index)
+            if (p.mediaItemCount == 0) {
+                queueStore.clear()
+                _state.update {
+                    it.copy(
+                        localPlaying = false,
+                        localTitle = "(nothing loaded)",
+                        localArtist = "",
+                        localAlbum = "",
+                        localQueueIndex = 0,
+                        localQueueSize = 0,
+                        localQueue = emptyList(),
+                    )
+                }
+            } else {
+                queueStore.saveFromPlayer(p)
+                syncUiFromPlayer(p)
+            }
+        }
+    }
+
+    fun playQueueIndex(index: Int) {
+        withPlayer { p ->
+            if (index < 0 || index >= p.mediaItemCount) return@withPlayer
+            p.seekTo(index, 0L)
+            p.play()
+        }
+    }
+
+    private fun queueRowsFromPlayer(p: Player): List<QueueRow> {
+        if (p.mediaItemCount <= 0) return emptyList()
+        val current = p.currentMediaItemIndex
+        return buildList {
+            for (i in 0 until p.mediaItemCount) {
+                val item = p.getMediaItemAt(i)
+                val md = item.mediaMetadata
+                val title = md.title?.toString()
+                    ?: item.localConfiguration?.uri?.lastPathSegment
+                    ?: "Item ${i + 1}"
+                val artist = md.artist?.toString().orEmpty().let { if (it == "VoxPlayer") "" else it }
+                add(QueueRow(index = i, title = title, artist = artist, isCurrent = i == current))
+            }
+        }
+    }
+
     private fun syncUiFromPlayer(p: Player) {
+        val queue = queueRowsFromPlayer(p)
         val item = p.currentMediaItem
         if (item != null) {
             val md = item.mediaMetadata
@@ -394,6 +509,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     localAlbum = album,
                     localQueueIndex = p.currentMediaItemIndex.coerceAtLeast(0),
                     localQueueSize = p.mediaItemCount.coerceAtLeast(0),
+                    localQueue = queue,
+                    localRepeatMode = p.repeatMode,
+                    localShuffle = p.shuffleModeEnabled,
                     localIsVideo = isVideo,
                     localPlaying = p.isPlaying,
                     activeOutput = if (p.isPlaying) "This device" else it.activeOutput,
@@ -410,6 +528,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 localAlbum = cur.album,
                 localQueueIndex = snap.index,
                 localQueueSize = snap.entries.size,
+                localQueue = snap.entries.mapIndexed { i, e ->
+                    QueueRow(i, e.title, e.artist, i == snap.index)
+                },
                 localIsVideo = cur.isVideo,
             )
         }
@@ -725,5 +846,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private const val TAG = "VoxPlayerBT"
+        private const val PREF_REPEAT = "local_repeat_mode"
+        private const val PREF_SHUFFLE = "local_shuffle"
     }
 }

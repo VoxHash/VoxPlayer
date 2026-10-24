@@ -58,6 +58,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Background playback:** on-device Media3 audio runs in a `mediaPlayback` foreground service with a system media notification. Force-stop or strict battery limits can still stop playback; there is no proprietary keep-alive SDK.
 
+**Repeat / shuffle / queue reorder:** transport and Now Playing expose Media3 repeat (off/all/one) and shuffle; Up Next supports move up/down and remove. Modes persist in app prefs.
+
 **Gapless local queues:** tapping a library item loads a Media3 playlist from the filtered library (same audio/video kind under All). Transport prev/next skips tracks; encoder delay/padding enables gapless where the file provides it.
 
 **Playback resumption:** last local URI + position are stored in app prefs. After process death, headset / media-key play can restart via Media3 `MediaButtonReceiver` + `onPlaybackResumption` if the URI is still readable. Stop clears the store.

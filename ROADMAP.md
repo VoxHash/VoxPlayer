@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.32.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.33.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -120,6 +120,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 6. **Background playback**: keep on-device audio playing when the UI is backgrounded (**Done 1.30.0** — Media3 `MediaSessionService` + `mediaPlayback` foreground service; system media notification; MediaController in the activity)
 7. **Playback resumption**: restore last on-device item + position after process death via Media3 `MediaButtonReceiver` + `onPlaybackResumption` (**Done 1.31.0** — local prefs queue store; headset / media-key resume; intentional Stop clears the store)
 8. **Gapless local queues + richer Now Playing**: play tapped library item as a Media3 playlist (same-kind continuity); prev/next track; artist/album/queue index in Now Playing (**Done 1.32.0** — `setMediaItems` gapless transitions where encoder delay/padding allows; MediaStore album tags)
+9. **On-device repeat / shuffle + queue reorder**: Media3 `REPEAT_MODE_*` + shuffle; Up Next list with move up/down / remove (**Done 1.33.0** — prefs persist modes; transport + Now Playing controls)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

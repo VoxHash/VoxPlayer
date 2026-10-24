@@ -58,6 +58,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Background playback:** on-device Media3 audio runs in a `mediaPlayback` foreground service with a system media notification. Force-stop or strict battery limits can still stop playback; there is no proprietary keep-alive SDK.
 
+**Sleep timer / bookmarks:** Now Playing sleep chips (15–90 min) fade then pause in the media session service. Per-URI bookmarks autosave while playing and can be resumed offline — no cloud.
+
 **Headset / Quest audio:** Bluetooth headset AVRCP uses Media3 media-button preferences (±15s seek). When a preferred sink disconnects, playback falls back to system default; Quest panel resume re-applies volume/EQ/route. No GMS Auto.
 
 **Sound output / EQ:** Now Playing lists `AudioManager` sinks (speaker, wired, Bluetooth A2DP, USB, HDMI) and routes via Media3 `setPreferredAudioDevice`. AOSP `Equalizer` presets attach to the playback session; GrapheneOS may omit effects — Off still works. No GMS.

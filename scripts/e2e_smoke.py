@@ -31,8 +31,8 @@ def _fail(msg: str) -> None:
 def main() -> int:
     from voxplayer import __version__
 
-    if __version__ != "1.36.0":
-        _fail(f"package __version__ is {__version__!r}, expected 1.36.0")
+    if __version__ != "1.37.0":
+        _fail(f"package __version__ is {__version__!r}, expected 1.37.0")
     _ok(f"package version {__version__}")
 
     from PyQt6.QtWidgets import QApplication

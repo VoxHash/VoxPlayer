@@ -43,8 +43,14 @@ class PlaybackService : MediaSessionService() {
     private var volumeMuted: Boolean = false
     private var preferredDeviceId: Int = AudioRoute.DEFAULT_DEVICE_ID
     private var eqPreset: String = EqualizerControl.PRESET_OFF
+    private var sleepEndEpochMs: Long = 0L
     private var audioManager: AudioManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val sleepTick = object : Runnable {
+        override fun run() {
+            tickSleepTimer()
+        }
+    }
 
     private val deviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
@@ -99,6 +105,7 @@ class PlaybackService : MediaSessionService() {
                 .add(AudioRoute.CMD_SET)
                 .add(EqualizerControl.CMD_SET)
                 .add(AudioRoute.CMD_REAPPLY)
+                .add(SleepTimer.CMD_SET)
                 .build()
             val playerCmds = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
                 .add(Player.COMMAND_SEEK_BACK)
@@ -147,6 +154,20 @@ class PlaybackService : MediaSessionService() {
                     eqPreset = EqualizerControl.loadPreset(this@PlaybackService)
                     equalizerApplier.setPreset(eqPreset)
                     applyAudioChain()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                SleepTimer.ACTION_SET -> {
+                    val minutes = args.getInt(SleepTimer.EXTRA_MINUTES, -1)
+                    if (minutes == 0) {
+                        clearSleepTimer(restoreVolume = true)
+                    } else {
+                        val end = if (minutes > 0) {
+                            System.currentTimeMillis() + minutes * 60_000L
+                        } else {
+                            args.getLong(SleepTimer.EXTRA_END_EPOCH_MS, 0L)
+                        }
+                        scheduleSleepTimer(end)
+                    }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             }
@@ -226,6 +247,8 @@ class PlaybackService : MediaSessionService() {
             .setMediaButtonPreferences(mediaButtons)
             .build()
         applyAudioChain()
+        val pendingSleep = SleepTimer.loadEndEpochMs(this)
+        if (pendingSleep > 0L) scheduleSleepTimer(pendingSleep)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
@@ -240,6 +263,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(sleepTick)
         try {
             audioManager?.unregisterAudioDeviceCallback(deviceCallback)
         } catch (_: Exception) {
@@ -254,6 +278,52 @@ class PlaybackService : MediaSessionService() {
             mediaSession = null
         }
         super.onDestroy()
+    }
+
+    private fun scheduleSleepTimer(endEpochMs: Long) {
+        mainHandler.removeCallbacks(sleepTick)
+        sleepEndEpochMs = if (endEpochMs > System.currentTimeMillis()) endEpochMs else 0L
+        SleepTimer.saveEndEpochMs(this, sleepEndEpochMs)
+        if (sleepEndEpochMs > 0L) {
+            Log.i(TAG, "sleep timer until $sleepEndEpochMs")
+            mainHandler.post(sleepTick)
+        }
+    }
+
+    private fun clearSleepTimer(restoreVolume: Boolean) {
+        mainHandler.removeCallbacks(sleepTick)
+        sleepEndEpochMs = 0L
+        SleepTimer.saveEndEpochMs(this, 0L)
+        if (restoreVolume) {
+            applyAudioChain()
+        }
+    }
+
+    private fun tickSleepTimer() {
+        if (sleepEndEpochMs <= 0L) return
+        val now = System.currentTimeMillis()
+        val left = sleepEndEpochMs - now
+        if (left <= 0L) {
+            fireSleepTimer()
+            return
+        }
+        // Fade over the last ~30s by temporarily lowering ExoPlayer volume.
+        if (left <= FADE_WINDOW_MS && !volumeMuted) {
+            val player = mediaSession?.player
+            if (player != null) {
+                val base = LocalVolume.playerVolume(volumePercent, muted = false)
+                val frac = (left.toFloat() / FADE_WINDOW_MS).coerceIn(0f, 1f)
+                player.volume = base * frac
+            }
+        }
+        mainHandler.postDelayed(sleepTick, SLEEP_TICK_MS)
+    }
+
+    private fun fireSleepTimer() {
+        Log.i(TAG, "sleep timer fired — pausing")
+        mediaSession?.player?.pause()
+        clearSleepTimer(restoreVolume = true)
+        sendBroadcast(Intent(SleepTimer.ACTION_FIRED).setPackage(packageName))
     }
 
     private fun applyAudioChain() {
@@ -288,5 +358,7 @@ class PlaybackService : MediaSessionService() {
     companion object {
         private const val TAG = "VoxPlaybackService"
         private const val SEEK_INCREMENT_MS = 15_000L
+        private const val SLEEP_TICK_MS = 1_000L
+        private const val FADE_WINDOW_MS = 30_000L
     }
 }

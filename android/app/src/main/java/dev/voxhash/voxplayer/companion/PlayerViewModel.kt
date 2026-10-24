@@ -65,6 +65,9 @@ data class PlayerUiState(
     val audioDevices: List<AudioRoute.Device> = emptyList(),
     val preferredAudioDeviceId: Int = AudioRoute.DEFAULT_DEVICE_ID,
     val eqPreset: String = EqualizerControl.PRESET_OFF,
+    val sleepEndEpochMs: Long = 0L,
+    val sleepRemainingLabel: String = "Off",
+    val bookmarks: List<BookmarkStore.Bookmark> = emptyList(),
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localIsVideo: Boolean = false,
@@ -96,6 +99,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("voxplayer", Context.MODE_PRIVATE)
     private val syncStore = SyncStore(app)
     private val queueStore = PlaybackQueueStore(app)
+    private val bookmarkStore = BookmarkStore(app)
     private val bt = BluetoothControl(app)
     private val _state = MutableStateFlow(
         PlayerUiState(
@@ -107,6 +111,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             localMuted = LocalVolume.loadMuted(app),
             preferredAudioDeviceId = AudioRoute.loadPreferredId(app),
             eqPreset = EqualizerControl.loadPreset(app),
+            sleepEndEpochMs = SleepTimer.loadEndEpochMs(app),
+            sleepRemainingLabel = SleepTimer.remainingLabel(SleepTimer.loadEndEpochMs(app)),
+            bookmarks = bookmarkStore.load(),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
         ),
@@ -123,10 +130,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingPlay: (() -> Unit)? = null
     private val devicesReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != AudioRoute.ACTION_DEVICES_CHANGED) return
-            refreshAudioDevices()
-            _state.update {
-                it.copy(preferredAudioDeviceId = AudioRoute.loadPreferredId(getApplication()))
+            when (intent?.action) {
+                AudioRoute.ACTION_DEVICES_CHANGED -> {
+                    refreshAudioDevices()
+                    _state.update {
+                        it.copy(preferredAudioDeviceId = AudioRoute.loadPreferredId(getApplication()))
+                    }
+                }
+                SleepTimer.ACTION_FIRED -> {
+                    _state.update {
+                        it.copy(sleepEndEpochMs = 0L, sleepRemainingLabel = "Off", localPlaying = false)
+                    }
+                }
             }
         }
     }
@@ -177,7 +192,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun registerDevicesReceiver() {
         val app = getApplication<Application>()
-        val filter = IntentFilter(AudioRoute.ACTION_DEVICES_CHANGED)
+        val filter = IntentFilter().apply {
+            addAction(AudioRoute.ACTION_DEVICES_CHANGED)
+            addAction(SleepTimer.ACTION_FIRED)
+        }
         try {
             if (Build.VERSION.SDK_INT >= 33) {
                 app.registerReceiver(devicesReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -680,12 +698,110 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val p = player ?: return
         val pos = p.currentPosition.coerceAtLeast(0L)
         val dur = p.duration.coerceAtLeast(0L).let { if (it < 0) 0 else it }
+        val sleepEnd = _state.value.sleepEndEpochMs.let { end ->
+            if (end > 0L && end <= System.currentTimeMillis()) 0L else end
+        }
         _state.update {
             it.copy(
                 localPlaying = p.isPlaying,
                 localPositionLabel = "${fmt(pos)} / ${fmt(dur)}",
+                sleepEndEpochMs = sleepEnd,
+                sleepRemainingLabel = SleepTimer.remainingLabel(sleepEnd),
             )
         }
+        // Auto-save resume bookmark ~every 5s while playing (desktop companion parity).
+        if (p.isPlaying && pos >= 1_500L && System.currentTimeMillis() / 5_000L != lastBookmarkAutosaveBucket) {
+            lastBookmarkAutosaveBucket = System.currentTimeMillis() / 5_000L
+            autosaveBookmark(p)
+        }
+    }
+
+    private var lastBookmarkAutosaveBucket = -1L
+
+    private fun autosaveBookmark(p: Player) {
+        val item = p.currentMediaItem ?: return
+        val uri = item.localConfiguration?.uri?.toString()
+            ?: item.requestMetadata.mediaUri?.toString()
+            ?: return
+        val title = item.mediaMetadata.title?.toString()
+            ?: Uri.parse(uri).lastPathSegment
+            ?: "Bookmark"
+        val isVideo = _state.value.localIsVideo
+        bookmarkStore.upsert(uri, title, p.currentPosition.coerceAtLeast(0L), isVideo)
+        _state.update { it.copy(bookmarks = bookmarkStore.load()) }
+    }
+
+    fun setSleepTimerMinutes(minutes: Int) {
+        val end = if (minutes <= 0) 0L else System.currentTimeMillis() + minutes * 60_000L
+        SleepTimer.saveEndEpochMs(getApplication(), end)
+        _state.update {
+            it.copy(sleepEndEpochMs = end, sleepRemainingLabel = SleepTimer.remainingLabel(end))
+        }
+        val controller = player as? MediaController ?: return
+        val args = Bundle().apply { putInt(SleepTimer.EXTRA_MINUTES, minutes.coerceAtLeast(0)) }
+        try {
+            controller.sendCustomCommand(SleepTimer.CMD_SET, args)
+        } catch (e: Exception) {
+            Log.w(TAG, "SET_SLEEP_TIMER failed", e)
+        }
+    }
+
+    fun clearSleepTimer() = setSleepTimerMinutes(0)
+
+    fun bookmarkNow() {
+        val p = player ?: return
+        autosaveBookmark(p)
+    }
+
+    fun playBookmark(bm: BookmarkStore.Bookmark) {
+        withPlayer { p ->
+            p.setMediaItems(
+                listOf(
+                    MediaItem.Builder()
+                        .setUri(bm.uri)
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(bm.title)
+                                .setArtist("VoxPlayer")
+                                .setMediaType(
+                                    if (bm.isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
+                                    else MediaMetadata.MEDIA_TYPE_MUSIC,
+                                )
+                                .setIsPlayable(true)
+                                .build(),
+                        )
+                        .build(),
+                ),
+                /* startIndex = */ 0,
+                bm.positionMs.coerceAtLeast(0L),
+            )
+            p.prepare()
+            p.play()
+            queueStore.save(bm.uri, bm.title, bm.positionMs, bm.isVideo)
+        }
+        _state.update {
+            it.copy(
+                localTitle = bm.title,
+                localArtist = "",
+                localAlbum = "",
+                localIsVideo = bm.isVideo,
+                localQueueIndex = 0,
+                localQueueSize = 1,
+                localPlaying = true,
+                activeOutput = "This device",
+                tab = AppTab.Local,
+            )
+        }
+    }
+
+    fun removeBookmark(uri: String) {
+        bookmarkStore.remove(uri)
+        _state.update { it.copy(bookmarks = bookmarkStore.load()) }
+    }
+
+    fun clearBookmarks() {
+        bookmarkStore.clear()
+        _state.update { it.copy(bookmarks = emptyList()) }
     }
 
     fun scanDesktops() {

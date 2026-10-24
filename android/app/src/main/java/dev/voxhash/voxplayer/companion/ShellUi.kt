@@ -249,6 +249,12 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onRefreshDevices = vm::refreshAudioDevices,
                                 onSelectDevice = vm::setPreferredAudioDevice,
                                 onEqPreset = vm::setEqPreset,
+                                onSleepMinutes = vm::setSleepTimerMinutes,
+                                onClearSleep = vm::clearSleepTimer,
+                                onBookmarkNow = vm::bookmarkNow,
+                                onPlayBookmark = vm::playBookmark,
+                                onRemoveBookmark = vm::removeBookmark,
+                                onClearBookmarks = vm::clearBookmarks,
                                 onPlayQueueIndex = vm::playQueueIndex,
                                 onMoveQueue = vm::moveQueueItem,
                                 onRemoveQueue = vm::removeQueueItem,
@@ -559,6 +565,12 @@ private fun NowPlayingPane(
     onRefreshDevices: () -> Unit,
     onSelectDevice: (Int) -> Unit,
     onEqPreset: (String) -> Unit,
+    onSleepMinutes: (Int) -> Unit,
+    onClearSleep: () -> Unit,
+    onBookmarkNow: () -> Unit,
+    onPlayBookmark: (BookmarkStore.Bookmark) -> Unit,
+    onRemoveBookmark: (String) -> Unit,
+    onClearBookmarks: () -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (Int, Int) -> Unit,
     onRemoveQueue: (Int) -> Unit,
@@ -732,6 +744,65 @@ private fun NowPlayingPane(
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
+            Text("Sleep timer", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                if (state.sleepEndEpochMs > 0L) "Ends in ${state.sleepRemainingLabel}" else "Off · fades then pauses",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                SleepTimer.DURATIONS_MIN.take(3).forEach { m ->
+                    QuietButton("${m}m", { onSleepMinutes(m) }, Modifier.weight(1f))
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                SleepTimer.DURATIONS_MIN.drop(3).forEach { m ->
+                    QuietButton("${m}m", { onSleepMinutes(m) }, Modifier.weight(1f))
+                }
+                QuietButton("Off", onClearSleep, Modifier.weight(1f))
+            }
+            Text("Bookmarks", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                QuietButton("Save here", onBookmarkNow, Modifier.weight(1f))
+                QuietButton("Clear all", onClearBookmarks, Modifier.weight(1f))
+            }
+            state.bookmarks.take(8).forEach { bm ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(VoxShapes.card)
+                        .background(VoxColors.BgElevated)
+                        .clickable { onPlayBookmark(bm) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            bm.title,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            fmtBookmarkPos(bm.positionMs),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = VoxColors.TextMuted,
+                        )
+                    }
+                    IconButton(onClick = { onRemoveBookmark(bm.uri) }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Close, "Remove bookmark", tint = VoxColors.TextMuted)
+                    }
+                }
+            }
             if (state.localQueue.size > 1) {
                 Text("Up next", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
                 LazyColumn(
@@ -1241,4 +1312,9 @@ private fun TipRow(icon: ImageVector, title: String, body: String) {
             Text(body, style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+private fun fmtBookmarkPos(ms: Long): String {
+    val sec = (ms / 1000).coerceAtLeast(0)
+    return "at %d:%02d".format(sec / 60, sec % 60)
 }

@@ -7,7 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (local sleep timer / bookmarks if useful without cloud)
+- Further Android companion polish (scrobble-free play history facets on-device)
+
+## [1.37.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: sleep timer (15/30/45/60/90 min) in `PlaybackService` — fades over the last ~30s then pauses; survives UI backgrounding
+- Local per-URI resume bookmarks (autosave while playing + Save here); Now Playing list to resume or remove; no cloud
 
 ## [1.36.0] - 2026-10-24
 

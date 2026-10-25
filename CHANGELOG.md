@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (remember Home A–Z letter scroll position)
+- Further Android companion polish (Home pull-to-refresh library reload)
+
+## [1.74.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Remember Home A–Z letter** — restores the last visible A–Z section after process death; rail highlights the saved letter
 
 ## [1.73.0] - 2026-10-25
 

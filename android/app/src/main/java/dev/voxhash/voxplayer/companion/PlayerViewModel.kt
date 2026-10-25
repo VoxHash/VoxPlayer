@@ -53,6 +53,8 @@ data class PlayerUiState(
     val localFilter: String = "all", // all|audio|video|recent|top|week|month|lists
     /** Case-insensitive title / artist / album substring (Home library + history facets). */
     val localSearchQuery: String = "",
+    /** Last Home A–Z section letter (null = top). */
+    val homeAzLetter: Char? = null,
     val permissionNeeded: Boolean = false,
     val localTitle: String = "(nothing loaded)",
     val localArtist: String = "",
@@ -152,6 +154,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 ?.takeIf { it in HOME_FILTERS }
                 ?: "all",
             localSearchQuery = prefs.getString(PREF_HOME_SEARCH, "") ?: "",
+            homeAzLetter = prefs.getString(PREF_HOME_AZ, null)?.firstOrNull(),
             localRepeatMode = prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF),
             localShuffle = prefs.getBoolean(PREF_SHUFFLE, false),
             localVolume = LocalVolume.loadPercent(app),
@@ -481,6 +484,22 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun setLocalSearchQuery(q: String) {
         prefs.edit().putString(PREF_HOME_SEARCH, q).apply()
         _state.update { it.copy(localSearchQuery = q) }
+    }
+
+    fun setHomeAzLetter(letter: Char?) {
+        val normalized = letter?.let { ch ->
+            when {
+                ch in 'A'..'Z' -> ch
+                ch in 'a'..'z' -> ch.uppercaseChar()
+                else -> '#'
+            }
+        }
+        if (_state.value.homeAzLetter == normalized) return
+        prefs.edit().apply {
+            if (normalized == null) remove(PREF_HOME_AZ)
+            else putString(PREF_HOME_AZ, normalized.toString())
+        }.apply()
+        _state.update { it.copy(homeAzLetter = normalized) }
     }
 
     fun playLocal(item: LocalMediaItem) {
@@ -2245,6 +2264,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         private const val PREF_SHUFFLE = "local_shuffle"
         private const val PREF_HOME_FILTER = "home_filter"
         private const val PREF_HOME_SEARCH = "home_search"
+        private const val PREF_HOME_AZ = "home_az_letter"
         private val HOME_FILTERS = setOf(
             "all", "audio", "video", "recent", "top", "week", "month", "lists",
         )

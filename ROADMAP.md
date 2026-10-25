@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.73.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.74.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -161,6 +161,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 47. **Home empty-state library tips**: contextual empty panels for All/Audio/Video/history facets + search misses with Open file CTA (**Done 1.71.0**)
 48. **Clear search affordance**: Home search field trailing Clear (✕) when query is non-empty (**Done 1.72.0**)
 49. **Persist Home filter + search**: All/Audio/Video/history/lists filter and search query survive process death via local prefs (**Done 1.73.0**)
+50. **Remember Home A–Z letter**: restores last visible A–Z section after process death; rail highlights the saved letter (**Done 1.74.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

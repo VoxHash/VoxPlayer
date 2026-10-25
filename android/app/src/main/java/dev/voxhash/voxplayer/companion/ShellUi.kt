@@ -92,6 +92,9 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -326,6 +329,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onExportPlaylistM3u = { id -> vm.exportPlaylistM3u(context, id) },
                                     onFilter = vm::setLocalFilter,
                                     onSearch = vm::setLocalSearchQuery,
+                                    onHomeAzLetter = vm::setHomeAzLetter,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
                                         val perms = if (Build.VERSION.SDK_INT >= 33) {
@@ -680,6 +684,7 @@ private fun LocalLibraryPane(
     onExportPlaylistM3u: (String) -> Unit,
     onFilter: (String) -> Unit,
     onSearch: (String) -> Unit,
+    onHomeAzLetter: (Char?) -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
 ) {
@@ -951,6 +956,8 @@ private fun LocalLibraryPane(
             AzLibraryGrid(
                 items = filtered,
                 cols = cols,
+                initialLetter = state.homeAzLetter,
+                onLetterChanged = onHomeAzLetter,
                 onPlay = onPlay,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -1004,6 +1011,8 @@ private fun libraryIndexLetter(title: String): Char {
 private fun AzLibraryGrid(
     items: List<LocalMediaItem>,
     cols: Int,
+    initialLetter: Char?,
+    onLetterChanged: (Char?) -> Unit,
     onPlay: (LocalMediaItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1027,8 +1036,35 @@ private fun AzLibraryGrid(
             }
         }
     }
+    val letterByFlatIndex = remember(letterStartIndex) {
+        letterStartIndex.entries
+            .sortedBy { it.value }
+            .map { it.key to it.value }
+    }
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
+    var restored by remember(items) { mutableStateOf(false) }
+
+    LaunchedEffect(letters, initialLetter, letterStartIndex) {
+        if (restored || letters.isEmpty()) return@LaunchedEffect
+        val letter = initialLetter?.takeIf { it in letters }
+        if (letter != null) {
+            val target = letterStartIndex[letter] ?: 0
+            gridState.scrollToItem(target)
+        }
+        restored = true
+    }
+
+    LaunchedEffect(gridState, letterByFlatIndex) {
+        snapshotFlow { gridState.firstVisibleItemIndex }
+            .map { index ->
+                letterByFlatIndex.lastOrNull { (_, start) -> start <= index }?.first
+            }
+            .distinctUntilChanged()
+            .collect { letter ->
+                onLetterChanged(letter)
+            }
+    }
 
     Box(modifier) {
         LazyVerticalGrid(
@@ -1079,13 +1115,14 @@ private fun AzLibraryGrid(
                         Modifier
                             .clickable {
                                 val target = letterStartIndex[letter] ?: return@clickable
+                                onLetterChanged(letter)
                                 scope.launch {
                                     gridState.animateScrollToItem(target)
                                 }
                             }
                             .padding(horizontal = 4.dp, vertical = 1.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        color = VoxColors.TextMuted,
+                        color = if (letter == initialLetter) VoxColors.Accent else VoxColors.TextMuted,
                         fontSize = 10.sp,
                     )
                 }

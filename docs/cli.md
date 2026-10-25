@@ -110,7 +110,7 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Clear search:** Home search field shows ✕ when a query is active.
 
-**Remember Home:** Filter chip and search query persist across process death (on-device prefs).
+**Remember Home:** Filter chip, search query, and A–Z section letter persist across process death (on-device prefs).
 
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 

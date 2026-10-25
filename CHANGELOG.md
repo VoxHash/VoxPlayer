@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (queue position chip in Now Playing header)
+- Further Android companion polish (sleep-timer remaining chip)
+
+## [1.66.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Queue position chip** — Now Playing status chips lead with accent Queue n/N (replaces the plain muted queue line)
 
 ## [1.65.0] - 2026-10-25
 

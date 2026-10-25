@@ -1422,14 +1422,6 @@ private fun NowPlayingPane(
                 QuietButton("Forget", onClearTrackResume)
             }
         }
-        if (!desktop && state.localQueueSize > 0) {
-            Text(
-                "Queue ${state.localQueueIndex + 1} / ${state.localQueueSize}" +
-                    if (state.localShuffle) " · shuffle" else "",
-                style = MaterialTheme.typography.bodySmall,
-                color = VoxColors.TextMuted,
-            )
-        }
         Text(
             if (playing) "Playing" else if (title == "(nothing loaded)" || title == "(desktop idle)") "Nothing playing" else "Paused",
             style = MaterialTheme.typography.bodyMedium,
@@ -2286,6 +2278,9 @@ private fun PlaybackStatusChips(
 ) {
     val eqLabel = EqualizerControl.PRESETS.firstOrNull { it.first == state.eqPreset }?.second ?: "Off"
     val chips = buildList {
+        if (state.localQueueSize > 0) {
+            add("Queue ${state.localQueueIndex + 1}/${state.localQueueSize}")
+        }
         if (state.crossfadeEnabled) add("Fade ${CrossfadeControl.fadeLabel(state.fadeMs)}")
         if (state.skipSilence) add("Skip silence")
         if (kotlin.math.abs(state.playbackSpeed - 1f) > 0.001f) {
@@ -2300,20 +2295,29 @@ private fun PlaybackStatusChips(
     }
     if (chips.isEmpty()) return
     Row(
-        modifier.horizontalScroll(rememberScrollState()),
+        modifier
+            .horizontalScroll(rememberScrollState())
+            .semantics {
+                contentDescription = chips.joinToString(", ")
+            },
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         chips.forEach { label ->
+            val isQueue = label.startsWith("Queue ")
             Text(
                 label,
                 Modifier
                     .clip(VoxShapes.pill)
-                    .background(VoxColors.BgElevated)
-                    .border(1.dp, VoxColors.BorderSoft, VoxShapes.pill)
+                    .background(if (isQueue) VoxColors.AccentSoft else VoxColors.BgElevated)
+                    .border(
+                        1.dp,
+                        if (isQueue) VoxColors.Accent else VoxColors.BorderSoft,
+                        VoxShapes.pill,
+                    )
                     .padding(horizontal = 10.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.labelSmall,
-                color = VoxColors.TextSecondary,
+                color = if (isQueue) VoxColors.Accent else VoxColors.TextSecondary,
                 maxLines = 1,
             )
         }

@@ -312,6 +312,13 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onClearSleep = vm::clearSleepTimer,
                                 onToggleCrossfade = { vm.setCrossfadeEnabled(!state.crossfadeEnabled) },
                                 onToggleSkipSilence = { vm.setSkipSilence(!state.skipSilence) },
+                                onToggleDlna = { vm.setDlnaEnabled(!state.dlnaEnabled) },
+                                onScanDlna = vm::scanDlnaRenderers,
+                                onSelectDlna = vm::selectDlnaRenderer,
+                                onCastDlna = vm::castNowPlayingToDlna,
+                                onDlnaPlay = vm::dlnaPlay,
+                                onDlnaPause = vm::dlnaPause,
+                                onDlnaStop = vm::dlnaStop,
                                 onBookmarkNow = vm::bookmarkNow,
                                 onPlayBookmark = vm::playBookmark,
                                 onRemoveBookmark = vm::removeBookmark,
@@ -1071,6 +1078,13 @@ private fun NowPlayingPane(
     onClearSleep: () -> Unit,
     onToggleCrossfade: () -> Unit,
     onToggleSkipSilence: () -> Unit,
+    onToggleDlna: () -> Unit,
+    onScanDlna: () -> Unit,
+    onSelectDlna: (String) -> Unit,
+    onCastDlna: () -> Unit,
+    onDlnaPlay: () -> Unit,
+    onDlnaPause: () -> Unit,
+    onDlnaStop: () -> Unit,
     onBookmarkNow: () -> Unit,
     onPlayBookmark: (BookmarkStore.Bookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
@@ -1263,6 +1277,59 @@ private fun NowPlayingPane(
                     onToggleSkipSilence,
                     Modifier.weight(1f),
                 )
+            }
+            Text("DLNA cast", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                "LAN MediaRenderer only — no Google Cast / GMS",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+            QuietButton(
+                if (state.dlnaEnabled) "DLNA on" else "Enable DLNA",
+                onToggleDlna,
+                Modifier.fillMaxWidth(),
+            )
+            if (state.dlnaEnabled) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    QuietButton(
+                        if (state.dlnaBusy) "…" else "Scan",
+                        onScanDlna,
+                        Modifier.weight(1f),
+                    )
+                    QuietButton("Cast now", onCastDlna, Modifier.weight(1f))
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    QuietButton("Play", onDlnaPlay, Modifier.weight(1f))
+                    QuietButton("Pause", onDlnaPause, Modifier.weight(1f))
+                    QuietButton("Stop", onDlnaStop, Modifier.weight(1f))
+                }
+                state.dlnaRenderers.take(8).forEach { r ->
+                    val selected = state.dlnaSelectedId == r.id
+                    Text(
+                        "${r.name}${if (r.isTv) " · TV" else ""} · ${r.address}",
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(VoxShapes.card)
+                            .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
+                            .clickable { onSelectDlna(r.id) }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (selected) VoxColors.Accent else VoxColors.Text,
+                    )
+                }
+                if (state.dlnaMessage.isNotBlank()) {
+                    Text(
+                        state.dlnaMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VoxColors.TextMuted,
+                    )
+                }
             }
             Text("Sleep timer", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
             Text(

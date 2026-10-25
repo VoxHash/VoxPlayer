@@ -85,6 +85,12 @@ data class PlayerUiState(
     /** Multi-window / Quest panel / fold — for UI chrome (playback stays in service). */
     val multiWindow: Boolean = false,
     val foldSeparating: Boolean = false,
+    /** Opt-in DLNA/UPnP cast (no GMS Cast). */
+    val dlnaEnabled: Boolean = false,
+    val dlnaBusy: Boolean = false,
+    val dlnaMessage: String = "",
+    val dlnaRenderers: List<DlnaCastControl.Renderer> = emptyList(),
+    val dlnaSelectedId: String = "",
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localPositionMs: Long = 0L,
@@ -139,6 +145,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             localPlaylists = playlistStore.load(),
             crossfadeEnabled = CrossfadeControl.loadCrossfade(app),
             skipSilence = CrossfadeControl.loadSkipSilence(app),
+            dlnaEnabled = DlnaCastControl.loadEnabled(app),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
         ),
@@ -975,6 +982,149 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         historyStore.clear()
         lastHistoryRecordedUri = null
         refreshHistoryFacets()
+    }
+
+    fun setDlnaEnabled(enabled: Boolean) {
+        DlnaCastControl.saveEnabled(getApplication(), enabled)
+        _state.update {
+            it.copy(
+                dlnaEnabled = enabled,
+                dlnaMessage = if (enabled) {
+                    "DLNA on — scan for renderers on this Wi‑Fi (no Google Cast)"
+                } else {
+                    ""
+                },
+                dlnaRenderers = if (enabled) it.dlnaRenderers else emptyList(),
+            )
+        }
+        if (enabled) {
+            DlnaCastControl.ensureInit(getApplication())
+        } else {
+            viewModelScope.launch {
+                try {
+                    DlnaCastControl.stop()
+                } catch (_: Exception) {
+                }
+                DlnaCastControl.cleanup()
+            }
+        }
+    }
+
+    fun scanDlnaRenderers() {
+        if (!_state.value.dlnaEnabled) {
+            _state.update { it.copy(dlnaMessage = "Enable DLNA cast first") }
+            return
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(dlnaBusy = true, dlnaMessage = "Scanning LAN for MediaRenderers…") }
+            try {
+                val list = DlnaCastControl.search(getApplication())
+                _state.update {
+                    it.copy(
+                        dlnaBusy = false,
+                        dlnaRenderers = list,
+                        dlnaSelectedId = it.dlnaSelectedId.takeIf { id -> list.any { r -> r.id == id } }
+                            ?: list.firstOrNull()?.id.orEmpty(),
+                        dlnaMessage = if (list.isEmpty()) {
+                            "No DLNA renderers found on this network"
+                        } else {
+                            "Found ${list.size} renderer(s)"
+                        },
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(dlnaBusy = false, dlnaMessage = e.message ?: e.toString())
+                }
+            }
+        }
+    }
+
+    fun selectDlnaRenderer(id: String) {
+        _state.update { it.copy(dlnaSelectedId = id) }
+    }
+
+    fun castNowPlayingToDlna() {
+        if (!_state.value.dlnaEnabled) return
+        val deviceId = _state.value.dlnaSelectedId
+        if (deviceId.isBlank()) {
+            _state.update { it.copy(dlnaMessage = "Select a renderer first") }
+            return
+        }
+        val p = player
+        val item = p?.currentMediaItem
+        val uriStr = item?.localConfiguration?.uri?.toString()
+            ?: item?.requestMetadata?.mediaUri?.toString()
+        if (uriStr.isNullOrBlank()) {
+            _state.update { it.copy(dlnaMessage = "Nothing loaded to cast") }
+            return
+        }
+        val title = item?.mediaMetadata?.title?.toString()
+            ?: _state.value.localTitle
+        val mime = getApplication<Application>().contentResolver.getType(Uri.parse(uriStr)).orEmpty()
+        viewModelScope.launch {
+            _state.update { it.copy(dlnaBusy = true, dlnaMessage = "Casting…") }
+            try {
+                // Pause local playback so the TV is the audible sink.
+                p?.pause()
+                val msg = DlnaCastControl.castUri(
+                    getApplication(),
+                    deviceId,
+                    Uri.parse(uriStr),
+                    title,
+                    mime,
+                )
+                _state.update {
+                    it.copy(
+                        dlnaBusy = false,
+                        dlnaMessage = msg,
+                        activeOutput = "DLNA · ${it.dlnaRenderers.find { r -> r.id == deviceId }?.name ?: "TV"}",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(dlnaBusy = false, dlnaMessage = e.message ?: e.toString())
+                }
+            }
+        }
+    }
+
+    fun dlnaPause() {
+        viewModelScope.launch {
+            try {
+                DlnaCastControl.pause()
+                _state.update { it.copy(dlnaMessage = "DLNA paused") }
+            } catch (e: Exception) {
+                _state.update { it.copy(dlnaMessage = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    fun dlnaPlay() {
+        viewModelScope.launch {
+            try {
+                DlnaCastControl.play()
+                _state.update { it.copy(dlnaMessage = "DLNA playing") }
+            } catch (e: Exception) {
+                _state.update { it.copy(dlnaMessage = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    fun dlnaStop() {
+        viewModelScope.launch {
+            try {
+                DlnaCastControl.stop()
+                _state.update {
+                    it.copy(
+                        dlnaMessage = "DLNA stopped",
+                        activeOutput = "This device",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(dlnaMessage = e.message ?: e.toString()) }
+            }
+        }
     }
 
     fun openListsBrowse(id: String?) {

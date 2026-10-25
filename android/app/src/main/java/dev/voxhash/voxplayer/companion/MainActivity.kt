@@ -56,6 +56,11 @@ class MainActivity : ComponentActivity() {
         vm.reapplyLocalAudio()
     }
 
+    override fun onDestroy() {
+        DlnaCastControl.cleanup()
+        super.onDestroy()
+    }
+
     private fun applyConnectExtras(intent: Intent?) {
         val extras = intent?.extras ?: return
         val host = extras.getString("host").orEmpty()

@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (cast / DLNA opt-in without GMS Cast SDK)
+- Further Android companion polish (screenshot / share now-playing card offline)
+
+## [1.48.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS: opt-in **DLNA / UPnP cast** (FOSS UPnPCast via JitPack) — scan LAN MediaRenderers, cast Now Playing, play/pause/stop; no Google Cast SDK / GMS
 
 ## [1.47.0] - 2026-10-24
 

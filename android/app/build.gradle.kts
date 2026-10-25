@@ -12,8 +12,8 @@ android {
         applicationId = "dev.voxhash.voxplayer.companion"
         minSdk = 26
         targetSdk = 35
-        versionCode = 24
-        versionName = "1.47.0"
+        versionCode = 25
+        versionName = "1.48.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -72,6 +72,9 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-session:$media3")
     implementation("androidx.media3:media3-common:$media3")
+
+    // FOSS DLNA/UPnP cast (no Google Cast / GMS). MIT — yinnho/UPnPCast via JitPack.
+    implementation("com.github.yinnho:UPnPCast:v1.3.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")

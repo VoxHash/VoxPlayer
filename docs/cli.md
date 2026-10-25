@@ -66,6 +66,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Sound / EQ:** Now Playing → Sound output lists sinks by group (This device / Wired / Bluetooth / …) with a clear Routing line; Equalizer presets show selection + short description (AOSP effect, no GMS).
 
+**M3U:** Now Playing → Export queue M3U; Lists → Import M3U / open a folder → Export M3U. Offline only (FileProvider share + SAF); remote http(s) lines are skipped.
+
 **DLNA cast:** Now Playing → Enable DLNA → Scan → Cast now. Uses FOSS UPnPCast on the LAN only — no Google Cast / GMS.
 
 **Search:** Home search field filters by title / artist / album (also applies to Recent / Top / Week / Month).

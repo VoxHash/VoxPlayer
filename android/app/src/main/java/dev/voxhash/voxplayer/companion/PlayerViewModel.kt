@@ -1175,6 +1175,113 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         refreshPlaylists()
     }
 
+    /** Export Up Next / current Media3 queue as offline M3U via system share. */
+    fun exportQueueM3u(activityContext: android.content.Context) {
+        viewModelScope.launch {
+            try {
+                val p = player
+                val entries = buildList {
+                    if (p == null || p.mediaItemCount <= 0) return@buildList
+                    for (i in 0 until p.mediaItemCount) {
+                        val item = p.getMediaItemAt(i)
+                        val uri = item.localConfiguration?.uri
+                            ?: item.requestMetadata.mediaUri
+                            ?: continue
+                        val md = item.mediaMetadata
+                        val title = buildString {
+                            val t = md.title?.toString().orEmpty()
+                            val a = md.artist?.toString().orEmpty()
+                            when {
+                                t.isNotBlank() && a.isNotBlank() -> append(a).append(" - ").append(t)
+                                t.isNotBlank() -> append(t)
+                                else -> append(uri.lastPathSegment ?: "Track")
+                            }
+                        }
+                        val durMs = md.durationMs ?: -1L
+                        val durSec = if (durMs > 0L) (durMs / 1000L).toInt() else -1
+                        add(M3uPlaylist.Entry(uri.toString(), title, durSec))
+                    }
+                }
+                if (entries.isEmpty()) {
+                    _state.update { it.copy(error = "Queue is empty — nothing to export") }
+                    return@launch
+                }
+                val name = "Up next"
+                val intent = withContext(Dispatchers.IO) {
+                    val file = M3uPlaylist.writeCacheFile(activityContext.applicationContext, name, entries)
+                    M3uPlaylist.shareIntent(activityContext.applicationContext, file, name)
+                }
+                activityContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (e: Exception) {
+                _state.update { it.copy(error = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    /** Export a user playlist folder as offline M3U. */
+    fun exportPlaylistM3u(activityContext: android.content.Context, playlistId: String) {
+        viewModelScope.launch {
+            try {
+                val pl = playlistStore.load().find { it.id == playlistId }
+                if (pl == null || pl.tracks.isEmpty()) {
+                    _state.update { it.copy(error = "Playlist empty — nothing to export") }
+                    return@launch
+                }
+                val entries = pl.tracks.map { t ->
+                    val title = if (t.artist.isNotBlank()) "${t.artist} - ${t.title}" else t.title
+                    M3uPlaylist.Entry(t.uri, title, -1)
+                }
+                val intent = withContext(Dispatchers.IO) {
+                    val file = M3uPlaylist.writeCacheFile(
+                        activityContext.applicationContext,
+                        pl.name,
+                        entries,
+                    )
+                    M3uPlaylist.shareIntent(activityContext.applicationContext, file, pl.name)
+                }
+                activityContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (e: Exception) {
+                _state.update { it.copy(error = e.message ?: e.toString()) }
+            }
+        }
+    }
+
+    /** Import M3U/M3U8 from SAF into a new on-device playlist folder. */
+    fun importM3u(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val app = getApplication<Application>()
+                val (name, entries) = withContext(Dispatchers.IO) {
+                    app.contentResolver.openInputStream(uri)?.use { M3uPlaylist.parse(it) }
+                        ?: error("Could not read M3U")
+                }
+                if (entries.isEmpty()) {
+                    _state.update { it.copy(error = "M3U had no local tracks") }
+                    return@launch
+                }
+                val tracks = M3uPlaylist.resolveToTracks(entries, _state.value.localItems)
+                if (tracks.isEmpty()) {
+                    _state.update {
+                        it.copy(error = "No matching on-device tracks in M3U (${entries.size} lines)")
+                    }
+                    return@launch
+                }
+                val pl = playlistStore.createWithTracks(name, tracks)
+                refreshPlaylists()
+                _state.update {
+                    it.copy(
+                        localFilter = "lists",
+                        listsBrowseId = pl.id,
+                        error = "",
+                        syncMessage = "Imported ${tracks.size} tracks → ${pl.name}",
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = e.message ?: e.toString()) }
+            }
+        }
+    }
+
     fun deleteLocalPlaylist(id: String) {
         playlistStore.delete(id)
         _state.update {

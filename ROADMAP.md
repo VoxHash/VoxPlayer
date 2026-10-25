@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.51.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.52.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -139,6 +139,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 25. **Share now-playing card**: offline PNG card (title/artist/album/art) via system share sheet; FileProvider cache; no cloud (**Done 1.49.0**)
 26. **Listening stats (week / month)**: scrobble-free on-device listen events; Home Week/Month facets with listen count, unique tracks, top artist (**Done 1.50.0**)
 27. **EQ / output routing clarity**: selected EQ preset states + descriptions; sinks grouped (This device / Wired / Bluetooth / USB / Display); clear “Routing:” line (**Done 1.51.0**)
+28. **Queue / playlist M3U**: export Up Next or playlist folder as offline `.m3u`; import via SAF into a new on-device folder (MediaStore path match; no cloud) (**Done 1.52.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (queue export / import as local M3U)
+- Further Android companion polish (gapless crossfade duration control)
+
+## [1.52.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **M3U export / import** — export Up Next or a playlist folder as offline `.m3u` (share sheet); import via SAF into a new on-device folder (URI / filename match; no cloud)
 
 ## [1.51.0] - 2026-10-24
 

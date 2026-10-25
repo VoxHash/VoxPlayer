@@ -83,6 +83,18 @@ class LocalPlaylistStore(context: Context) {
         return pl
     }
 
+    fun createWithTracks(name: String, tracks: List<Track>): Playlist {
+        val now = System.currentTimeMillis()
+        val pl = Playlist(
+            id = UUID.randomUUID().toString(),
+            name = name.ifBlank { "Imported" }.take(64),
+            tracks = tracks.distinctBy { it.uri }.take(MAX_TRACKS),
+            updatedAtMs = now,
+        )
+        save(listOf(pl) + load())
+        return pl
+    }
+
     fun rename(id: String, name: String) {
         val n = name.ifBlank { return }
         save(

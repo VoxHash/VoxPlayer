@@ -123,6 +123,12 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         }
     }
 
+    val importM3u = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri: Uri? ->
+        if (uri != null) vm.importM3u(uri)
+    }
+
     LaunchedEffect(Unit) {
         val mediaPerms = if (Build.VERSION.SDK_INT >= 33) {
             mutableListOf(
@@ -275,6 +281,18 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onPlayListsTrack = vm::playListsBrowseTrack,
                                     onRemovePlaylistTrack = vm::removeFromLocalPlaylist,
                                     onAddNowPlayingTo = vm::addNowPlayingToPlaylist,
+                                    onImportM3u = {
+                                        importM3u.launch(
+                                            arrayOf(
+                                                "audio/x-mpegurl",
+                                                "application/vnd.apple.mpegurl",
+                                                "audio/mpegurl",
+                                                "text/plain",
+                                                "*/*",
+                                            ),
+                                        )
+                                    },
+                                    onExportPlaylistM3u = { id -> vm.exportPlaylistM3u(context, id) },
                                     onFilter = vm::setLocalFilter,
                                     onSearch = vm::setLocalSearchQuery,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
@@ -321,6 +339,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onDlnaPause = vm::dlnaPause,
                                 onDlnaStop = vm::dlnaStop,
                                 onShareNowPlaying = { vm.shareNowPlayingCard(context) },
+                                onExportQueueM3u = { vm.exportQueueM3u(context) },
                                 onBookmarkNow = vm::bookmarkNow,
                                 onPlayBookmark = vm::playBookmark,
                                 onRemoveBookmark = vm::removeBookmark,
@@ -610,6 +629,8 @@ private fun LocalLibraryPane(
     onPlayListsTrack: (String) -> Unit,
     onRemovePlaylistTrack: (String, String) -> Unit,
     onAddNowPlayingTo: (String) -> Unit,
+    onImportM3u: () -> Unit,
+    onExportPlaylistM3u: (String) -> Unit,
     onFilter: (String) -> Unit,
     onSearch: (String) -> Unit,
     onOpenFile: () -> Unit,
@@ -791,6 +812,7 @@ private fun LocalLibraryPane(
                 QuietButton("Clear history", onClearHistory)
             }
             if (listsFacet && state.listsBrowseId == null) {
+                QuietButton("Import M3U", onImportM3u)
                 QuietButton("New list", onCreatePlaylist)
             }
             if (listsFacet && state.listsBrowseId != null) {
@@ -808,6 +830,7 @@ private fun LocalLibraryPane(
                 onPlayListsTrack = onPlayListsTrack,
                 onRemovePlaylistTrack = onRemovePlaylistTrack,
                 onAddNowPlayingTo = onAddNowPlayingTo,
+                onExportPlaylistM3u = onExportPlaylistM3u,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
             return
@@ -861,6 +884,7 @@ private fun ListsPane(
     onPlayListsTrack: (String) -> Unit,
     onRemovePlaylistTrack: (String, String) -> Unit,
     onAddNowPlayingTo: (String) -> Unit,
+    onExportPlaylistM3u: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val browse = state.listsBrowseId
@@ -869,6 +893,11 @@ private fun ListsPane(
             modifier.verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Text(
+                "Import M3U creates a folder from local paths / MediaStore matches (no cloud).",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextSecondary,
+            )
             Text("Smart lists", style = MaterialTheme.typography.labelLarge, color = VoxColors.TextMuted)
             listOf(
                 LocalPlaylistStore.SMART_NEW to "New on device",
@@ -931,6 +960,9 @@ private fun ListsPane(
     val canAdd = isUser && state.localTitle != "(nothing loaded)"
 
     Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (isUser && tracks.isNotEmpty()) {
+            QuietButton("Export M3U", { onExportPlaylistM3u(browse) }, Modifier.fillMaxWidth())
+        }
         if (canAdd) {
             QuietButton("Add Now Playing", { onAddNowPlayingTo(browse) }, Modifier.fillMaxWidth())
         }
@@ -1137,6 +1169,7 @@ private fun NowPlayingPane(
     onDlnaPause: () -> Unit,
     onDlnaStop: () -> Unit,
     onShareNowPlaying: () -> Unit,
+    onExportQueueM3u: () -> Unit,
     onBookmarkNow: () -> Unit,
     onPlayBookmark: (BookmarkStore.Bookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
@@ -1218,6 +1251,9 @@ private fun NowPlayingPane(
         )
         if (!desktop) {
             QuietButton("Share card", onShareNowPlaying, Modifier.fillMaxWidth())
+            if (!desktop && state.localQueueSize > 0) {
+                QuietButton("Export queue M3U", onExportQueueM3u, Modifier.fillMaxWidth())
+            }
         }
         if (!desktop) {
             Row(

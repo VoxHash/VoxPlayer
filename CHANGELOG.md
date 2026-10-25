@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (repeat mode long-press pin as preferred)
+- Further Android companion polish (shuffle long-press pin as preferred on)
+
+## [1.88.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Repeat preferred pin** — Off / All / One chips with long-press pin; preferred restored on cold start
 
 ## [1.87.0] - 2026-10-25
 

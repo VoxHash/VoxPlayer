@@ -70,6 +70,8 @@ data class PlayerUiState(
     val localQueue: List<QueueRow> = emptyList(),
     /** Player.REPEAT_MODE_OFF / ONE / ALL */
     val localRepeatMode: Int = Player.REPEAT_MODE_OFF,
+    /** Sticky preferred repeat; -1 = none. */
+    val localRepeatPreferred: Int = -1,
     val localShuffle: Boolean = false,
     /** Desktop-parity logical volume 0–200 */
     val localVolume: Int = LocalVolume.DEFAULT_PERCENT,
@@ -176,7 +178,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     ?: "all",
                 localSearchQuery = prefs.getString(PREF_HOME_SEARCH, "") ?: "",
                 homeAzLetter = prefs.getString(PREF_HOME_AZ, null)?.firstOrNull(),
-                localRepeatMode = prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF),
+                localRepeatMode = loadBootRepeatMode(),
+                localRepeatPreferred = loadPreferredRepeatMode() ?: -1,
                 localShuffle = prefs.getBoolean(PREF_SHUFFLE, false),
                 localVolume = LocalVolume.loadPercent(app),
                 localMuted = LocalVolume.loadMuted(app),
@@ -343,8 +346,16 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val controller = future.get()
                     controller.addListener(playerListener)
-                    controller.repeatMode = prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF)
+                    val bootRepeat = loadBootRepeatMode()
+                    controller.repeatMode = bootRepeat
+                    prefs.edit().putInt(PREF_REPEAT, bootRepeat).apply()
                     controller.shuffleModeEnabled = prefs.getBoolean(PREF_SHUFFLE, false)
+                    _state.update {
+                        it.copy(
+                            localRepeatMode = bootRepeat,
+                            localRepeatPreferred = loadPreferredRepeatMode() ?: -1,
+                        )
+                    }
                     _player.value = controller
                     syncUiFromPlayer(controller)
                     pushLocalVolumeToService()
@@ -898,6 +909,63 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             prefs.edit().putInt(PREF_REPEAT, next).apply()
             _state.update { it.copy(localRepeatMode = next) }
         }
+    }
+
+    fun setLocalRepeatMode(mode: Int) {
+        val next = normalizeRepeatMode(mode)
+        prefs.edit().putInt(PREF_REPEAT, next).apply()
+        _state.update { it.copy(localRepeatMode = next) }
+        withPlayer { p -> p.repeatMode = next }
+    }
+
+    /** Long-press: pin / clear preferred repeat mode (restored on cold start). */
+    fun setPreferredRepeatMode(mode: Int) {
+        val next = normalizeRepeatMode(mode)
+        val current = loadPreferredRepeatMode()
+        if (current != null && current == next) {
+            prefs.edit().remove(PREF_REPEAT_PREFERRED).apply()
+            _state.update {
+                it.copy(
+                    localRepeatPreferred = -1,
+                    statusToast = "Preferred repeat cleared",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        prefs.edit().putInt(PREF_REPEAT_PREFERRED, next).apply()
+        setLocalRepeatMode(next)
+        _state.update {
+            it.copy(
+                localRepeatPreferred = next,
+                statusToast = "Preferred · ${repeatLabel(next)}",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    fun pinCurrentRepeatMode() {
+        setPreferredRepeatMode(_state.value.localRepeatMode)
+    }
+
+    private fun loadBootRepeatMode(): Int =
+        loadPreferredRepeatMode() ?: prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF)
+            .let { normalizeRepeatMode(it) }
+
+    private fun loadPreferredRepeatMode(): Int? {
+        if (!prefs.contains(PREF_REPEAT_PREFERRED)) return null
+        return normalizeRepeatMode(prefs.getInt(PREF_REPEAT_PREFERRED, Player.REPEAT_MODE_OFF))
+    }
+
+    private fun normalizeRepeatMode(mode: Int): Int = when (mode) {
+        Player.REPEAT_MODE_ONE, Player.REPEAT_MODE_ALL -> mode
+        else -> Player.REPEAT_MODE_OFF
+    }
+
+    private fun repeatLabel(mode: Int): String = when (normalizeRepeatMode(mode)) {
+        Player.REPEAT_MODE_ONE -> "Repeat one"
+        Player.REPEAT_MODE_ALL -> "Repeat all"
+        else -> "Repeat off"
     }
 
     fun toggleLocalShuffle() {
@@ -2624,6 +2692,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         private const val TAG = "VoxPlayerBT"
         private const val PREF_REPEAT = "local_repeat_mode"
+        private const val PREF_REPEAT_PREFERRED = "local_repeat_preferred"
         private const val PREF_SHUFFLE = "local_shuffle"
         private const val PREF_HOME_FILTER = "home_filter"
         private const val PREF_HOME_SEARCH = "home_search"

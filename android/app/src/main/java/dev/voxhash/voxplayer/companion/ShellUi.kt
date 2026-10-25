@@ -367,6 +367,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 },
                                 onShuffle = vm::toggleLocalShuffle,
                                 onRepeat = vm::cycleLocalRepeat,
+                                onSetRepeat = vm::setLocalRepeatMode,
+                                onPinRepeat = vm::setPreferredRepeatMode,
                                 onVolDown = vm::localVolDown,
                                 onVolUp = vm::localVolUp,
                                 onMute = vm::toggleLocalMute,
@@ -1646,6 +1648,8 @@ private fun NowPlayingPane(
     onPlayPause: () -> Unit,
     onShuffle: () -> Unit,
     onRepeat: () -> Unit,
+    onSetRepeat: (Int) -> Unit,
+    onPinRepeat: (Int) -> Unit,
     onVolDown: () -> Unit,
     onVolUp: () -> Unit,
     onMute: () -> Unit,
@@ -1848,6 +1852,30 @@ private fun NowPlayingPane(
                     onRepeat,
                     Modifier.weight(1f),
                 )
+            }
+            Text(
+                "Tap repeat mode · long-press pin preferred (restored on start).",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                listOf(
+                    Media3Player.REPEAT_MODE_OFF to "Off",
+                    Media3Player.REPEAT_MODE_ALL to "All",
+                    Media3Player.REPEAT_MODE_ONE to "One",
+                ).forEach { (mode, label) ->
+                    RepeatModeChip(
+                        label = label,
+                        selected = state.localRepeatMode == mode,
+                        preferred = state.localRepeatPreferred == mode,
+                        onSelect = { onSetRepeat(mode) },
+                        onPin = { onPinRepeat(mode) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
             Text(
                 "Sound output",
@@ -2306,6 +2334,62 @@ private fun NowPlayingPane(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RepeatModeChip(
+    label: String,
+    selected: Boolean,
+    preferred: Boolean,
+    onSelect: () -> Unit,
+    onPin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val text = buildString {
+        if (selected) append("✓ ")
+        append(label)
+        if (preferred) append(" ★")
+    }
+    Text(
+        text,
+        modifier
+            .clip(VoxShapes.card)
+            .background(
+                when {
+                    preferred -> VoxColors.AccentSoft
+                    selected -> VoxColors.BgPanel
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                if (preferred) VoxColors.Accent else VoxColors.BorderSoft,
+                VoxShapes.card,
+            )
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPin()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append("Repeat ")
+                    append(label)
+                    if (selected) append(", selected")
+                    if (preferred) append(", preferred")
+                    append(". Double-tap to apply. Long-press to pin or clear preferred.")
+                }
+            }
+            .padding(horizontal = 6.dp, vertical = 10.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (preferred || selected) VoxColors.Accent else VoxColors.Text,
+        maxLines = 1,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

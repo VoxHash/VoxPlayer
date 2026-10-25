@@ -148,6 +148,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         PlayerUiState(
             remoteHost = prefs.getString("host", "192.168.1.1") ?: "192.168.1.1",
             remotePort = prefs.getString("port", "17890") ?: "17890",
+            localFilter = prefs.getString(PREF_HOME_FILTER, "all")
+                ?.takeIf { it in HOME_FILTERS }
+                ?: "all",
+            localSearchQuery = prefs.getString(PREF_HOME_SEARCH, "") ?: "",
             localRepeatMode = prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF),
             localShuffle = prefs.getBoolean(PREF_SHUFFLE, false),
             localVolume = LocalVolume.loadPercent(app),
@@ -466,11 +470,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(localPlaylists = playlistStore.load()) }
     }
 
-    fun setLocalFilter(f: String) = _state.update {
-        it.copy(localFilter = f, listsBrowseId = if (f == "lists") it.listsBrowseId else null)
+    fun setLocalFilter(f: String) {
+        val filter = if (f in HOME_FILTERS) f else "all"
+        prefs.edit().putString(PREF_HOME_FILTER, filter).apply()
+        _state.update {
+            it.copy(localFilter = filter, listsBrowseId = if (filter == "lists") it.listsBrowseId else null)
+        }
     }
 
-    fun setLocalSearchQuery(q: String) = _state.update { it.copy(localSearchQuery = q) }
+    fun setLocalSearchQuery(q: String) {
+        prefs.edit().putString(PREF_HOME_SEARCH, q).apply()
+        _state.update { it.copy(localSearchQuery = q) }
+    }
 
     fun playLocal(item: LocalMediaItem) {
         // Gapless queue: filtered library as Media3 playlist, start at the tapped item.
@@ -2232,6 +2243,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         private const val TAG = "VoxPlayerBT"
         private const val PREF_REPEAT = "local_repeat_mode"
         private const val PREF_SHUFFLE = "local_shuffle"
+        private const val PREF_HOME_FILTER = "home_filter"
+        private const val PREF_HOME_SEARCH = "home_search"
+        private val HOME_FILTERS = setOf(
+            "all", "audio", "video", "recent", "top", "week", "month", "lists",
+        )
         /** Soft duck when preferred headset unplugs while loud playback continues on speaker. */
         private const val ROUTE_FALLBACK_VOLUME_CAP = 40
     }

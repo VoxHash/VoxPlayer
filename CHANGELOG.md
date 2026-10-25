@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (persist Home filter + search across process death)
+- Further Android companion polish (remember Home A–Z letter scroll position)
+
+## [1.73.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Persist Home filter + search** — All / Audio / Video / history / lists filter and search query survive process death (local prefs)
 
 ## [1.72.0] - 2026-10-25
 

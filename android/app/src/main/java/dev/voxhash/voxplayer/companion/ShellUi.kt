@@ -852,23 +852,61 @@ private fun LocalLibraryPane(
             }
         }
 
+        val homeTitle = when {
+            state.localFilter == "recent" -> "Recently played"
+            state.localFilter == "top" -> "Most played"
+            state.localFilter == "week" -> "This week"
+            state.localFilter == "month" -> "This month"
+            listsFacet && state.listsBrowseId != null -> "List"
+            listsFacet -> "Lists"
+            state.localFilter == "audio" -> "Audio"
+            state.localFilter == "video" -> "Video"
+            else -> "Home"
+        }
+        val homeCount = when {
+            historyFacet -> historyRows.size
+            listsFacet && state.listsBrowseId != null -> 0
+            listsFacet -> state.localPlaylists.size
+            else -> filtered.size
+        }
+        val homeCountLabel = when {
+            listsFacet && state.listsBrowseId != null -> null
+            listsFacet -> "$homeCount folders"
+            historyFacet -> "$homeCount"
+            q.isNotEmpty() && state.localItems.isNotEmpty() ->
+                "$homeCount / ${state.localItems.size}"
+            else -> "$homeCount"
+        }
         Row(
             Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                when {
-                    state.localFilter == "recent" -> "Recently played · ${historyRows.size}"
-                    state.localFilter == "top" -> "Most played · ${historyRows.size}"
-                    state.localFilter == "week" -> "This week · ${historyRows.size}"
-                    state.localFilter == "month" -> "This month · ${historyRows.size}"
-                    listsFacet && state.listsBrowseId != null -> "List"
-                    listsFacet -> "Lists · ${state.localPlaylists.size} folders"
-                    else -> "Home · ${filtered.size} items"
-                },
+                homeTitle,
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
+            if (homeCountLabel != null) {
+                Text(
+                    homeCountLabel,
+                    Modifier
+                        .clip(VoxShapes.pill)
+                        .background(VoxColors.AccentSoft)
+                        .border(1.dp, VoxColors.Accent, VoxShapes.pill)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .semantics {
+                            contentDescription = when {
+                                listsFacet -> "$homeCount playlist folders"
+                                historyFacet -> "$homeCount history items"
+                                else -> "$homeCount library items shown"
+                            }
+                        },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = VoxColors.Accent,
+                    maxLines = 1,
+                )
+            }
             if (historyFacet && (
                     state.historyRecent.isNotEmpty() ||
                         state.historyTop.isNotEmpty() ||

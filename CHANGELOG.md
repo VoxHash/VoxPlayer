@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (Home item count chip in header)
+- Further Android companion polish (long-press library card for Add to list)
+
+## [1.76.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Home item count chip** — accent count pill beside the Home / facet title (shown / total when searching)
 
 ## [1.75.0] - 2026-10-25
 

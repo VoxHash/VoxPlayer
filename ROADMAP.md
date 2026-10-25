@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.75.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.76.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -163,6 +163,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 49. **Persist Home filter + search**: All/Audio/Video/history/lists filter and search query survive process death via local prefs (**Done 1.73.0**)
 50. **Remember Home A–Z letter**: restores last visible A–Z section after process death; rail highlights the saved letter (**Done 1.74.0**)
 51. **Home pull-to-refresh**: Material3 PullToRefreshBox reloads MediaStore library + local history/lists (**Done 1.75.0**)
+52. **Home item count chip**: accent count pill beside Home/facet title (shown / total when searching) (**Done 1.76.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

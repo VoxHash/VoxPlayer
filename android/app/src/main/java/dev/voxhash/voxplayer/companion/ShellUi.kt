@@ -1347,6 +1347,21 @@ private fun NowPlayingPane(
             }
         }
         Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (!desktop && title != "(nothing loaded)") {
+            PlaybackStatusChips(state = state, modifier = Modifier.fillMaxWidth())
+        }
+        if (!desktop && state.statusToast.isNotBlank()) {
+            Text(
+                state.statusToast,
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.Accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(VoxShapes.card)
+                    .background(VoxColors.AccentSoft)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
+        }
         if (!desktop && state.localArtist.isNotBlank()) {
             Text(
                 state.localArtist,
@@ -2075,6 +2090,47 @@ private fun TransportBar(
             Icon(Icons.Default.Devices, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.size(6.dp))
             Text("Connect")
+        }
+    }
+}
+
+@Composable
+private fun PlaybackStatusChips(
+    state: PlayerUiState,
+    modifier: Modifier = Modifier,
+) {
+    val eqLabel = EqualizerControl.PRESETS.firstOrNull { it.first == state.eqPreset }?.second ?: "Off"
+    val chips = buildList {
+        if (state.crossfadeEnabled) add("Fade ${CrossfadeControl.fadeLabel(state.fadeMs)}")
+        if (state.skipSilence) add("Skip silence")
+        if (kotlin.math.abs(state.playbackSpeed - 1f) > 0.001f) {
+            add(PlaybackSpeed.label(state.playbackSpeed))
+        }
+        if (state.eqPreset != EqualizerControl.PRESET_OFF) add("EQ $eqLabel")
+        if (state.localShuffle) add("Shuffle")
+        when (state.localRepeatMode) {
+            Media3Player.REPEAT_MODE_ONE -> add("Repeat one")
+            Media3Player.REPEAT_MODE_ALL -> add("Repeat all")
+        }
+    }
+    if (chips.isEmpty()) return
+    Row(
+        modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        chips.forEach { label ->
+            Text(
+                label,
+                Modifier
+                    .clip(VoxShapes.pill)
+                    .background(VoxColors.BgElevated)
+                    .border(1.dp, VoxColors.BorderSoft, VoxShapes.pill)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = VoxColors.TextSecondary,
+                maxLines = 1,
+            )
         }
     }
 }

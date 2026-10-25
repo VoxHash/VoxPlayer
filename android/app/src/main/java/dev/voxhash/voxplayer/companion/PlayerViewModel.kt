@@ -125,6 +125,8 @@ data class PlayerUiState(
     val syncedFeeds: List<SyncStore.SyncedFeed> = emptyList(),
     val syncBusy: Boolean = false,
     val syncMessage: String = "",
+    /** Short headset / toggle feedback (ephemeral status line). */
+    val statusToast: String = "",
 )
 
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
@@ -1433,16 +1435,43 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val skip = _state.value.skipSilence
         val fade = _state.value.fadeMs
         CrossfadeControl.save(getApplication(), enabled, skip, fade)
-        _state.update { it.copy(crossfadeEnabled = enabled) }
+        _state.update {
+            it.copy(
+                crossfadeEnabled = enabled,
+                statusToast = if (enabled) "Fade-in on" else "Fade-in off",
+            )
+        }
         sendCrossfadeCommand(enabled, skip, fade)
+        clearStatusToastLater()
     }
 
     fun setSkipSilence(enabled: Boolean) {
         val cross = _state.value.crossfadeEnabled
         val fade = _state.value.fadeMs
         CrossfadeControl.save(getApplication(), cross, enabled, fade)
-        _state.update { it.copy(skipSilence = enabled) }
+        _state.update {
+            it.copy(
+                skipSilence = enabled,
+                statusToast = if (enabled) {
+                    "Skip silence on — quiet gaps will be jumped"
+                } else {
+                    "Skip silence off"
+                },
+            )
+        }
         sendCrossfadeCommand(cross, enabled, fade)
+        clearStatusToastLater()
+    }
+
+    fun clearStatusToast() {
+        _state.update { it.copy(statusToast = "") }
+    }
+
+    private fun clearStatusToastLater() {
+        viewModelScope.launch {
+            delay(3_200L)
+            _state.update { s -> if (s.statusToast.isNotBlank()) s.copy(statusToast = "") else s }
+        }
     }
 
     fun setFadeMs(ms: Long) {
@@ -1457,7 +1486,13 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun setPlaybackSpeed(speed: Float) {
         val s = PlaybackSpeed.normalize(speed)
         PlaybackSpeed.save(getApplication(), s)
-        _state.update { it.copy(playbackSpeed = s) }
+        _state.update {
+            it.copy(
+                playbackSpeed = s,
+                statusToast = "Speed ${PlaybackSpeed.label(s)}",
+            )
+        }
+        clearStatusToastLater()
         val controller = player as? MediaController ?: return
         val args = Bundle().apply { putFloat(PlaybackSpeed.EXTRA_SPEED, s) }
         try {

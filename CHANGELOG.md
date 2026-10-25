@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (headset skip silence toast / playback status chips)
+- Further Android companion polish (queue clear confirmation / undo snackbar)
+
+## [1.60.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Playback status chips** on Now Playing (Fade / Skip silence / Speed / EQ / Shuffle / Repeat) plus short toast feedback when toggling skip-silence, fade-in, or speed
 
 ## [1.59.0] - 2026-10-24
 

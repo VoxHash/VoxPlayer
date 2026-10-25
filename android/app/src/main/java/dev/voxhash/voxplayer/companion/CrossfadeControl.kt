@@ -19,8 +19,11 @@ object CrossfadeControl {
     const val KEY_CROSSFADE = "crossfade_enabled"
     const val KEY_SKIP_SILENCE = "skip_silence"
     const val KEY_FADE_MS = "fade_ms"
+    /** Sticky preferred fade length (long-press). */
+    const val KEY_PREFERRED_FADE_MS = "preferred_fade_ms"
     const val FADE_STEPS = 12
     const val DEFAULT_FADE_MS = 450L
+    private const val NO_PREFERRED = -1L
 
     /** Selectable fade-in lengths (ms) with UI labels. */
     val FADE_OPTIONS: List<Pair<Long, String>> = listOf(
@@ -53,6 +56,34 @@ object CrossfadeControl {
                 .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getLong(KEY_FADE_MS, DEFAULT_FADE_MS),
         )
+
+    fun loadPreferredFadeMs(context: Context): Long? {
+        val raw = context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(KEY_PREFERRED_FADE_MS, NO_PREFERRED)
+        if (raw == NO_PREFERRED) return null
+        return normalizeFadeMs(raw)
+    }
+
+    fun savePreferredFadeMs(context: Context, fadeMs: Long) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_PREFERRED_FADE_MS, normalizeFadeMs(fadeMs))
+            .apply()
+    }
+
+    fun clearPreferredFadeMs(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_PREFERRED_FADE_MS)
+            .apply()
+    }
+
+    /** Preferred pin if set, else last selected fade. */
+    fun loadBootFadeMs(context: Context): Long =
+        loadPreferredFadeMs(context) ?: loadFadeMs(context)
 
     fun normalizeFadeMs(ms: Long): Long {
         if (FADE_OPTIONS.any { it.first == ms }) return ms

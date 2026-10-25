@@ -380,6 +380,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onToggleCrossfade = { vm.setCrossfadeEnabled(!state.crossfadeEnabled) },
                                 onToggleSkipSilence = { vm.setSkipSilence(!state.skipSilence) },
                                 onFadeMs = vm::setFadeMs,
+                                onPinFadeMs = vm::setPreferredFadeMs,
                                 onPlaybackSpeed = vm::setPlaybackSpeed,
                                 onPinPlaybackSpeed = vm::setPreferredPlaybackSpeed,
                                 onToggleDlna = { vm.setDlnaEnabled(!state.dlnaEnabled) },
@@ -1656,6 +1657,7 @@ private fun NowPlayingPane(
     onToggleCrossfade: () -> Unit,
     onToggleSkipSilence: () -> Unit,
     onFadeMs: (Long) -> Unit,
+    onPinFadeMs: (Long) -> Unit,
     onPlaybackSpeed: (Float) -> Unit,
     onPinPlaybackSpeed: (Float) -> Unit,
     onToggleDlna: () -> Unit,
@@ -1969,7 +1971,17 @@ private fun NowPlayingPane(
             }
             if (state.crossfadeEnabled) {
                 Text(
-                    "Fade length · ${CrossfadeControl.fadeLabel(state.fadeMs)} (${state.fadeMs} ms)",
+                    buildString {
+                        append("Tap to apply · long-press pin preferred. Fade ")
+                        append(CrossfadeControl.fadeLabel(state.fadeMs))
+                        append(" (")
+                        append(state.fadeMs)
+                        append(" ms)")
+                        if (state.fadeMsPreferred > 0L) {
+                            append(" · Preferred ")
+                            append(CrossfadeControl.fadeLabel(state.fadeMsPreferred))
+                        }
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = VoxColors.TextMuted,
                 )
@@ -1978,18 +1990,13 @@ private fun NowPlayingPane(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     CrossfadeControl.FADE_OPTIONS.forEach { (ms, label) ->
-                        val selected = state.fadeMs == ms
-                        Text(
-                            if (selected) "✓ $label" else label,
-                            Modifier
-                                .weight(1f)
-                                .clip(VoxShapes.card)
-                                .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
-                                .clickable { onFadeMs(ms) }
-                                .padding(horizontal = 6.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (selected) VoxColors.Accent else VoxColors.Text,
-                            maxLines = 1,
+                        FadePresetChip(
+                            label = label,
+                            selected = state.fadeMs == ms,
+                            preferred = state.fadeMsPreferred == ms,
+                            onSelect = { onFadeMs(ms) },
+                            onPin = { onPinFadeMs(ms) },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -2261,6 +2268,60 @@ private fun NowPlayingPane(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FadePresetChip(
+    label: String,
+    selected: Boolean,
+    preferred: Boolean,
+    onSelect: () -> Unit,
+    onPin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val text = buildString {
+        if (selected) append("✓ ")
+        append(label)
+        if (preferred) append(" ★")
+    }
+    Text(
+        text,
+        modifier
+            .clip(VoxShapes.card)
+            .background(
+                when {
+                    preferred -> VoxColors.AccentSoft
+                    selected -> VoxColors.BgPanel
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                if (preferred) VoxColors.Accent else VoxColors.BorderSoft,
+                VoxShapes.card,
+            )
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPin()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(label)
+                    if (selected) append(", selected")
+                    if (preferred) append(", preferred")
+                    append(". Double-tap to apply. Long-press to pin or clear preferred.")
+                }
+            }
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (preferred || selected) VoxColors.Accent else VoxColors.Text,
+        maxLines = 1,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

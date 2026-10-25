@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (fade-in duration long-press pin as preferred)
+- Further Android companion polish (sleep-timer duration long-press pin as preferred)
+
+## [1.86.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Fade preferred pin** — long-press a fade-in length to pin / clear preferred; restored on cold start, audio reapply, and preferred-sink reconnect
 
 ## [1.85.0] - 2026-10-25
 

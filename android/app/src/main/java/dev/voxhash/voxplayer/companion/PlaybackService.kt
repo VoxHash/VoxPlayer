@@ -209,6 +209,18 @@ class PlaybackService : MediaSessionService() {
                         playbackSpeed = PlaybackSpeed.load(this@PlaybackService)
                     }
                     mediaSession?.player?.let { PlaybackSpeed.apply(it, playbackSpeed) }
+                    val preferredFade = CrossfadeControl.loadPreferredFadeMs(this@PlaybackService)
+                    if (preferredFade != null) {
+                        fadeMs = preferredFade
+                        CrossfadeControl.save(
+                            this@PlaybackService,
+                            crossfadeEnabled,
+                            skipSilence,
+                            fadeMs,
+                        )
+                    } else {
+                        fadeMs = CrossfadeControl.loadFadeMs(this@PlaybackService)
+                    }
                     applyAudioChain()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -290,7 +302,8 @@ class PlaybackService : MediaSessionService() {
         equalizerApplier.setPreset(eqPreset)
         crossfadeEnabled = CrossfadeControl.loadCrossfade(this)
         skipSilence = CrossfadeControl.loadSkipSilence(this)
-        fadeMs = CrossfadeControl.loadFadeMs(this)
+        fadeMs = CrossfadeControl.loadBootFadeMs(this)
+        CrossfadeControl.save(this, crossfadeEnabled, skipSilence, fadeMs)
         playbackSpeed = PlaybackSpeed.loadBoot(this)
         PlaybackSpeed.save(this, playbackSpeed)
 
@@ -475,6 +488,11 @@ class PlaybackService : MediaSessionService() {
                 playbackSpeed = preferredSpeed
                 PlaybackSpeed.save(this, playbackSpeed)
                 mediaSession?.player?.let { PlaybackSpeed.apply(it, playbackSpeed) }
+            }
+            val preferredFade = CrossfadeControl.loadPreferredFadeMs(this)
+            if (preferredFade != null && preferredFade != fadeMs) {
+                fadeMs = preferredFade
+                CrossfadeControl.save(this, crossfadeEnabled, skipSilence, fadeMs)
             }
         }
     }

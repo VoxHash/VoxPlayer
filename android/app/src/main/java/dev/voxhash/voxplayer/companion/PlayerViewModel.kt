@@ -101,6 +101,8 @@ data class PlayerUiState(
     val crossfadeEnabled: Boolean = true,
     val skipSilence: Boolean = false,
     val fadeMs: Long = CrossfadeControl.DEFAULT_FADE_MS,
+    /** Sticky preferred fade length; -1 = none. */
+    val fadeMsPreferred: Long = -1L,
     val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
     /** Sticky preferred speed; NaN = none. */
     val playbackSpeedPreferred: Float = Float.NaN,
@@ -191,7 +193,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 localPlaylists = playlistStore.load(),
                 crossfadeEnabled = CrossfadeControl.loadCrossfade(app),
                 skipSilence = CrossfadeControl.loadSkipSilence(app),
-                fadeMs = CrossfadeControl.loadFadeMs(app),
+                fadeMs = CrossfadeControl.loadBootFadeMs(app),
+                fadeMsPreferred = CrossfadeControl.loadPreferredFadeMs(app) ?: -1L,
                 playbackSpeed = PlaybackSpeed.loadBoot(app),
                 playbackSpeedPreferred = PlaybackSpeed.loadPreferred(app) ?: Float.NaN,
                 themeMode = ThemePrefs.load(app),
@@ -1218,6 +1221,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 eqPreferredId = EqualizerControl.loadPreferred(getApplication()).orEmpty(),
                 playbackSpeed = PlaybackSpeed.loadBoot(getApplication()),
                 playbackSpeedPreferred = PlaybackSpeed.loadPreferred(getApplication()) ?: Float.NaN,
+                fadeMs = CrossfadeControl.loadBootFadeMs(getApplication()),
+                fadeMsPreferred = CrossfadeControl.loadPreferredFadeMs(getApplication()) ?: -1L,
             )
         }
         pushLocalVolumeToService()
@@ -2119,6 +2124,33 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         CrossfadeControl.save(getApplication(), cross, skip, fade)
         _state.update { it.copy(fadeMs = fade, crossfadeEnabled = true) }
         sendCrossfadeCommand(true, skip, fade)
+    }
+
+    /** Long-press: pin / clear preferred fade-in length. */
+    fun setPreferredFadeMs(ms: Long) {
+        val fade = CrossfadeControl.normalizeFadeMs(ms)
+        val app = getApplication<Application>()
+        val current = CrossfadeControl.loadPreferredFadeMs(app)
+        if (current != null && current == fade) {
+            CrossfadeControl.clearPreferredFadeMs(app)
+            _state.update {
+                it.copy(
+                    fadeMsPreferred = -1L,
+                    statusToast = "Preferred fade cleared",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        CrossfadeControl.savePreferredFadeMs(app, fade)
+        setFadeMs(fade)
+        _state.update {
+            it.copy(
+                fadeMsPreferred = fade,
+                statusToast = "Preferred fade · ${CrossfadeControl.fadeLabel(fade)}",
+            )
+        }
+        clearStatusToastLater()
     }
 
     fun setPlaybackSpeed(speed: Float) {

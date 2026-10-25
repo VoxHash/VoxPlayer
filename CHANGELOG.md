@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (queue row long-press Add to list)
+- Further Android companion polish (bookmark row long-press Add to list)
+
+## [1.80.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Queue row Add to list** — Up next row long-press opens the playlist picker (tap still plays; drag handle still reorders)
 
 ## [1.79.0] - 2026-10-25
 

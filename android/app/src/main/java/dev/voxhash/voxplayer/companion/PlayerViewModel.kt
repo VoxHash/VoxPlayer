@@ -1660,6 +1660,24 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         clearStatusToastLater()
     }
 
+    fun openAddToListFromQueueRow(row: QueueRow) {
+        if (row.uri.isBlank()) {
+            _state.update { it.copy(statusToast = "Queue item has no URI to save") }
+            clearStatusToastLater()
+            return
+        }
+        val fromLib = _state.value.localItems.find { it.uri.toString() == row.uri }
+        openAddToListFromTrack(
+            LocalPlaylistStore.Track(
+                uri = row.uri,
+                title = row.title,
+                artist = row.artist,
+                album = fromLib?.album.orEmpty(),
+                isVideo = fromLib?.isVideo == true,
+            ),
+        )
+    }
+
     fun dismissAddToList() {
         _state.update { it.copy(addToListPending = null, addToListExcludePlaylistId = null) }
     }

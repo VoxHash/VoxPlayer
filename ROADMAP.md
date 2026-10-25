@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.79.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.80.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -167,6 +167,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 53. **Long-press Add to list**: Home library card long-press opens playlist picker (existing folders or New list + add) (**Done 1.77.0**)
 54. **History card Add to list**: Recent / Top / Week / Month cards long-press the same playlist picker (**Done 1.78.0**)
 55. **Lists-browse Add to another list**: long-press a track in Lists (smart or folder) opens the picker; current folder is excluded (**Done 1.79.0**)
+56. **Queue row Add to list**: Up next row long-press opens the playlist picker (tap still plays; drag handle still reorders) (**Done 1.80.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

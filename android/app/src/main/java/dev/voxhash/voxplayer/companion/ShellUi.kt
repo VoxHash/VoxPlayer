@@ -397,6 +397,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onPlayQueueIndex = vm::playQueueIndex,
                                 onMoveQueue = vm::moveQueueItem,
                                 onRemoveQueue = vm::removeQueueItem,
+                                onAddQueueToList = vm::openAddToListFromQueueRow,
                                 onClearQueue = vm::requestClearLocalQueue,
                                 onCancelClearQueue = vm::cancelClearLocalQueue,
                                 onUndoClearQueue = vm::undoLastQueueChange,
@@ -1667,6 +1668,7 @@ private fun NowPlayingPane(
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (Int, Int) -> Unit,
     onRemoveQueue: (Int) -> Unit,
+    onAddQueueToList: (QueueRow) -> Unit,
     onClearQueue: () -> Unit,
     onCancelClearQueue: () -> Unit,
     onUndoClearQueue: () -> Unit,
@@ -2248,6 +2250,7 @@ private fun NowPlayingPane(
                                 onMoveUp = { onMoveQueue(row.index, row.index - 1) },
                                 onMoveDown = { onMoveQueue(row.index, row.index + 1) },
                                 onRemove = { onRemoveQueue(row.index) },
+                                onAddToList = { onAddQueueToList(row) },
                             )
                         }
                     }
@@ -2267,6 +2270,7 @@ private fun NowPlayingPane(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun QueueRowItem(
     row: QueueRow,
@@ -2278,6 +2282,7 @@ private fun QueueRowItem(
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onRemove: () -> Unit,
+    onAddToList: () -> Unit,
 ) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
@@ -2308,10 +2313,17 @@ private fun QueueRowItem(
                         append(row.artist)
                     }
                     if (row.isCurrent) append(", now playing")
-                    append(". Double-tap to play. Use drag handle or move buttons to reorder.")
+                    append(". Double-tap to play. Long-press to add to a list. Use drag handle or move buttons to reorder.")
                 }
             }
-            .clickable(enabled = !dragging, onClick = onPlay)
+            .combinedClickable(
+                enabled = !dragging,
+                onClick = onPlay,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onAddToList()
+                },
+            )
             .padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

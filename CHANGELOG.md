@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (bookmark row long-press Add to list)
+- Further Android companion polish (DLNA renderer row long-press set as default)
+
+## [1.81.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Bookmark row Add to list** — Now Playing bookmark row long-press opens the playlist picker
 
 ## [1.80.0] - 2026-10-25
 

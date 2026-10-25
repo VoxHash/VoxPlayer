@@ -29,10 +29,10 @@ A professional media player with advanced features including:
 
 Author: VoxHash
 License: MIT
-Version: 1.80.0
+Version: 1.81.0
 """
 
-__version__ = "1.80.0"
+__version__ = "1.81.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

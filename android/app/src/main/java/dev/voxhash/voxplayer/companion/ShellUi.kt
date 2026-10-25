@@ -391,6 +391,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onBookmarkNow = vm::bookmarkNow,
                                 onPlayBookmark = vm::playBookmark,
                                 onRemoveBookmark = vm::removeBookmark,
+                                onAddBookmarkToList = vm::openAddToListFromBookmark,
                                 onClearBookmarks = vm::clearBookmarks,
                                 onClearTrackResume = vm::clearTrackResume,
                                 onSeekLocal = vm::seekLocal,
@@ -1662,6 +1663,7 @@ private fun NowPlayingPane(
     onBookmarkNow: () -> Unit,
     onPlayBookmark: (BookmarkStore.Bookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
+    onAddBookmarkToList: (BookmarkStore.Bookmark) -> Unit,
     onClearBookmarks: () -> Unit,
     onClearTrackResume: () -> Unit,
     onSeekLocal: (Long) -> Unit,
@@ -2108,32 +2110,12 @@ private fun NowPlayingPane(
                 QuietButton("Clear all", onClearBookmarks, Modifier.weight(1f))
             }
             state.bookmarks.take(8).forEach { bm ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(VoxShapes.card)
-                        .background(VoxColors.BgElevated)
-                        .clickable { onPlayBookmark(bm) }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            bm.title,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            fmtBookmarkPos(bm.positionMs),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = VoxColors.TextMuted,
-                        )
-                    }
-                    IconButton(onClick = { onRemoveBookmark(bm.uri) }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Close, "Remove bookmark", tint = VoxColors.TextMuted)
-                    }
-                }
+                BookmarkRow(
+                    bookmark = bm,
+                    onPlay = { onPlayBookmark(bm) },
+                    onAddToList = { onAddBookmarkToList(bm) },
+                    onRemove = { onRemoveBookmark(bm.uri) },
+                )
             }
             Text("Lyrics", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
             if (state.lyricsLines.isEmpty()) {
@@ -2267,6 +2249,57 @@ private fun NowPlayingPane(
             "Engine: Media3 on-device · desktop via Wi‑Fi / Bluetooth",
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BookmarkRow(
+    bookmark: BookmarkStore.Bookmark,
+    onPlay: () -> Unit,
+    onAddToList: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(VoxShapes.card)
+            .background(VoxColors.BgElevated)
+            .combinedClickable(
+                onClick = onPlay,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onAddToList()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(bookmark.title)
+                    append(" at ")
+                    append(fmtBookmarkPos(bookmark.positionMs))
+                    append(". Double-tap to play. Long-press to add to a list.")
+                }
+            }
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                bookmark.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                fmtBookmarkPos(bookmark.positionMs),
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+        }
+        IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Default.Close, "Remove bookmark", tint = VoxColors.TextMuted)
+        }
     }
 }
 

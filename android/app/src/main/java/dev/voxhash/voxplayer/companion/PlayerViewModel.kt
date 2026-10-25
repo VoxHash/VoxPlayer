@@ -1678,6 +1678,24 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    fun openAddToListFromBookmark(bm: BookmarkStore.Bookmark) {
+        if (bm.uri.isBlank()) {
+            _state.update { it.copy(statusToast = "Bookmark has no URI to save") }
+            clearStatusToastLater()
+            return
+        }
+        val fromLib = _state.value.localItems.find { it.uri.toString() == bm.uri }
+        openAddToListFromTrack(
+            LocalPlaylistStore.Track(
+                uri = bm.uri,
+                title = bm.title,
+                artist = fromLib?.artist.orEmpty(),
+                album = fromLib?.album.orEmpty(),
+                isVideo = bm.isVideo || fromLib?.isVideo == true,
+            ),
+        )
+    }
+
     fun dismissAddToList() {
         _state.update { it.copy(addToListPending = null, addToListExcludePlaylistId = null) }
     }

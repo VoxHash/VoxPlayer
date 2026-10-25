@@ -102,6 +102,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Reorder queue:** Drag the ≡ handle on an Up next row (haptic on grab / each step), or use the arrow buttons. TalkBack announces position, title, and actions.
 
+**Jump to playing:** Up next auto-scrolls to the current track when it changes; use Jump to playing after scrolling away.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -1815,13 +1816,41 @@ private fun NowPlayingPane(
                     }
                 }
                 if (state.localQueue.size > 1) {
-                    Text(
-                        "Drag ≡ to reorder · arrows still work",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = VoxColors.TextMuted,
-                    )
+                    val queueListState = rememberLazyListState()
+                    val queueScope = rememberCoroutineScope()
+                    val currentQueueIndex = state.localQueue.indexOfFirst { it.isCurrent }
+                        .takeIf { it >= 0 }
+                        ?: state.localQueueIndex.coerceIn(0, state.localQueue.lastIndex)
+                    LaunchedEffect(currentQueueIndex, state.localQueue.size) {
+                        if (currentQueueIndex in state.localQueue.indices) {
+                            queueListState.animateScrollToItem(currentQueueIndex)
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "Drag ≡ to reorder · arrows still work",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = VoxColors.TextMuted,
+                            modifier = Modifier.weight(1f),
+                        )
+                        QuietButton(
+                            "Jump to playing",
+                            {
+                                queueScope.launch {
+                                    if (currentQueueIndex in state.localQueue.indices) {
+                                        queueListState.animateScrollToItem(currentQueueIndex)
+                                    }
+                                }
+                            },
+                        )
+                    }
                     LazyColumn(
-                        Modifier.weight(1f, fill = false).heightIn(max = 280.dp),
+                        state = queueListState,
+                        modifier = Modifier.weight(1f, fill = false).heightIn(max = 280.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         items(

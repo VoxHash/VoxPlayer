@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (scroll Up next to current track)
+- Further Android companion polish (queue position chip in Now Playing header)
+
+## [1.65.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Scroll Up next to current** — auto-scrolls to the playing row on track change; Jump to playing button
 
 ## [1.64.0] - 2026-10-25
 

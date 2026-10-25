@@ -902,17 +902,40 @@ private fun LocalLibraryPane(
 
         val cols = if (wide) 4 else 2
         if (historyFacet) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(cols),
-                contentPadding = PaddingValues(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                items(historyRows, key = { "h-${it.uri}" }) { entry ->
-                    HistoryCard(entry = entry, facet = state.localFilter, onClick = { onPlayHistory(entry) })
+            if (historyRows.isEmpty()) {
+                LibraryEmptyTips(
+                    filter = state.localFilter,
+                    searchActive = q.isNotEmpty(),
+                    onOpenFile = onOpenFile,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                )
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(cols),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(historyRows, key = { "h-${it.uri}" }) { entry ->
+                        HistoryCard(entry = entry, facet = state.localFilter, onClick = { onPlayHistory(entry) })
+                    }
                 }
             }
+        } else if (filtered.isEmpty()) {
+            LibraryEmptyTips(
+                filter = state.localFilter,
+                searchActive = q.isNotEmpty(),
+                libraryTotal = state.localItems.size,
+                onOpenFile = onOpenFile,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(vertical = 24.dp),
+            )
         } else {
             AzLibraryGrid(
                 items = filtered,
@@ -921,6 +944,43 @@ private fun LocalLibraryPane(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+    }
+}
+
+@Composable
+private fun LibraryEmptyTips(
+    filter: String,
+    searchActive: Boolean,
+    onOpenFile: () -> Unit,
+    modifier: Modifier = Modifier,
+    libraryTotal: Int = 0,
+) {
+    val (headline, body) = when {
+        searchActive -> "No matches" to "Try a shorter search, or clear the search field to see the full library."
+        filter == "recent" -> "No recent plays yet" to "Play something from Home or Open a file — Recently played fills in on this device only (no cloud)."
+        filter == "top" -> "No play counts yet" to "Most played builds from on-device listens. Keep playing tracks from your library to rank them here."
+        filter == "week" -> "Quiet week so far" to "Week stats use local listen events from the last 7 days. Nothing has been counted yet."
+        filter == "month" -> "Quiet month so far" to "Month stats use local listen events from the last 30 days. Play tracks on-device to fill this view."
+        filter == "audio" && libraryTotal > 0 -> "No audio in library" to "MediaStore found media, but nothing tagged as audio. Try All, or Open a file from storage / SAF."
+        filter == "video" && libraryTotal > 0 -> "No video in library" to "MediaStore found media, but nothing tagged as video. Try All, or Open a file from storage / SAF."
+        libraryTotal == 0 -> "Library is empty" to "Grant media access if prompted, or use Open to pick files via the system picker (GrapheneOS Storage Scopes friendly). No Google account required."
+        else -> "Nothing here" to "Switch filters or Open a file. Playback stays on-device with Media3 — no GMS."
+    }
+    Column(
+        modifier
+            .clip(VoxShapes.panel)
+            .background(VoxColors.BgElevated)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(headline, style = MaterialTheme.typography.titleLarge, color = VoxColors.Accent)
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = VoxColors.TextSecondary)
+        Text(
+            "Tips: All / Audio / Video browse MediaStore · Recent / Top / Week / Month are local history · Lists for folders & M3U",
+            style = MaterialTheme.typography.bodySmall,
+            color = VoxColors.TextMuted,
+        )
+        QuietButton("Open file…", onOpenFile, Modifier.fillMaxWidth())
     }
 }
 

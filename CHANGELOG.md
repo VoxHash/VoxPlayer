@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (car-mode large seek buttons already shipped; next: Home empty-state library tips)
+- Further Android companion polish (clear search affordance on Home)
+
+## [1.71.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Home empty-state library tips** — contextual empty panels for All / Audio / Video / history facets and search misses, with Open file CTA
 
 ## [1.70.0] - 2026-10-25
 

@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.70.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.71.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -158,6 +158,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 44. **Output-route chip**: Now Playing Out: System / device name chip; accent when a forced sink is selected (**Done 1.68.0**)
 45. **Tap status chips to jump**: tapping a Now Playing status chip scrolls the pane to that control section (**Done 1.69.0**)
 46. **Headset disconnect toast + soft duck**: preferred sink removal falls back to System default with toast; caps volume at 40% if still playing loud (**Done 1.70.0**)
+47. **Home empty-state library tips**: contextual empty panels for All/Audio/Video/history facets + search misses with Open file CTA (**Done 1.71.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

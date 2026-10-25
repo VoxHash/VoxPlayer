@@ -7,7 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (theme mode long-press pin as preferred)
+- Further Android companion polish (Home search persist already shipped; next: clear preferred pins from Settings strip)
+
+## [1.91.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Home filter preferred pin** — long-press All / Audio / Video / Recent / Top / Week / Month / Lists to pin / clear preferred; restored on cold start (library card Add to list remains long-press → playlist picker)
+
+## [1.90.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Theme preferred pin** — Dark / Light / System chips with long-press pin; preferred restored on cold start
 
 ## [1.89.0] - 2026-10-25
 

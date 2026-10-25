@@ -110,7 +110,7 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Clear search:** Home search field shows ✕ when a query is active.
 
-**Remember Home:** Filter chip, search query, and A–Z section letter persist across process death (on-device prefs).
+**Remember Home:** Filter chip, search query, and A–Z section letter persist across process death (on-device prefs). Long-press a filter chip to pin / clear preferred Home filter (★); preferred wins on cold start.
 
 **Pull to refresh:** On Home, pull down to reload MediaStore + local history / lists.
 
@@ -133,6 +133,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 **Repeat preferred pin:** Tap Off / All / One to set repeat; long-press to pin preferred (restored on cold start).
 
 **Shuffle preferred on:** Long-press Shuffle to pin / clear preferred-on. When pinned, cold start enables shuffle.
+
+**Theme preferred pin:** Tap Dark / Light / System; long-press to pin preferred (restored on cold start).
 
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 

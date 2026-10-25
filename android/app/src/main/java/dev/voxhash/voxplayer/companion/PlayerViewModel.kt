@@ -51,6 +51,8 @@ data class PlayerUiState(
     val tab: AppTab = AppTab.Local,
     val localItems: List<LocalMediaItem> = emptyList(),
     val localFilter: String = "all", // all|audio|video|recent|top|week|month|lists
+    /** Sticky preferred Home filter; empty = none (cold start uses preferred when set). */
+    val localFilterPreferred: String = "",
     /** Case-insensitive title / artist / album substring (Home library + history facets). */
     val localSearchQuery: String = "",
     /** Last Home A–Z section letter (null = top). */
@@ -113,6 +115,8 @@ data class PlayerUiState(
     /** Sticky preferred speed; NaN = none. */
     val playbackSpeedPreferred: Float = Float.NaN,
     val themeMode: ThemeMode = ThemeMode.Dark,
+    /** Sticky preferred theme; null encoded as empty preferredThemeLabel. */
+    val themePreferred: ThemeMode? = null,
     /** Multi-window / Quest panel / fold — for UI chrome (playback stays in service). */
     val multiWindow: Boolean = false,
     val foldSeparating: Boolean = false,
@@ -175,9 +179,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             PlayerUiState(
                 remoteHost = prefs.getString("host", "192.168.1.1") ?: "192.168.1.1",
                 remotePort = prefs.getString("port", "17890") ?: "17890",
-                localFilter = prefs.getString(PREF_HOME_FILTER, "all")
+                localFilter = loadBootHomeFilter(),
+                localFilterPreferred = prefs.getString(PREF_HOME_FILTER_PREFERRED, null)
                     ?.takeIf { it in HOME_FILTERS }
-                    ?: "all",
+                    .orEmpty(),
                 localSearchQuery = prefs.getString(PREF_HOME_SEARCH, "") ?: "",
                 homeAzLetter = prefs.getString(PREF_HOME_AZ, null)?.firstOrNull(),
                 localRepeatMode = loadBootRepeatMode(),
@@ -206,7 +211,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 fadeMsPreferred = CrossfadeControl.loadPreferredFadeMs(app) ?: -1L,
                 playbackSpeed = PlaybackSpeed.loadBoot(app),
                 playbackSpeedPreferred = PlaybackSpeed.loadPreferred(app) ?: Float.NaN,
-                themeMode = ThemePrefs.load(app),
+                themeMode = ThemePrefs.loadBoot(app),
+                themePreferred = ThemePrefs.loadPreferred(app),
                 dlnaEnabled = DlnaCastControl.loadEnabled(app),
                 dlnaDefaultId = DlnaCastControl.loadDefaultId(app),
                 dlnaSelectedId = DlnaCastControl.loadDefaultId(app),
@@ -546,6 +552,49 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(localFilter = filter, listsBrowseId = if (filter == "lists") it.listsBrowseId else null)
         }
+    }
+
+    /** Long-press: pin / clear preferred Home filter (restored on cold start). */
+    fun setPreferredLocalFilter(f: String) {
+        val filter = if (f in HOME_FILTERS) f else return
+        if (_state.value.localFilterPreferred == filter) {
+            prefs.edit().remove(PREF_HOME_FILTER_PREFERRED).apply()
+            _state.update {
+                it.copy(
+                    localFilterPreferred = "",
+                    statusToast = "Preferred Home filter cleared",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        prefs.edit().putString(PREF_HOME_FILTER_PREFERRED, filter).apply()
+        setLocalFilter(filter)
+        _state.update {
+            it.copy(
+                localFilterPreferred = filter,
+                statusToast = "Preferred Home · ${homeFilterLabel(filter)}",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    private fun loadBootHomeFilter(): String {
+        val preferred = prefs.getString(PREF_HOME_FILTER_PREFERRED, null)?.takeIf { it in HOME_FILTERS }
+        if (preferred != null) return preferred
+        return prefs.getString(PREF_HOME_FILTER, "all")?.takeIf { it in HOME_FILTERS } ?: "all"
+    }
+
+    private fun homeFilterLabel(filter: String): String = when (filter) {
+        "all" -> "All"
+        "audio" -> "Audio"
+        "video" -> "Video"
+        "recent" -> "Recent"
+        "top" -> "Top"
+        "week" -> "Week"
+        "month" -> "Month"
+        "lists" -> "Lists"
+        else -> filter
     }
 
     fun setLocalSearchQuery(q: String) {
@@ -2365,6 +2414,32 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(themeMode = mode) }
     }
 
+    /** Long-press: pin / clear preferred theme (restored on cold start). */
+    fun setPreferredThemeMode(mode: ThemeMode) {
+        val app = getApplication<Application>()
+        val current = ThemePrefs.loadPreferred(app)
+        if (current == mode) {
+            ThemePrefs.clearPreferred(app)
+            _state.update {
+                it.copy(
+                    themePreferred = null,
+                    statusToast = "Preferred theme cleared",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        ThemePrefs.savePreferred(app, mode)
+        setThemeMode(mode)
+        _state.update {
+            it.copy(
+                themePreferred = mode,
+                statusToast = "Preferred theme · ${mode.label()}",
+            )
+        }
+        clearStatusToastLater()
+    }
+
     fun cycleThemeMode() {
         val next = when (_state.value.themeMode) {
             ThemeMode.Dark -> ThemeMode.Light
@@ -2749,6 +2824,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         private const val PREF_SHUFFLE = "local_shuffle"
         private const val PREF_SHUFFLE_PREFERRED = "local_shuffle_preferred"
         private const val PREF_HOME_FILTER = "home_filter"
+        private const val PREF_HOME_FILTER_PREFERRED = "home_filter_preferred"
         private const val PREF_HOME_SEARCH = "home_search"
         private const val PREF_HOME_AZ = "home_az_letter"
         private val HOME_FILTERS = setOf(

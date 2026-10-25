@@ -262,6 +262,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                             state = state,
                             wide = wide,
                             onCycleTheme = vm::cycleThemeMode,
+                            onSetTheme = vm::setThemeMode,
+                            onPinTheme = vm::setPreferredThemeMode,
                         )
                     }
                     if (panelCompact) {
@@ -336,6 +338,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     },
                                     onExportPlaylistM3u = { id -> vm.exportPlaylistM3u(context, id) },
                                     onFilter = vm::setLocalFilter,
+                                    onPinFilter = vm::setPreferredLocalFilter,
                                     onSearch = vm::setLocalSearchQuery,
                                     onHomeAzLetter = vm::setHomeAzLetter,
                                     onRefreshLibrary = vm::reloadLocalLibrary,
@@ -786,6 +789,7 @@ private fun LocalLibraryPane(
     onImportM3u: () -> Unit,
     onExportPlaylistM3u: (String) -> Unit,
     onFilter: (String) -> Unit,
+    onPinFilter: (String) -> Unit,
     onSearch: (String) -> Unit,
     onHomeAzLetter: (Char?) -> Unit,
     onRefreshLibrary: () -> Unit,
@@ -848,22 +852,12 @@ private fun LocalLibraryPane(
                     "month" to "Month",
                     "lists" to "Lists",
                 ).forEach { (k, label) ->
-                    FilterChip(
+                    HomeFilterChip(
+                        label = label,
                         selected = state.localFilter == k,
-                        onClick = { onFilter(k) },
-                        label = { Text(label) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = VoxColors.AccentSoft,
-                            selectedLabelColor = VoxColors.Accent,
-                            containerColor = VoxColors.BgElevated,
-                            labelColor = VoxColors.TextSecondary,
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = state.localFilter == k,
-                            borderColor = VoxColors.BorderSoft,
-                            selectedBorderColor = VoxColors.Accent,
-                        ),
+                        preferred = state.localFilterPreferred == k,
+                        onSelect = { onFilter(k) },
+                        onPin = { onPinFilter(k) },
                     )
                 }
             }
@@ -2342,6 +2336,62 @@ private fun NowPlayingPane(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+private fun ThemeModeChip(
+    label: String,
+    selected: Boolean,
+    preferred: Boolean,
+    onSelect: () -> Unit,
+    onPin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val text = buildString {
+        if (selected) append("✓ ")
+        append(label)
+        if (preferred) append(" ★")
+    }
+    Text(
+        text,
+        modifier
+            .clip(VoxShapes.card)
+            .background(
+                when {
+                    preferred -> VoxColors.AccentSoft
+                    selected -> VoxColors.BgPanel
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                if (preferred) VoxColors.Accent else VoxColors.BorderSoft,
+                VoxShapes.card,
+            )
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPin()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(label)
+                    append(" theme")
+                    if (selected) append(", selected")
+                    if (preferred) append(", preferred")
+                    append(". Double-tap to apply. Long-press to pin or clear preferred.")
+                }
+            }
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (preferred || selected) VoxColors.Accent else VoxColors.Text,
+        maxLines = 1,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun ShufflePinChip(
     shuffleOn: Boolean,
     preferred: Boolean,
@@ -2782,6 +2832,63 @@ private fun DlnaRendererRow(
             .padding(horizontal = 10.dp, vertical = 8.dp),
         style = MaterialTheme.typography.bodySmall,
         color = if (isDefault || selected) VoxColors.Accent else VoxColors.Text,
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HomeFilterChip(
+    label: String,
+    selected: Boolean,
+    preferred: Boolean,
+    onSelect: () -> Unit,
+    onPin: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    val text = buildString {
+        append(label)
+        if (preferred) append(" ★")
+    }
+    Text(
+        text,
+        Modifier
+            .clip(VoxShapes.pill)
+            .background(
+                when {
+                    preferred -> VoxColors.AccentSoft
+                    selected -> VoxColors.AccentSoft
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                when {
+                    preferred -> VoxColors.Accent
+                    selected -> VoxColors.Accent
+                    else -> VoxColors.BorderSoft
+                },
+                VoxShapes.pill,
+            )
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPin()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(label)
+                    append(" filter")
+                    if (selected) append(", selected")
+                    if (preferred) append(", preferred")
+                    append(". Double-tap to apply. Long-press to pin or clear preferred.")
+                }
+            }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        style = MaterialTheme.typography.labelLarge,
+        color = if (preferred || selected) VoxColors.Accent else VoxColors.TextSecondary,
+        maxLines = 1,
     )
 }
 

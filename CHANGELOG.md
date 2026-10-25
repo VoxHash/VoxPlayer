@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (now-playing gesture seek scrubber)
+- Further Android companion polish (notification actions richness / custom actions polish)
+
+## [1.58.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **Seek scrubber** on Now Playing — Material3 Slider drag/tap seek with live preview (local Media3)
 
 ## [1.57.0] - 2026-10-24
 

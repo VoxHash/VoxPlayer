@@ -90,6 +90,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Theme:** Header → Theme cycles Dark / Light / System (ember charcoal or warm paper; follows OS when System).
 
+**Seek:** Now Playing scrubber — drag or tap to seek; shows a live preview while dragging.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

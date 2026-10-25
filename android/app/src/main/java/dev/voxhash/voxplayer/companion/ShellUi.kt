@@ -74,6 +74,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -81,7 +83,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -357,6 +362,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onRemoveBookmark = vm::removeBookmark,
                                 onClearBookmarks = vm::clearBookmarks,
                                 onClearTrackResume = vm::clearTrackResume,
+                                onSeekLocal = vm::seekLocal,
                                 onPlayQueueIndex = vm::playQueueIndex,
                                 onMoveQueue = vm::moveQueueItem,
                                 onRemoveQueue = vm::removeQueueItem,
@@ -1301,6 +1307,7 @@ private fun NowPlayingPane(
     onRemoveBookmark: (String) -> Unit,
     onClearBookmarks: () -> Unit,
     onClearTrackResume: () -> Unit,
+    onSeekLocal: (Long) -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (Int, Int) -> Unit,
     onRemoveQueue: (Int) -> Unit,
@@ -1359,6 +1366,14 @@ private fun NowPlayingPane(
             )
         }
         Text(pos, style = MaterialTheme.typography.bodySmall)
+        if (!desktop && title != "(nothing loaded)") {
+            SeekScrubber(
+                positionMs = state.localPositionMs,
+                durationMs = state.localDurationMs,
+                onSeek = onSeekLocal,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         if (!desktop && state.resumeHint.isNotBlank()) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -2062,6 +2077,66 @@ private fun TransportBar(
             Text("Connect")
         }
     }
+}
+
+@Composable
+private fun SeekScrubber(
+    positionMs: Long,
+    durationMs: Long,
+    onSeek: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val dur = durationMs.coerceAtLeast(0L)
+    val enabled = dur > 0L
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubFrac by remember { mutableFloatStateOf(0f) }
+    val liveFrac = if (dur > 0L) {
+        (positionMs.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val value = if (scrubbing) scrubFrac else liveFrac
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Slider(
+            value = value,
+            onValueChange = { v ->
+                if (!enabled) return@Slider
+                scrubbing = true
+                scrubFrac = v
+            },
+            onValueChangeFinished = {
+                if (!enabled) return@Slider
+                val target = (scrubFrac * dur).toLong().coerceIn(0L, dur)
+                onSeek(target)
+                scrubbing = false
+            },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+            colors = SliderDefaults.colors(
+                thumbColor = VoxColors.Accent,
+                activeTrackColor = VoxColors.Accent,
+                inactiveTrackColor = VoxColors.BorderSoft,
+                disabledThumbColor = VoxColors.TextMuted,
+                disabledActiveTrackColor = VoxColors.BorderSoft,
+                disabledInactiveTrackColor = VoxColors.BgHover,
+            ),
+        )
+        if (scrubbing && enabled) {
+            val preview = (scrubFrac * dur).toLong()
+            Text(
+                "Seek ${fmtMs(preview)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = VoxColors.Accent,
+            )
+        }
+    }
+}
+
+private fun fmtMs(ms: Long): String {
+    val total = (ms / 1000L).coerceAtLeast(0L)
+    val m = total / 60L
+    val s = total % 60L
+    return "%d:%02d".format(m, s)
 }
 
 @Composable

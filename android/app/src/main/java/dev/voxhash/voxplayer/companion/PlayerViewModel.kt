@@ -101,6 +101,7 @@ data class PlayerUiState(
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localPositionMs: Long = 0L,
+    val localDurationMs: Long = 0L,
     val localIsVideo: Boolean = false,
     val playerReady: Boolean = false,
     val error: String = "",
@@ -560,6 +561,22 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Gesture scrubber / tap-seek on Now Playing (local Media3 only). */
+    fun seekLocal(positionMs: Long) {
+        withPlayer { p ->
+            val dur = p.duration.coerceAtLeast(0L).let { if (it < 0) 0L else it }
+            val target = if (dur > 0L) positionMs.coerceIn(0L, dur) else positionMs.coerceAtLeast(0L)
+            p.seekTo(target)
+            _state.update {
+                it.copy(
+                    localPositionMs = target,
+                    localDurationMs = dur,
+                    localPositionLabel = "${fmt(target)} / ${fmt(dur)}",
+                )
+            }
+        }
+    }
+
     fun cycleLocalRepeat() {
         withPlayer { p ->
             val next = when (p.repeatMode) {
@@ -814,6 +831,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 localPlaying = p.isPlaying,
                 localPositionLabel = "${fmt(pos)} / ${fmt(dur)}",
                 localPositionMs = pos,
+                localDurationMs = dur,
                 sleepEndEpochMs = sleepEnd,
                 sleepRemainingLabel = SleepTimer.remainingLabel(sleepEnd),
             )

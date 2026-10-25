@@ -73,6 +73,8 @@ data class PlayerUiState(
     /** Sticky preferred repeat; -1 = none. */
     val localRepeatPreferred: Int = -1,
     val localShuffle: Boolean = false,
+    /** Sticky preferred shuffle-on (long-press); false = no pin. */
+    val localShufflePreferred: Boolean = false,
     /** Desktop-parity logical volume 0–200 */
     val localVolume: Int = LocalVolume.DEFAULT_PERCENT,
     val localMuted: Boolean = false,
@@ -180,7 +182,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 homeAzLetter = prefs.getString(PREF_HOME_AZ, null)?.firstOrNull(),
                 localRepeatMode = loadBootRepeatMode(),
                 localRepeatPreferred = loadPreferredRepeatMode() ?: -1,
-                localShuffle = prefs.getBoolean(PREF_SHUFFLE, false),
+                localShuffle = loadBootShuffle(),
+                localShufflePreferred = prefs.getBoolean(PREF_SHUFFLE_PREFERRED, false),
                 localVolume = LocalVolume.loadPercent(app),
                 localMuted = LocalVolume.loadMuted(app),
                 preferredAudioDeviceId = AudioRoute.loadPreferredId(app),
@@ -347,13 +350,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     val controller = future.get()
                     controller.addListener(playerListener)
                     val bootRepeat = loadBootRepeatMode()
+                    val bootShuffle = loadBootShuffle()
                     controller.repeatMode = bootRepeat
-                    prefs.edit().putInt(PREF_REPEAT, bootRepeat).apply()
-                    controller.shuffleModeEnabled = prefs.getBoolean(PREF_SHUFFLE, false)
+                    controller.shuffleModeEnabled = bootShuffle
+                    prefs.edit()
+                        .putInt(PREF_REPEAT, bootRepeat)
+                        .putBoolean(PREF_SHUFFLE, bootShuffle)
+                        .apply()
                     _state.update {
                         it.copy(
                             localRepeatMode = bootRepeat,
                             localRepeatPreferred = loadPreferredRepeatMode() ?: -1,
+                            localShuffle = bootShuffle,
+                            localShufflePreferred = prefs.getBoolean(PREF_SHUFFLE_PREFERRED, false),
                         )
                     }
                     _player.value = controller
@@ -977,6 +986,50 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             syncUiFromPlayer(p)
         }
     }
+
+    fun setLocalShuffle(enabled: Boolean) {
+        prefs.edit().putBoolean(PREF_SHUFFLE, enabled).apply()
+        _state.update { it.copy(localShuffle = enabled) }
+        withPlayer { p ->
+            p.shuffleModeEnabled = enabled
+            syncUiFromPlayer(p)
+        }
+    }
+
+    /**
+     * Long-press: pin / clear preferred shuffle-on.
+     * When pinned, cold start enables shuffle.
+     */
+    fun setPreferredShuffleOn() {
+        val pinned = prefs.getBoolean(PREF_SHUFFLE_PREFERRED, false)
+        if (pinned) {
+            prefs.edit().putBoolean(PREF_SHUFFLE_PREFERRED, false).apply()
+            _state.update {
+                it.copy(
+                    localShufflePreferred = false,
+                    statusToast = "Preferred shuffle cleared",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        prefs.edit().putBoolean(PREF_SHUFFLE_PREFERRED, true).apply()
+        setLocalShuffle(true)
+        _state.update {
+            it.copy(
+                localShufflePreferred = true,
+                statusToast = "Preferred · Shuffle on",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    private fun loadBootShuffle(): Boolean =
+        if (prefs.getBoolean(PREF_SHUFFLE_PREFERRED, false)) {
+            true
+        } else {
+            prefs.getBoolean(PREF_SHUFFLE, false)
+        }
 
     fun moveQueueItem(from: Int, to: Int) {
         withPlayer { p ->
@@ -2694,6 +2747,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         private const val PREF_REPEAT = "local_repeat_mode"
         private const val PREF_REPEAT_PREFERRED = "local_repeat_preferred"
         private const val PREF_SHUFFLE = "local_shuffle"
+        private const val PREF_SHUFFLE_PREFERRED = "local_shuffle_preferred"
         private const val PREF_HOME_FILTER = "home_filter"
         private const val PREF_HOME_SEARCH = "home_search"
         private const val PREF_HOME_AZ = "home_az_letter"

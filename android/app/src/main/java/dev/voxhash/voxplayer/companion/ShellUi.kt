@@ -366,6 +366,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     else vm.localPlayPause()
                                 },
                                 onShuffle = vm::toggleLocalShuffle,
+                                onPinShuffle = vm::setPreferredShuffleOn,
                                 onRepeat = vm::cycleLocalRepeat,
                                 onSetRepeat = vm::setLocalRepeatMode,
                                 onPinRepeat = vm::setPreferredRepeatMode,
@@ -1647,6 +1648,7 @@ private fun NowPlayingPane(
     player: Player?,
     onPlayPause: () -> Unit,
     onShuffle: () -> Unit,
+    onPinShuffle: () -> Unit,
     onRepeat: () -> Unit,
     onSetRepeat: (Int) -> Unit,
     onPinRepeat: (Int) -> Unit,
@@ -1838,10 +1840,12 @@ private fun NowPlayingPane(
                     .then(markSection("transport")),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                QuietButton(
-                    if (state.localShuffle) "Shuffle on" else "Shuffle",
-                    onShuffle,
-                    Modifier.weight(1f),
+                ShufflePinChip(
+                    shuffleOn = state.localShuffle,
+                    preferred = state.localShufflePreferred,
+                    onToggle = onShuffle,
+                    onPin = onPinShuffle,
+                    modifier = Modifier.weight(1f),
                 )
                 QuietButton(
                     when (state.localRepeatMode) {
@@ -1854,7 +1858,7 @@ private fun NowPlayingPane(
                 )
             }
             Text(
-                "Tap repeat mode · long-press pin preferred (restored on start).",
+                "Long-press Shuffle to pin preferred on. Tap Off/All/One · long-press pin preferred repeat.",
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
@@ -2334,6 +2338,60 @@ private fun NowPlayingPane(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ShufflePinChip(
+    shuffleOn: Boolean,
+    preferred: Boolean,
+    onToggle: () -> Unit,
+    onPin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val label = buildString {
+        if (shuffleOn) append("✓ ")
+        append(if (shuffleOn) "Shuffle on" else "Shuffle")
+        if (preferred) append(" ★")
+    }
+    Text(
+        label,
+        modifier
+            .height(44.dp)
+            .clip(VoxShapes.pill)
+            .background(
+                when {
+                    preferred -> VoxColors.AccentSoft
+                    shuffleOn -> VoxColors.BgPanel
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                if (preferred) VoxColors.Accent else VoxColors.BorderSoft,
+                VoxShapes.pill,
+            )
+            .combinedClickable(
+                onClick = onToggle,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPin()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(if (shuffleOn) "Shuffle on" else "Shuffle off")
+                    if (preferred) append(", preferred on")
+                    append(". Double-tap to toggle. Long-press to pin or clear preferred on.")
+                }
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (preferred || shuffleOn) VoxColors.Accent else VoxColors.Text,
+        maxLines = 1,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

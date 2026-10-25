@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.88.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.89.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -176,6 +176,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 62. **Fade preferred pin**: long-press a fade-in length to pin / clear preferred; restored on cold start, audio reapply, and preferred-sink reconnect (**Done 1.86.0**)
 63. **Sleep preferred pin**: long-press a sleep duration to pin / clear preferred; Start preferred re-arms that length (**Done 1.87.0**)
 64. **Repeat preferred pin**: Off / All / One chips with long-press pin; preferred restored on cold start (**Done 1.88.0**)
+65. **Shuffle preferred on**: long-press Shuffle to pin / clear preferred-on; cold start enables shuffle when pinned (**Done 1.89.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

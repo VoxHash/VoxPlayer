@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (shuffle long-press pin as preferred on)
+- Further Android companion polish (theme mode long-press pin as preferred)
+
+## [1.89.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Shuffle preferred on** — long-press Shuffle to pin / clear preferred-on; cold start enables shuffle when pinned
 
 ## [1.88.0] - 2026-10-25
 

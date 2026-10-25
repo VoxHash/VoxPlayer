@@ -15,11 +15,16 @@ import androidx.media3.session.SessionCommand
 /**
  * On-device sound output picker via [AudioManager] (no GMS / Google Cast).
  * Preferred device id is persisted; ``-1`` means system default routing.
+ * Optional sticky pin (type + product name) survives disconnect and re-applies
+ * when that sink reappears (device ids are ephemeral).
  */
 object AudioRoute {
     const val PREFS = "voxplayer_audio_route"
     const val KEY_DEVICE_ID = "device_id"
+    const val KEY_PIN_TYPE = "pin_type"
+    const val KEY_PIN_NAME = "pin_name"
     const val DEFAULT_DEVICE_ID = -1
+    private const val NO_PIN_TYPE = Int.MIN_VALUE
 
     const val ACTION_SET = "dev.voxhash.voxplayer.SET_AUDIO_DEVICE"
     val CMD_SET: SessionCommand = SessionCommand(ACTION_SET, Bundle.EMPTY)
@@ -65,6 +70,12 @@ object AudioRoute {
             }
     }
 
+    /** Sticky preferred sink identity (survives id churn / disconnect). */
+    data class Pin(val type: Int, val name: String) {
+        fun matches(device: Device): Boolean =
+            type == device.type && name.equals(device.name, ignoreCase = true)
+    }
+
     fun loadPreferredId(context: Context): Int =
         context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -76,6 +87,52 @@ object AudioRoute {
             .edit()
             .putInt(KEY_DEVICE_ID, id)
             .apply()
+    }
+
+    fun loadPin(context: Context): Pin? {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val type = prefs.getInt(KEY_PIN_TYPE, NO_PIN_TYPE)
+        if (type == NO_PIN_TYPE) return null
+        val name = prefs.getString(KEY_PIN_NAME, "")?.trim().orEmpty()
+        if (name.isEmpty()) return null
+        return Pin(type, name)
+    }
+
+    fun savePin(context: Context, pin: Pin) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_PIN_TYPE, pin.type)
+            .putString(KEY_PIN_NAME, pin.name)
+            .apply()
+    }
+
+    fun clearPin(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_PIN_TYPE)
+            .remove(KEY_PIN_NAME)
+            .apply()
+    }
+
+    fun pinForDevice(device: Device): Pin = Pin(device.type, device.name)
+
+    fun isPinned(device: Device, pin: Pin?): Boolean = pin != null && pin.matches(device)
+
+    /** First live sink matching the sticky pin, or null. */
+    fun findPinnedDevice(context: Context, pin: Pin? = loadPin(context)): Device? {
+        if (pin == null) return null
+        return listOutputDevices(context).firstOrNull { pin.matches(it) }
+    }
+
+    /**
+     * If a sticky pin is set and that sink is present, return its current id.
+     * Otherwise return [currentPreferredId] unchanged (or default when stale).
+     */
+    fun resolvePreferredId(context: Context, currentPreferredId: Int): Int {
+        val pinned = findPinnedDevice(context) ?: return currentPreferredId
+        return pinned.id
     }
 
     fun listOutputDevices(context: Context): List<Device> {

@@ -65,7 +65,8 @@ class PlaybackService : MediaSessionService() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
             Log.i(TAG, "audio devices added count=${addedDevices.size}")
             mainHandler.post {
-                // Preferred sink may have just (re)appeared — re-apply routing.
+                // Sticky pin may match a newly (re)connected sink — restore preferred id.
+                restorePinnedPreferredIfPresent()
                 applyAudioChain()
                 notifyDevicesChanged()
             }
@@ -89,6 +90,7 @@ class PlaybackService : MediaSessionService() {
                     Log.w(TAG, "preferred sink $preferredDeviceId gone — falling back to system default")
                     preferredDeviceId = AudioRoute.DEFAULT_DEVICE_ID
                     AudioRoute.savePreferredId(this@PlaybackService, preferredDeviceId)
+                    // Sticky pin is kept so reconnect can restore routing.
                 }
                 applyAudioChain()
                 notifyDevicesChanged(fallbackFrom = fallbackFrom)
@@ -190,6 +192,7 @@ class PlaybackService : MediaSessionService() {
                     volumePercent = LocalVolume.loadPercent(this@PlaybackService)
                     volumeMuted = LocalVolume.loadMuted(this@PlaybackService)
                     preferredDeviceId = AudioRoute.loadPreferredId(this@PlaybackService)
+                    restorePinnedPreferredIfPresent()
                     eqPreset = EqualizerControl.loadPreset(this@PlaybackService)
                     equalizerApplier.setPreset(eqPreset)
                     playbackSpeed = PlaybackSpeed.load(this@PlaybackService)
@@ -269,6 +272,7 @@ class PlaybackService : MediaSessionService() {
         volumePercent = LocalVolume.loadPercent(this)
         volumeMuted = LocalVolume.loadMuted(this)
         preferredDeviceId = AudioRoute.loadPreferredId(this)
+        restorePinnedPreferredIfPresent()
         eqPreset = EqualizerControl.loadPreset(this)
         equalizerApplier.setPreset(eqPreset)
         crossfadeEnabled = CrossfadeControl.loadCrossfade(this)
@@ -438,9 +442,21 @@ class PlaybackService : MediaSessionService() {
         player.skipSilenceEnabled = skipSilence
     }
 
+    /** When sticky pin matches a live sink, restore preferred id (device ids churn). */
+    private fun restorePinnedPreferredIfPresent() {
+        val resolved = AudioRoute.resolvePreferredId(this, preferredDeviceId)
+        if (resolved != preferredDeviceId && resolved != AudioRoute.DEFAULT_DEVICE_ID) {
+            Log.i(TAG, "sticky pin restored preferred sink id=$resolved")
+            preferredDeviceId = resolved
+            AudioRoute.savePreferredId(this, preferredDeviceId)
+        }
+    }
+
     private fun applyAudioChain() {
         val player = mediaSession?.player ?: return
+        restorePinnedPreferredIfPresent()
         // If preferred id is stale (not in current sinks), clear to default.
+        // Sticky pin is kept so a later reconnect can restore.
         if (preferredDeviceId != AudioRoute.DEFAULT_DEVICE_ID &&
             AudioRoute.findDevice(this, preferredDeviceId) == null
         ) {

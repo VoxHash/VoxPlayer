@@ -120,6 +120,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **DLNA default:** Long-press a renderer to pin / clear as default (persisted). Scan auto-selects the default when it is on the LAN.
 
+**Audio preferred pin:** Long-press a sound-output sink to pin / clear preferred (type + name). After disconnect fallback, reconnect restores that sink.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

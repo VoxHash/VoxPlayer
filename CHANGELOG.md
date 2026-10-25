@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (audio sink long-press pin as preferred)
+- Further Android companion polish (EQ preset long-press pin as preferred)
+
+## [1.83.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Audio sink preferred pin** — long-press a sink to pin / clear preferred by type+name; reconnect restores routing after disconnect
 
 ## [1.82.0] - 2026-10-25
 

@@ -76,6 +76,9 @@ data class PlayerUiState(
     val localMuted: Boolean = false,
     val audioDevices: List<AudioRoute.Device> = emptyList(),
     val preferredAudioDeviceId: Int = AudioRoute.DEFAULT_DEVICE_ID,
+    /** Sticky preferred sink (type+name); survives disconnect / id churn. Empty name = none. */
+    val audioPinType: Int = Int.MIN_VALUE,
+    val audioPinName: String = "",
     val eqPreset: String = EqualizerControl.PRESET_OFF,
     val sleepEndEpochMs: Long = 0L,
     val sleepRemainingLabel: String = "Off",
@@ -155,39 +158,44 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val playlistStore = LocalPlaylistStore(app)
     private val bt = BluetoothControl(app)
     private val _state = MutableStateFlow(
-        PlayerUiState(
-            remoteHost = prefs.getString("host", "192.168.1.1") ?: "192.168.1.1",
-            remotePort = prefs.getString("port", "17890") ?: "17890",
-            localFilter = prefs.getString(PREF_HOME_FILTER, "all")
-                ?.takeIf { it in HOME_FILTERS }
-                ?: "all",
-            localSearchQuery = prefs.getString(PREF_HOME_SEARCH, "") ?: "",
-            homeAzLetter = prefs.getString(PREF_HOME_AZ, null)?.firstOrNull(),
-            localRepeatMode = prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF),
-            localShuffle = prefs.getBoolean(PREF_SHUFFLE, false),
-            localVolume = LocalVolume.loadPercent(app),
-            localMuted = LocalVolume.loadMuted(app),
-            preferredAudioDeviceId = AudioRoute.loadPreferredId(app),
-            eqPreset = EqualizerControl.loadPreset(app),
-            sleepEndEpochMs = SleepTimer.loadEndEpochMs(app),
-            sleepRemainingLabel = SleepTimer.remainingLabel(SleepTimer.loadEndEpochMs(app)),
-            bookmarks = bookmarkStore.load(),
-            historyRecent = historyStore.recentlyPlayed(),
-            historyTop = historyStore.mostPlayed(),
-            historyWeek = historyStore.weekFacet(),
-            historyMonth = historyStore.monthFacet(),
-            localPlaylists = playlistStore.load(),
-            crossfadeEnabled = CrossfadeControl.loadCrossfade(app),
-            skipSilence = CrossfadeControl.loadSkipSilence(app),
-            fadeMs = CrossfadeControl.loadFadeMs(app),
-            playbackSpeed = PlaybackSpeed.load(app),
-            themeMode = ThemePrefs.load(app),
-            dlnaEnabled = DlnaCastControl.loadEnabled(app),
-            dlnaDefaultId = DlnaCastControl.loadDefaultId(app),
-            dlnaSelectedId = DlnaCastControl.loadDefaultId(app),
-            syncedPlaylists = syncStore.loadPlaylists(),
-            syncedFeeds = syncStore.loadPodcasts(),
-        ),
+        run {
+            val audioPin = AudioRoute.loadPin(app)
+            PlayerUiState(
+                remoteHost = prefs.getString("host", "192.168.1.1") ?: "192.168.1.1",
+                remotePort = prefs.getString("port", "17890") ?: "17890",
+                localFilter = prefs.getString(PREF_HOME_FILTER, "all")
+                    ?.takeIf { it in HOME_FILTERS }
+                    ?: "all",
+                localSearchQuery = prefs.getString(PREF_HOME_SEARCH, "") ?: "",
+                homeAzLetter = prefs.getString(PREF_HOME_AZ, null)?.firstOrNull(),
+                localRepeatMode = prefs.getInt(PREF_REPEAT, Player.REPEAT_MODE_OFF),
+                localShuffle = prefs.getBoolean(PREF_SHUFFLE, false),
+                localVolume = LocalVolume.loadPercent(app),
+                localMuted = LocalVolume.loadMuted(app),
+                preferredAudioDeviceId = AudioRoute.loadPreferredId(app),
+                audioPinType = audioPin?.type ?: Int.MIN_VALUE,
+                audioPinName = audioPin?.name.orEmpty(),
+                eqPreset = EqualizerControl.loadPreset(app),
+                sleepEndEpochMs = SleepTimer.loadEndEpochMs(app),
+                sleepRemainingLabel = SleepTimer.remainingLabel(SleepTimer.loadEndEpochMs(app)),
+                bookmarks = bookmarkStore.load(),
+                historyRecent = historyStore.recentlyPlayed(),
+                historyTop = historyStore.mostPlayed(),
+                historyWeek = historyStore.weekFacet(),
+                historyMonth = historyStore.monthFacet(),
+                localPlaylists = playlistStore.load(),
+                crossfadeEnabled = CrossfadeControl.loadCrossfade(app),
+                skipSilence = CrossfadeControl.loadSkipSilence(app),
+                fadeMs = CrossfadeControl.loadFadeMs(app),
+                playbackSpeed = PlaybackSpeed.load(app),
+                themeMode = ThemePrefs.load(app),
+                dlnaEnabled = DlnaCastControl.loadEnabled(app),
+                dlnaDefaultId = DlnaCastControl.loadDefaultId(app),
+                dlnaSelectedId = DlnaCastControl.loadDefaultId(app),
+                syncedPlaylists = syncStore.loadPlaylists(),
+                syncedFeeds = syncStore.loadPodcasts(),
+            )
+        },
     )
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
@@ -1075,7 +1083,16 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             Log.w(TAG, "listOutputDevices failed", e)
             emptyList()
         }
-        _state.update { it.copy(audioDevices = devices) }
+        val pin = AudioRoute.loadPin(ctx)
+        val preferred = AudioRoute.loadPreferredId(ctx)
+        _state.update {
+            it.copy(
+                audioDevices = devices,
+                preferredAudioDeviceId = preferred,
+                audioPinType = pin?.type ?: Int.MIN_VALUE,
+                audioPinName = pin?.name.orEmpty(),
+            )
+        }
     }
 
     fun setPreferredAudioDevice(deviceId: Int) {
@@ -1088,6 +1105,40 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             Log.w(TAG, "SET_AUDIO_DEVICE failed", e)
         }
+    }
+
+    /** Long-press: pin / clear sticky preferred sink (type + name; reconnect restores). */
+    fun setPinnedAudioDevice(deviceId: Int) {
+        if (deviceId == AudioRoute.DEFAULT_DEVICE_ID) return
+        val app = getApplication<Application>()
+        val device = _state.value.audioDevices.firstOrNull { it.id == deviceId } ?: run {
+            refreshAudioDevices()
+            _state.value.audioDevices.firstOrNull { it.id == deviceId }
+        } ?: return
+        val current = AudioRoute.loadPin(app)
+        val next = AudioRoute.pinForDevice(device)
+        if (current != null && current.matches(device)) {
+            AudioRoute.clearPin(app)
+            _state.update {
+                it.copy(
+                    audioPinType = Int.MIN_VALUE,
+                    audioPinName = "",
+                    statusToast = "Preferred sink cleared",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        AudioRoute.savePin(app, next)
+        setPreferredAudioDevice(deviceId)
+        _state.update {
+            it.copy(
+                audioPinType = next.type,
+                audioPinName = next.name,
+                statusToast = "Preferred · ${device.name}",
+            )
+        }
+        clearStatusToastLater()
     }
 
     fun setEqPreset(preset: String) {
@@ -1123,11 +1174,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     /** Quest panel refocus / activity resume: refresh sinks and re-bind audio chain. */
     fun reapplyLocalAudio() {
         refreshAudioDevices()
+        val pin = AudioRoute.loadPin(getApplication())
         _state.update {
             it.copy(
                 localVolume = LocalVolume.loadPercent(getApplication()),
                 localMuted = LocalVolume.loadMuted(getApplication()),
                 preferredAudioDeviceId = AudioRoute.loadPreferredId(getApplication()),
+                audioPinType = pin?.type ?: Int.MIN_VALUE,
+                audioPinName = pin?.name.orEmpty(),
                 eqPreset = EqualizerControl.loadPreset(getApplication()),
             )
         }

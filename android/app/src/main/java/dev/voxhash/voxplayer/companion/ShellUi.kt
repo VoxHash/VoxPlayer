@@ -372,6 +372,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onMute = vm::toggleLocalMute,
                                 onRefreshDevices = vm::refreshAudioDevices,
                                 onSelectDevice = vm::setPreferredAudioDevice,
+                                onPinDevice = vm::setPinnedAudioDevice,
                                 onEqPreset = vm::setEqPreset,
                                 onSleepMinutes = vm::setSleepTimerMinutes,
                                 onClearSleep = vm::clearSleepTimer,
@@ -1645,6 +1646,7 @@ private fun NowPlayingPane(
     onMute: () -> Unit,
     onRefreshDevices: () -> Unit,
     onSelectDevice: (Int) -> Unit,
+    onPinDevice: (Int) -> Unit,
     onEqPreset: (String) -> Unit,
     onSleepMinutes: (Int) -> Unit,
     onClearSleep: () -> Unit,
@@ -1844,7 +1846,7 @@ private fun NowPlayingPane(
                 modifier = markSection("out"),
             )
             Text(
-                "Force a sink below, or use System default so Android picks (e.g. BT when connected).",
+                "Tap to route. Long-press to pin preferred (reconnect restores by name).",
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
@@ -1856,7 +1858,10 @@ private fun NowPlayingPane(
                 QuietButton("Refresh sinks", onRefreshDevices)
             }
             val usingDefault = state.preferredAudioDeviceId == AudioRoute.DEFAULT_DEVICE_ID
+            val pinActive = state.audioPinName.isNotEmpty()
             val selectedName = when {
+                usingDefault && pinActive ->
+                    "Routing: System default (waiting · ${state.audioPinName})"
                 usingDefault -> "Routing: System default"
                 else -> state.audioDevices.firstOrNull { it.id == state.preferredAudioDeviceId }
                     ?.let { "Routing: ${it.name} · ${it.typeLabel}" }
@@ -1883,18 +1888,15 @@ private fun NowPlayingPane(
                 )
                 devices.forEach { dev ->
                     val selected = state.preferredAudioDeviceId == dev.id
-                    Text(
-                        if (selected) "✓ ${dev.name} · ${dev.typeLabel}" else "${dev.name} · ${dev.typeLabel}",
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(VoxShapes.card)
-                            .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
-                            .clickable { onSelectDevice(dev.id) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (selected) VoxColors.Accent else VoxColors.Text,
+                    val pinned = state.audioPinName.isNotEmpty() &&
+                        state.audioPinType == dev.type &&
+                        state.audioPinName.equals(dev.name, ignoreCase = true)
+                    AudioSinkRow(
+                        device = dev,
+                        selected = selected,
+                        pinned = pinned,
+                        onSelect = { onSelectDevice(dev.id) },
+                        onPin = { onPinDevice(dev.id) },
                     )
                 }
             }
@@ -2247,6 +2249,65 @@ private fun NowPlayingPane(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AudioSinkRow(
+    device: AudioRoute.Device,
+    selected: Boolean,
+    pinned: Boolean,
+    onSelect: () -> Unit,
+    onPin: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    val label = buildString {
+        if (selected) append("✓ ")
+        append(device.name)
+        append(" · ")
+        append(device.typeLabel)
+        if (pinned) append(" · Preferred")
+    }
+    Text(
+        label,
+        Modifier
+            .fillMaxWidth()
+            .clip(VoxShapes.card)
+            .background(
+                when {
+                    pinned -> VoxColors.AccentSoft
+                    selected -> VoxColors.BgPanel
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                if (pinned) VoxColors.Accent else VoxColors.BorderSoft,
+                VoxShapes.card,
+            )
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPin()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(device.name)
+                    append(", ")
+                    append(device.typeLabel)
+                    if (selected) append(", selected")
+                    if (pinned) append(", preferred")
+                    append(". Double-tap to route. Long-press to pin or clear preferred.")
+                }
+            }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (pinned || selected) VoxColors.Accent else VoxColors.Text,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -116,6 +116,12 @@ const val WIDE_SHELL_MIN_DP = 700
 /** Landscape car / dash layout without GMS Auto (wide + landscape). */
 const val CAR_SHELL_MIN_DP = 900
 
+/**
+ * Quest 2D panel / multi-window strip: when window height is below this, use a
+ * compact shell (hide tall chrome) so transport + library stay usable.
+ */
+const val PANEL_COMPACT_MAX_HEIGHT_DP = 520
+
 @Composable
 fun VoxTheme(content: @Composable () -> Unit) {
     androidx.compose.material3.MaterialTheme(

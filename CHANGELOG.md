@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (Quest panel / foldable multi-window edge cases)
+- Further Android companion polish (offline artwork / album grid thumbnails from MediaStore)
+
+## [1.45.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: Quest panel + foldable multi-window polish — Jetpack WindowManager fold/multi-window flags; compact panel chrome when window height is short; expanded `configChanges` so resize/fold does not recreate the activity; hinge side padding; audio chain rebind on config / multi-window changes
 
 ## [1.44.1] - 2026-10-24
 

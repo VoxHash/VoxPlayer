@@ -1,6 +1,7 @@
 package dev.voxhash.voxplayer.companion
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -36,6 +37,22 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         // Quest panel refocus / phone return: re-bind preferred sink + EQ/volume.
+        vm.reapplyLocalAudio()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Fold / multi-window / Quest panel resize — keep playback + audio chain alive.
+        vm.onWindowLayoutChanged(
+            multiWindow = isInMultiWindowMode,
+            orientation = newConfig.orientation,
+        )
+        vm.reapplyLocalAudio()
+    }
+
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        vm.onWindowLayoutChanged(multiWindow = isInMultiWindowMode, orientation = newConfig.orientation)
         vm.reapplyLocalAudio()
     }
 

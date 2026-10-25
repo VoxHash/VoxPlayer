@@ -145,15 +145,31 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         }
     }
 
+    val windowLayout = rememberWindowLayoutState()
+    LaunchedEffect(windowLayout.foldSeparating, windowLayout.multiWindow) {
+        vm.updateFoldLayout(windowLayout.foldSeparating)
+        vm.onWindowLayoutChanged(
+            multiWindow = windowLayout.multiWindow,
+            orientation = context.resources.configuration.orientation,
+        )
+    }
+
     BoxWithConstraints(Modifier.fillMaxSize().background(VoxColors.BgApp)) {
         val wide = maxWidth >= WIDE_SHELL_MIN_DP.dp
-        val carMode = maxWidth >= CAR_SHELL_MIN_DP.dp && maxWidth > maxHeight * 1.15f
+        // Quest short panel / multi-window strip: keep transport usable, skip tall chrome.
+        val panelCompact = maxHeight < PANEL_COMPACT_MAX_HEIGHT_DP.dp ||
+            windowLayout.multiWindow && maxHeight < 640.dp
+        // Driving layout only when tall enough — never in a short Quest panel / split.
+        val carMode = !panelCompact &&
+            maxWidth >= CAR_SHELL_MIN_DP.dp &&
+            maxWidth > maxHeight * 1.15f
+        val foldPad = if (windowLayout.foldSeparating) 28.dp else 0.dp
         Scaffold(
             containerColor = VoxColors.BgApp,
             bottomBar = {
                 if (!carMode) TransportBar(
                     state = state,
-                    wide = wide,
+                    wide = wide && !panelCompact,
                     onConnect = { vm.openConnect(true) },
                     onPlayPause = {
                         if (state.activeOutput.startsWith("Desktop")) vm.remotePlayPause()
@@ -190,17 +206,28 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
             Row(
                 Modifier
                     .fillMaxSize()
-                    .padding(pad),
+                    .padding(pad)
+                    .padding(horizontal = foldPad),
             ) {
-                LeftRail(
-                    state = state,
-                    onHome = { vm.setTab(AppTab.Local) },
-                    onDesktop = { vm.setTab(AppTab.Connect) },
-                    onOpen = { openDoc.launch(arrayOf("audio/*", "video/*")) },
-                    onConnect = { vm.openConnect(true) },
-                )
+                if (!panelCompact) {
+                    LeftRail(
+                        state = state,
+                        onHome = { vm.setTab(AppTab.Local) },
+                        onDesktop = { vm.setTab(AppTab.Connect) },
+                        onOpen = { openDoc.launch(arrayOf("audio/*", "video/*")) },
+                        onConnect = { vm.openConnect(true) },
+                    )
+                }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    if (!carMode) ShellHeader(state = state, wide = wide)
+                    if (!carMode && !panelCompact) ShellHeader(state = state, wide = wide)
+                    if (panelCompact) {
+                        CompactPanelChrome(
+                            state = state,
+                            onHome = { vm.setTab(AppTab.Local) },
+                            onDesktop = { vm.setTab(AppTab.Connect) },
+                            onConnect = { vm.openConnect(true) },
+                        )
+                    }
                     if (state.error.isNotBlank()) {
                         Text(
                             state.error,
@@ -264,7 +291,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 AppTab.Connect -> DesktopRemotePane(state, vm, wide)
                             }
                         }
-                        if (wide && !carMode) {
+                        if (wide && !carMode && !panelCompact) {
                             NowPlayingPane(
                                 state = state,
                                 player = player,
@@ -324,6 +351,44 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                 },
             )
         }
+    }
+}
+
+@Composable
+private fun CompactPanelChrome(
+    state: PlayerUiState,
+    onHome: () -> Unit,
+    onDesktop: () -> Unit,
+    onConnect: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(VoxColors.BgPanel)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("VX", color = VoxColors.Accent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        QuietButton(
+            if (state.tab == AppTab.Local) "· Home" else "Home",
+            onHome,
+        )
+        QuietButton(
+            if (state.tab == AppTab.Connect) "· Desktop" else "Desktop",
+            onDesktop,
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            when {
+                state.multiWindow -> "Split"
+                state.foldSeparating -> "Fold"
+                else -> "Panel"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = VoxColors.TextMuted,
+        )
+        QuietButton("Connect", onConnect)
     }
 }
 

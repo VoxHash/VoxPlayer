@@ -80,6 +80,9 @@ data class PlayerUiState(
     val lyricsActiveIndex: Int = -1,
     val crossfadeEnabled: Boolean = true,
     val skipSilence: Boolean = false,
+    /** Multi-window / Quest panel / fold — for UI chrome (playback stays in service). */
+    val multiWindow: Boolean = false,
+    val foldSeparating: Boolean = false,
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localPositionMs: Long = 0L,
@@ -656,6 +659,22 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             Log.w(TAG, "SET_EQ_PRESET failed", e)
         }
+    }
+
+    /** Quest panel / foldable / multi-window: record layout flags; playback stays in the service. */
+    fun onWindowLayoutChanged(multiWindow: Boolean, orientation: Int) {
+        _state.update {
+            it.copy(
+                multiWindow = multiWindow,
+                // Orientation kept for diagnostics; Compose uses BoxWithConstraints for layout.
+            )
+        }
+        Log.i(TAG, "window layout multiWindow=$multiWindow orientation=$orientation")
+    }
+
+    fun updateFoldLayout(foldSeparating: Boolean) {
+        if (_state.value.foldSeparating == foldSeparating) return
+        _state.update { it.copy(foldSeparating = foldSeparating) }
     }
 
     /** Quest panel refocus / activity resume: refresh sinks and re-bind audio chain. */

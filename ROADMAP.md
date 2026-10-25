@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.91.1**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.92.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -179,6 +179,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 65. **Shuffle preferred on**: long-press Shuffle to pin / clear preferred-on; cold start enables shuffle when pinned (**Done 1.89.0**)
 66. **Theme preferred pin**: Dark / Light / System chips with long-press pin; preferred restored on cold start (**Done 1.90.0**)
 67. **Home filter preferred pin**: long-press All / Audio / Video / Recent / Top / Week / Month / Lists to pin / clear preferred; restored on cold start (**Done 1.91.0**)
+68. **Clear preferred pins**: Now Playing Settings strip clears Home filter / theme / shuffle / repeat / sink / EQ / speed / fade / sleep / DLNA default pins in one tap (**Done 1.92.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

@@ -2449,6 +2449,41 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         setThemeMode(next)
     }
 
+    /** Settings strip: clear every preferred pin (Home filter, theme, transport, audio, EQ, speed, fade, sleep, DLNA). */
+    fun clearAllPreferredPins() {
+        val app = getApplication<Application>()
+        prefs.edit()
+            .remove(PREF_HOME_FILTER_PREFERRED)
+            .remove(PREF_REPEAT_PREFERRED)
+            .putBoolean(PREF_SHUFFLE_PREFERRED, false)
+            .apply()
+        ThemePrefs.clearPreferred(app)
+        EqualizerControl.clearPreferred(app)
+        PlaybackSpeed.clearPreferred(app)
+        CrossfadeControl.clearPreferredFadeMs(app)
+        SleepTimer.clearPreferredMinutes(app)
+        AudioRoute.clearPin(app)
+        DlnaCastControl.clearDefaultId(app)
+        _state.update {
+            it.copy(
+                localFilterPreferred = "",
+                localRepeatPreferred = -1,
+                localShufflePreferred = false,
+                themePreferred = null,
+                eqPreferredId = "",
+                playbackSpeedPreferred = Float.NaN,
+                fadeMsPreferred = -1L,
+                sleepPreferredMinutes = 0,
+                audioPinType = Int.MIN_VALUE,
+                audioPinName = "",
+                dlnaDefaultId = "",
+                statusToast = "Preferred pins cleared",
+                dlnaMessage = if (it.dlnaEnabled) "No default renderer" else it.dlnaMessage,
+            )
+        }
+        clearStatusToastLater()
+    }
+
     private fun sendCrossfadeCommand(crossfade: Boolean, skipSilence: Boolean, fadeMs: Long) {
         val controller = player as? MediaController ?: return
         val args = Bundle().apply {

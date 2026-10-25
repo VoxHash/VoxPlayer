@@ -406,6 +406,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onRemoveBookmark = vm::removeBookmark,
                                 onAddBookmarkToList = vm::openAddToListFromBookmark,
                                 onClearBookmarks = vm::clearBookmarks,
+                                onClearPreferredPins = vm::clearAllPreferredPins,
                                 onClearTrackResume = vm::clearTrackResume,
                                 onSeekLocal = vm::seekLocal,
                                 onPlayQueueIndex = vm::playQueueIndex,
@@ -1703,6 +1704,7 @@ private fun NowPlayingPane(
     onRemoveBookmark: (String) -> Unit,
     onAddBookmarkToList: (BookmarkStore.Bookmark) -> Unit,
     onClearBookmarks: () -> Unit,
+    onClearPreferredPins: () -> Unit,
     onClearTrackResume: () -> Unit,
     onSeekLocal: (Long) -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
@@ -2202,6 +2204,22 @@ private fun NowPlayingPane(
                     Modifier.fillMaxWidth(),
                 )
             }
+            Text(
+                "Settings",
+                style = MaterialTheme.typography.titleMedium,
+                color = VoxColors.Accent,
+                modifier = markSection("settings"),
+            )
+            Text(
+                "Clear every preferred pin (Home filter, theme, shuffle, repeat, sink, EQ, speed, fade, sleep, DLNA default). Long-press chips still pin individually.",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+            QuietButton(
+                "Clear preferred pins",
+                onClearPreferredPins,
+                Modifier.fillMaxWidth(),
+            )
             Text("Bookmarks", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
             Text(
                 "Manual pins. Last position is also remembered per track when you reopen it.",

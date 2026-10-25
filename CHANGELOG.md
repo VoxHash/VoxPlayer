@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (Home search persist already shipped; next: clear preferred pins from Settings strip)
+- Further Android companion polish
+
+## [1.92.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Clear preferred pins** — Now Playing → Settings → Clear preferred pins wipes Home filter, theme, shuffle, repeat, sink, EQ, speed, fade, sleep, and DLNA default pins
 
 ## [1.91.1] - 2026-10-25
 

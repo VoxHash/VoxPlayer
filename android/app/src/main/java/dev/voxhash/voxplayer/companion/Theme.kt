@@ -118,6 +118,13 @@ enum class ThemeMode {
 object ThemePrefs {
     private const val PREFS = "voxplayer_theme"
     private const val KEY = "mode"
+    private const val KEY_PREFERRED = "preferred_mode"
+
+    private fun storageValue(mode: ThemeMode): String = when (mode) {
+        ThemeMode.Dark -> "dark"
+        ThemeMode.Light -> "light"
+        ThemeMode.System -> "system"
+    }
 
     fun load(context: Context): ThemeMode =
         ThemeMode.fromStorage(
@@ -130,16 +137,38 @@ object ThemePrefs {
         context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(
-                KEY,
-                when (mode) {
-                    ThemeMode.Dark -> "dark"
-                    ThemeMode.Light -> "light"
-                    ThemeMode.System -> "system"
-                },
-            )
+            .putString(KEY, storageValue(mode))
             .apply()
     }
+
+    fun loadPreferred(context: Context): ThemeMode? {
+        val raw = context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_PREFERRED, null)
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return ThemeMode.fromStorage(raw)
+    }
+
+    fun savePreferred(context: Context, mode: ThemeMode) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_PREFERRED, storageValue(mode))
+            .apply()
+    }
+
+    fun clearPreferred(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_PREFERRED)
+            .apply()
+    }
+
+    /** Preferred pin if set, else last selected mode. */
+    fun loadBoot(context: Context): ThemeMode =
+        loadPreferred(context) ?: load(context)
 
     fun resolveDark(mode: ThemeMode, systemDark: Boolean): Boolean = when (mode) {
         ThemeMode.Dark -> true

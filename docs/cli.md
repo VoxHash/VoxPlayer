@@ -134,7 +134,7 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Shuffle preferred on:** Long-press Shuffle to pin / clear preferred-on. When pinned, cold start enables shuffle.
 
-**Theme preferred pin:** Tap Dark / Light / System; long-press to pin preferred (restored on cold start).
+**Theme preferred pin:** Header Dark / Light / System chips — tap to apply; long-press to pin preferred (restored on cold start).
 
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 

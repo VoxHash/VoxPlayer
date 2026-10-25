@@ -733,6 +733,8 @@ private fun ShellHeader(
     state: PlayerUiState,
     wide: Boolean,
     onCycleTheme: () -> Unit,
+    onSetTheme: (ThemeMode) -> Unit,
+    onPinTheme: (ThemeMode) -> Unit,
 ) {
     Column(
         Modifier
@@ -764,6 +766,28 @@ private fun ShellHeader(
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.padding(start = 8.dp),
             )
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf(
+                ThemeMode.Dark to "Dark",
+                ThemeMode.Light to "Light",
+                ThemeMode.System to "System",
+            ).forEach { (mode, label) ->
+                ThemeModeChip(
+                    label = label,
+                    selected = state.themeMode == mode,
+                    preferred = state.themePreferred == mode,
+                    onSelect = { onSetTheme(mode) },
+                    onPin = { onPinTheme(mode) },
+                )
+            }
         }
     }
 }

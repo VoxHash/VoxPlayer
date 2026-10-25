@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Further Android companion polish (Home search persist already shipped; next: clear preferred pins from Settings strip)
 
+## [1.91.1] - 2026-10-25
+
+### Fixed
+- Android / GrapheneOS / Quest: **Theme preferred pin** — ship `ThemePrefs` preferred helpers + header Dark / Light / System chips (compile/runtime gap left after 1.90.0 / 1.91.0)
+
 ## [1.91.0] - 2026-10-25
 
 ### Added

@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (dark / light theme toggle for companion shell)
+- Further Android companion polish (now-playing gesture seek scrubber)
+
+## [1.57.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **Theme toggle** — Dark / Light / System shell palettes (ember charcoal + warm paper); header cycles modes; persisted on-device
 
 ## [1.56.0] - 2026-10-24
 

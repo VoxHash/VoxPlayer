@@ -88,6 +88,7 @@ data class PlayerUiState(
     val skipSilence: Boolean = false,
     val fadeMs: Long = CrossfadeControl.DEFAULT_FADE_MS,
     val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
+    val themeMode: ThemeMode = ThemeMode.Dark,
     /** Multi-window / Quest panel / fold — for UI chrome (playback stays in service). */
     val multiWindow: Boolean = false,
     val foldSeparating: Boolean = false,
@@ -156,6 +157,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             skipSilence = CrossfadeControl.loadSkipSilence(app),
             fadeMs = CrossfadeControl.loadFadeMs(app),
             playbackSpeed = PlaybackSpeed.load(app),
+            themeMode = ThemePrefs.load(app),
             dlnaEnabled = DlnaCastControl.loadEnabled(app),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
@@ -1446,6 +1448,20 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             Log.w(TAG, "SET_PLAYBACK_SPEED failed", e)
             player?.let { PlaybackSpeed.apply(it, s) }
         }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        ThemePrefs.save(getApplication(), mode)
+        _state.update { it.copy(themeMode = mode) }
+    }
+
+    fun cycleThemeMode() {
+        val next = when (_state.value.themeMode) {
+            ThemeMode.Dark -> ThemeMode.Light
+            ThemeMode.Light -> ThemeMode.System
+            ThemeMode.System -> ThemeMode.Dark
+        }
+        setThemeMode(next)
     }
 
     private fun sendCrossfadeCommand(crossfade: Boolean, skipSilence: Boolean, fadeMs: Long) {

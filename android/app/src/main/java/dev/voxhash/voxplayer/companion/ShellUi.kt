@@ -230,7 +230,13 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                     )
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    if (!carMode && !panelCompact) ShellHeader(state = state, wide = wide)
+                    if (!carMode && !panelCompact) {
+                        ShellHeader(
+                            state = state,
+                            wide = wide,
+                            onCycleTheme = vm::cycleThemeMode,
+                        )
+                    }
                     if (panelCompact) {
                         CompactPanelChrome(
                             state = state,
@@ -590,7 +596,11 @@ private fun RailBtn(icon: ImageVector, tip: String, active: Boolean, onClick: ()
 }
 
 @Composable
-private fun ShellHeader(state: PlayerUiState, wide: Boolean) {
+private fun ShellHeader(
+    state: PlayerUiState,
+    wide: Boolean,
+    onCycleTheme: () -> Unit,
+) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -604,17 +614,22 @@ private fun ShellHeader(state: PlayerUiState, wide: Boolean) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text("VoxPlayer", style = MaterialTheme.typography.headlineMedium, color = VoxColors.Accent)
                 Text(
                     if (wide) "Library · Now Playing · Connect" else "On-device library & desktop remote",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            QuietButton(
+                "Theme · ${state.themeMode.label()}",
+                onCycleTheme,
+            )
             Text(
                 state.activeOutput,
                 color = if (state.activeOutput.startsWith("Desktop")) VoxColors.Success else VoxColors.TextMuted,
                 style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(start = 8.dp),
             )
         }
     }

@@ -9,6 +9,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 
 class MainActivity : ComponentActivity() {
@@ -20,7 +22,8 @@ class MainActivity : ComponentActivity() {
         applyConnectExtras(intent)
         enableEdgeToEdge()
         setContent {
-            VoxTheme {
+            val state by vm.state.collectAsState()
+            VoxTheme(mode = state.themeMode) {
                 Surface(Modifier.fillMaxSize(), color = VoxColors.BgApp) {
                     VoxPlayerApp(vm)
                 }

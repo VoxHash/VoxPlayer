@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (scrobble-free listening stats week/month facets)
+- Further Android companion polish (equalizer UI presets polish / multi-output routing clarity)
+
+## [1.50.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **Listening stats** — scrobble-free on-device listen events; Home **Week** / **Month** facets (listens, unique tracks, top artist); no Last.fm / cloud
 
 ## [1.49.0] - 2026-10-24
 

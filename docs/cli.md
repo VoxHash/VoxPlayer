@@ -62,9 +62,11 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Share card:** Now Playing → Share card builds an offline PNG (title/artist/album/art) and opens the system share sheet — no cloud.
 
+**Listening stats:** Home → Week / Month — on-device listen counts, unique tracks, and top artist (no scrobbling / cloud).
+
 **DLNA cast:** Now Playing → Enable DLNA → Scan → Cast now. Uses FOSS UPnPCast on the LAN only — no Google Cast / GMS.
 
-**Search:** Home search field filters by title / artist / album (also applies to Recent / Top).
+**Search:** Home search field filters by title / artist / album (also applies to Recent / Top / Week / Month).
 
 **Artwork:** Home grid and Recent/Top cards load MediaStore thumbnails / album art offline (no CDN).
 

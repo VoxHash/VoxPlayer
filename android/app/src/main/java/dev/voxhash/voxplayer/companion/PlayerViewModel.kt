@@ -49,7 +49,7 @@ data class QueueRow(
 data class PlayerUiState(
     val tab: AppTab = AppTab.Local,
     val localItems: List<LocalMediaItem> = emptyList(),
-    val localFilter: String = "all", // all|audio|video|recent|top|lists
+    val localFilter: String = "all", // all|audio|video|recent|top|week|month|lists
     /** Case-insensitive title / artist / album substring (Home library + history facets). */
     val localSearchQuery: String = "",
     val permissionNeeded: Boolean = false,
@@ -73,6 +73,8 @@ data class PlayerUiState(
     val bookmarks: List<BookmarkStore.Bookmark> = emptyList(),
     val historyRecent: List<PlayHistoryStore.Entry> = emptyList(),
     val historyTop: List<PlayHistoryStore.Entry> = emptyList(),
+    val historyWeek: PlayHistoryStore.PeriodFacet = PlayHistoryStore.PeriodFacet("This week", 0, 0, "", emptyList()),
+    val historyMonth: PlayHistoryStore.PeriodFacet = PlayHistoryStore.PeriodFacet("This month", 0, 0, "", emptyList()),
     val localPlaylists: List<LocalPlaylistStore.Playlist> = emptyList(),
     /** When filter=lists, null = folder index; else browse that playlist id or smart:* */
     val listsBrowseId: String? = null,
@@ -142,6 +144,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             bookmarks = bookmarkStore.load(),
             historyRecent = historyStore.recentlyPlayed(),
             historyTop = historyStore.mostPlayed(),
+            historyWeek = historyStore.weekFacet(),
+            historyMonth = historyStore.monthFacet(),
             localPlaylists = playlistStore.load(),
             crossfadeEnabled = CrossfadeControl.loadCrossfade(app),
             skipSilence = CrossfadeControl.loadSkipSilence(app),
@@ -390,7 +394,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         return when (s.localFilter) {
             "audio" -> s.localItems.filter { !it.isVideo }
             "video" -> s.localItems.filter { it.isVideo }
-            "recent", "top", "lists" -> s.localItems // facets / lists play their own queues
+            "recent", "top", "week", "month", "lists" -> s.localItems // facets / lists play their own queues
             else -> s.localItems
         }
     }
@@ -400,6 +404,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 historyRecent = historyStore.recentlyPlayed(),
                 historyTop = historyStore.mostPlayed(),
+                historyWeek = historyStore.weekFacet(),
+                historyMonth = historyStore.monthFacet(),
             )
         }
     }

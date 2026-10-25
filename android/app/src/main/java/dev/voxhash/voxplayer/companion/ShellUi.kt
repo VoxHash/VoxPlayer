@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -651,36 +652,42 @@ private fun LocalLibraryPane(
 
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            listOf(
-                "all" to "All",
-                "audio" to "Audio",
-                "video" to "Video",
-                "recent" to "Recent",
-                "top" to "Top",
-                "lists" to "Lists",
-            ).forEach { (k, label) ->
-                FilterChip(
-                    selected = state.localFilter == k,
-                    onClick = { onFilter(k) },
-                    label = { Text(label) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = VoxColors.AccentSoft,
-                        selectedLabelColor = VoxColors.Accent,
-                        containerColor = VoxColors.BgElevated,
-                        labelColor = VoxColors.TextSecondary,
-                    ),
-                    border = FilterChipDefaults.filterChipBorder(
-                        enabled = true,
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                listOf(
+                    "all" to "All",
+                    "audio" to "Audio",
+                    "video" to "Video",
+                    "recent" to "Recent",
+                    "top" to "Top",
+                    "week" to "Week",
+                    "month" to "Month",
+                    "lists" to "Lists",
+                ).forEach { (k, label) ->
+                    FilterChip(
                         selected = state.localFilter == k,
-                        borderColor = VoxColors.BorderSoft,
-                        selectedBorderColor = VoxColors.Accent,
-                    ),
-                )
+                        onClick = { onFilter(k) },
+                        label = { Text(label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = VoxColors.AccentSoft,
+                            selectedLabelColor = VoxColors.Accent,
+                            containerColor = VoxColors.BgElevated,
+                            labelColor = VoxColors.TextSecondary,
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = state.localFilter == k,
+                            borderColor = VoxColors.BorderSoft,
+                            selectedBorderColor = VoxColors.Accent,
+                        ),
+                    )
+                }
             }
-            Spacer(Modifier.weight(1f))
             QuietButton("Open", onOpenFile)
         }
 
@@ -704,13 +711,29 @@ private fun LocalLibraryPane(
             )
         }
 
-        val historyFacet = state.localFilter == "recent" || state.localFilter == "top"
+        val historyFacet = state.localFilter == "recent" || state.localFilter == "top" ||
+            state.localFilter == "week" || state.localFilter == "month"
+        val periodFacet = state.localFilter == "week" || state.localFilter == "month"
         val listsFacet = state.localFilter == "lists"
         val q = state.localSearchQuery.trim()
-        val historyRows = remember(state.historyRecent, state.historyTop, state.localFilter, q) {
+        val periodStats = when (state.localFilter) {
+            "week" -> state.historyWeek
+            "month" -> state.historyMonth
+            else -> null
+        }
+        val historyRows = remember(
+            state.historyRecent,
+            state.historyTop,
+            state.historyWeek,
+            state.historyMonth,
+            state.localFilter,
+            q,
+        ) {
             val base = when (state.localFilter) {
                 "recent" -> state.historyRecent
                 "top" -> state.historyTop
+                "week" -> state.historyWeek.tracks
+                "month" -> state.historyMonth.tracks
                 else -> emptyList()
             }
             if (q.isEmpty()) base
@@ -727,7 +750,7 @@ private fun LocalLibraryPane(
             val base = when (state.localFilter) {
                 "audio" -> state.localItems.filter { !it.isVideo }
                 "video" -> state.localItems.filter { it.isVideo }
-                "recent", "top", "lists" -> emptyList()
+                "recent", "top", "week", "month", "lists" -> emptyList()
                 else -> state.localItems
             }
             if (q.isEmpty()) base
@@ -749,6 +772,8 @@ private fun LocalLibraryPane(
                 when {
                     state.localFilter == "recent" -> "Recently played · ${historyRows.size}"
                     state.localFilter == "top" -> "Most played · ${historyRows.size}"
+                    state.localFilter == "week" -> "This week · ${historyRows.size}"
+                    state.localFilter == "month" -> "This month · ${historyRows.size}"
                     listsFacet && state.listsBrowseId != null -> "List"
                     listsFacet -> "Lists · ${state.localPlaylists.size} folders"
                     else -> "Home · ${filtered.size} items"
@@ -756,7 +781,13 @@ private fun LocalLibraryPane(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f),
             )
-            if (historyFacet && (state.historyRecent.isNotEmpty() || state.historyTop.isNotEmpty())) {
+            if (historyFacet && (
+                    state.historyRecent.isNotEmpty() ||
+                        state.historyTop.isNotEmpty() ||
+                        state.historyWeek.listenCount > 0 ||
+                        state.historyMonth.listenCount > 0
+                    )
+            ) {
                 QuietButton("Clear history", onClearHistory)
             }
             if (listsFacet && state.listsBrowseId == null) {
@@ -780,6 +811,23 @@ private fun LocalLibraryPane(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
             return
+        }
+
+        if (periodFacet && periodStats != null) {
+            val summary = buildString {
+                append("${periodStats.listenCount} listens · ${periodStats.uniqueTracks} tracks")
+                if (periodStats.topArtist.isNotBlank()) {
+                    append(" · Top artist: ${periodStats.topArtist}")
+                }
+            }
+            Text(
+                summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextSecondary,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+            )
         }
 
         val cols = if (wide) 4 else 2
@@ -990,6 +1038,8 @@ private fun HistoryCard(
         )
         val sub = when {
             facet == "top" -> "${entry.playCount}× played"
+            facet == "week" -> "${entry.playCount}× this week"
+            facet == "month" -> "${entry.playCount}× this month"
             entry.artist.isNotBlank() -> entry.artist
             else -> if (entry.isVideo) "Video" else "Audio"
         }

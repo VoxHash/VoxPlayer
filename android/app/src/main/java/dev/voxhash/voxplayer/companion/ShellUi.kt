@@ -346,6 +346,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onPlayBookmark = vm::playBookmark,
                                 onRemoveBookmark = vm::removeBookmark,
                                 onClearBookmarks = vm::clearBookmarks,
+                                onClearTrackResume = vm::clearTrackResume,
                                 onPlayQueueIndex = vm::playQueueIndex,
                                 onMoveQueue = vm::moveQueueItem,
                                 onRemoveQueue = vm::removeQueueItem,
@@ -1178,6 +1179,7 @@ private fun NowPlayingPane(
     onPlayBookmark: (BookmarkStore.Bookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
     onClearBookmarks: () -> Unit,
+    onClearTrackResume: () -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (Int, Int) -> Unit,
     onRemoveQueue: (Int) -> Unit,
@@ -1236,6 +1238,21 @@ private fun NowPlayingPane(
             )
         }
         Text(pos, style = MaterialTheme.typography.bodySmall)
+        if (!desktop && state.resumeHint.isNotBlank()) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    state.resumeHint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.Accent,
+                    modifier = Modifier.weight(1f),
+                )
+                QuietButton("Forget", onClearTrackResume)
+            }
+        }
         if (!desktop && state.localQueueSize > 0) {
             Text(
                 "Queue ${state.localQueueIndex + 1} / ${state.localQueueSize}" +
@@ -1528,6 +1545,11 @@ private fun NowPlayingPane(
                 QuietButton("Off", onClearSleep, Modifier.weight(1f))
             }
             Text("Bookmarks", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                "Manual pins. Last position is also remembered per track when you reopen it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (per-track remember last position beyond bookmarks)
+- Further Android companion polish (A–Z jump / letter index for large local libraries)
+
+## [1.55.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **Per-track last position** — silent on-device resume (separate from bookmarks); auto-seek when reopening a track; Now Playing “Resumed from …” + Forget; cleared near end-of-track
 
 ## [1.54.0] - 2026-10-24
 

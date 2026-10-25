@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.54.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.55.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -142,6 +142,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 28. **Queue / playlist M3U**: export Up Next or playlist folder as offline `.m3u`; import via SAF into a new on-device folder (MediaStore path match; no cloud) (**Done 1.52.0**)
 29. **Fade-in duration control**: selectable soft fade-in length (Short / Med / Long / Soft) on auto transitions; persists on-device (**Done 1.53.0**)
 30. **Playback speed**: Media3 rate presets 0.75×–2× for podcasts / spoken word; persisted on-device (**Done 1.54.0**)
+31. **Per-track last position**: silent on-device resume store (separate from bookmarks); auto-seek on reopen; Forget clears current URI (**Done 1.55.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

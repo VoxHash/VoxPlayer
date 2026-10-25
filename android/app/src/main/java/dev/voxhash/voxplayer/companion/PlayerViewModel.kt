@@ -71,6 +71,8 @@ data class PlayerUiState(
     val sleepEndEpochMs: Long = 0L,
     val sleepRemainingLabel: String = "Off",
     val bookmarks: List<BookmarkStore.Bookmark> = emptyList(),
+    /** Silent per-track resume hint shown after auto-seek (empty when none). */
+    val resumeHint: String = "",
     val historyRecent: List<PlayHistoryStore.Entry> = emptyList(),
     val historyTop: List<PlayHistoryStore.Entry> = emptyList(),
     val historyWeek: PlayHistoryStore.PeriodFacet = PlayHistoryStore.PeriodFacet("This week", 0, 0, "", emptyList()),
@@ -128,6 +130,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val syncStore = SyncStore(app)
     private val queueStore = PlaybackQueueStore(app)
     private val bookmarkStore = BookmarkStore(app)
+    private val resumeStore = TrackResumeStore(app)
     private val historyStore = PlayHistoryStore(app)
     private val playlistStore = LocalPlaylistStore(app)
     private val bt = BluetoothControl(app)
@@ -434,8 +437,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             .let { if (it >= 0) it else 0 }
         val queue = if (pool.isEmpty()) listOf(item) else pool
         val startIndex = start.coerceIn(0, queue.lastIndex)
+        val current = queue[startIndex]
+        val resumeMs = resumeStore.resumePositionMs(current.uri.toString(), current.durationMs)
         withPlayer { p ->
-            p.setMediaItems(queue.map { mediaItemFromLocal(it) }, startIndex, /* startPositionMs = */ 0L)
+            p.setMediaItems(
+                queue.map { mediaItemFromLocal(it) },
+                startIndex,
+                resumeMs,
+            )
             p.prepare()
             p.play()
             queueStore.saveQueue(
@@ -449,10 +458,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 },
                 startIndex,
-                0L,
+                resumeMs,
             )
         }
-        val current = queue[startIndex]
         _state.update {
             it.copy(
                 localTitle = current.title,
@@ -465,6 +473,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 activeOutput = "This device",
                 tab = AppTab.Local,
                 connectOpen = false,
+                resumeHint = if (resumeMs > 0L) "Resumed from ${fmt(resumeMs)}" else "",
             )
         }
     }
@@ -472,11 +481,13 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private fun sFilterIsAll(): Boolean = _state.value.localFilter == "all"
 
     fun playUri(uri: Uri, title: String = uri.lastPathSegment ?: "Media", isVideo: Boolean = true) {
+        val match = _state.value.localItems.find { it.uri == uri }
+        val resumeMs = resumeStore.resumePositionMs(uri.toString(), match?.durationMs ?: 0L)
         withPlayer { p ->
-            p.setMediaItems(listOf(mediaItem(uri, title, isVideo = isVideo)), 0, 0L)
+            p.setMediaItems(listOf(mediaItem(uri, title, isVideo = isVideo)), 0, resumeMs)
             p.prepare()
             p.play()
-            queueStore.save(uri.toString(), title, 0L, isVideo)
+            queueStore.save(uri.toString(), title, resumeMs, isVideo)
         }
         _state.update {
             it.copy(
@@ -488,6 +499,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 localIsVideo = isVideo,
                 localPlaying = true,
                 activeOutput = "This device",
+                resumeHint = if (resumeMs > 0L) "Resumed from ${fmt(resumeMs)}" else "",
             )
         }
     }
@@ -809,6 +821,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (p.isPlaying && pos >= 1_500L && System.currentTimeMillis() / 5_000L != lastBookmarkAutosaveBucket) {
             lastBookmarkAutosaveBucket = System.currentTimeMillis() / 5_000L
             autosaveBookmark(p)
+            autosaveTrackResume(p, pos, dur)
+        }
+        // Finished (or near end): drop silent resume so next open starts at 0.
+        if (dur > 0L && pos + 12_000L >= dur) {
+            currentPlayerUri(p)?.let { resumeStore.clear(it) }
         }
         // Scrobble-free history: one count per media URI after ~3s of play.
         if (p.isPlaying && pos >= 3_000L) {
@@ -901,6 +918,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val isVideo = _state.value.localIsVideo
         bookmarkStore.upsert(uri, title, p.currentPosition.coerceAtLeast(0L), isVideo)
         _state.update { it.copy(bookmarks = bookmarkStore.load()) }
+    }
+
+    private fun autosaveTrackResume(p: Player, pos: Long, dur: Long) {
+        val uri = currentPlayerUri(p) ?: return
+        resumeStore.save(uri, pos, dur)
+    }
+
+    fun clearTrackResume() {
+        val uri = player?.let { currentPlayerUri(it) } ?: return
+        resumeStore.clear(uri)
+        _state.update { it.copy(resumeHint = "") }
     }
 
     fun setSleepTimerMinutes(minutes: Int) {
@@ -1444,6 +1472,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (sameKind.isEmpty()) return
         idx = sameKind.indexOfFirst { it.uri == tracks[idx].uri }.let { if (it >= 0) it else 0 }
         val queue = sameKind
+        val cur = queue[idx]
+        val matchDur = _state.value.localItems.find { it.uri.toString() == cur.uri }?.durationMs ?: 0L
+        val resumeMs = resumeStore.resumePositionMs(cur.uri, matchDur)
         withPlayer { p ->
             p.setMediaItems(
                 queue.map {
@@ -1456,7 +1487,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 },
                 idx,
-                0L,
+                resumeMs,
             )
             p.prepare()
             p.play()
@@ -1471,10 +1502,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     )
                 },
                 idx,
-                0L,
+                resumeMs,
             )
         }
-        val cur = queue[idx]
         _state.update {
             it.copy(
                 localTitle = cur.title,
@@ -1488,6 +1518,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 tab = AppTab.Local,
                 connectOpen = false,
                 error = "",
+                resumeHint = if (resumeMs > 0L) "Resumed from ${fmt(resumeMs)}" else "",
             )
         }
     }

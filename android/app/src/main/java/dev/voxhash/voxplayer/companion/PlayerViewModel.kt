@@ -127,6 +127,9 @@ data class PlayerUiState(
     val syncMessage: String = "",
     /** Short headset / toggle feedback (ephemeral status line). */
     val statusToast: String = "",
+    /** First Clear tap arms confirmation; second clears with undo window. */
+    val queueClearArmed: Boolean = false,
+    val queueUndoAvailable: Boolean = false,
 )
 
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
@@ -528,6 +531,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             it.clearMediaItems()
         }
         queueStore.clear()
+        clearedQueueUndo = null
         _state.update {
             it.copy(
                 localPlaying = false,
@@ -537,8 +541,168 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 localQueueIndex = 0,
                 localQueueSize = 0,
                 localQueue = emptyList(),
+                queueClearArmed = false,
+                queueUndoAvailable = false,
             )
         }
+    }
+
+    /**
+     * Two-step clear for Up next: first tap arms confirm; second clears and
+     * keeps an undo snapshot for a few seconds.
+     */
+    fun requestClearLocalQueue() {
+        val p = player
+        if (p == null || p.mediaItemCount == 0) {
+            _state.update {
+                it.copy(statusToast = "Queue is empty", queueClearArmed = false)
+            }
+            clearStatusToastLater()
+            return
+        }
+        if (!_state.value.queueClearArmed) {
+            _state.update {
+                it.copy(
+                    queueClearArmed = true,
+                    statusToast = "Tap Clear again to confirm",
+                )
+            }
+            clearStatusToastLater()
+            viewModelScope.launch {
+                delay(4_000L)
+                _state.update { s ->
+                    if (s.queueClearArmed) s.copy(queueClearArmed = false) else s
+                }
+            }
+            return
+        }
+        commitClearLocalQueue()
+    }
+
+    fun cancelClearLocalQueue() {
+        _state.update {
+            it.copy(queueClearArmed = false, statusToast = "Clear cancelled")
+        }
+        clearStatusToastLater()
+    }
+
+    private fun commitClearLocalQueue() {
+        val p = player ?: return
+        if (p.mediaItemCount == 0) return
+        val snap = queueSnapshotFromPlayer(p)
+        clearedQueueUndo = snap
+        withPlayer {
+            it.stop()
+            it.clearMediaItems()
+        }
+        queueStore.clear()
+        _state.update {
+            it.copy(
+                localPlaying = false,
+                localTitle = "(nothing loaded)",
+                localArtist = "",
+                localAlbum = "",
+                localQueueIndex = 0,
+                localQueueSize = 0,
+                localQueue = emptyList(),
+                queueClearArmed = false,
+                queueUndoAvailable = true,
+                statusToast = "Queue cleared · Undo available",
+            )
+        }
+        clearStatusToastLater(6_000L)
+        viewModelScope.launch {
+            delay(8_000L)
+            if (clearedQueueUndo === snap) {
+                clearedQueueUndo = null
+                _state.update { it.copy(queueUndoAvailable = false) }
+            }
+        }
+    }
+
+    fun undoClearLocalQueue() {
+        val snap = clearedQueueUndo ?: run {
+            _state.update { it.copy(statusToast = "Nothing to undo", queueUndoAvailable = false) }
+            clearStatusToastLater()
+            return
+        }
+        clearedQueueUndo = null
+        restoreQueueSnapshot(snap)
+        _state.update {
+            it.copy(
+                queueUndoAvailable = false,
+                queueClearArmed = false,
+                statusToast = "Queue restored",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    private var clearedQueueUndo: PlaybackQueueStore.Snapshot? = null
+
+    private fun queueSnapshotFromPlayer(p: Player): PlaybackQueueStore.Snapshot {
+        val entries = buildList {
+            for (i in 0 until p.mediaItemCount) {
+                val item = p.getMediaItemAt(i)
+                val uri = item.localConfiguration?.uri?.toString()
+                    ?: item.requestMetadata.mediaUri?.toString()
+                    ?: continue
+                val md = item.mediaMetadata
+                add(
+                    PlaybackQueueStore.Entry(
+                        uri = uri,
+                        title = md.title?.toString()
+                            ?: Uri.parse(uri).lastPathSegment
+                            ?: "Media",
+                        artist = md.artist?.toString().orEmpty(),
+                        album = md.albumTitle?.toString().orEmpty(),
+                        isVideo = md.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO
+                            || md.mediaType == MediaMetadata.MEDIA_TYPE_MOVIE,
+                    ),
+                )
+            }
+        }
+        val index = p.currentMediaItemIndex.coerceIn(0, (entries.size - 1).coerceAtLeast(0))
+        return PlaybackQueueStore.Snapshot(
+            entries = entries,
+            index = index,
+            positionMs = p.currentPosition.coerceAtLeast(0L),
+        )
+    }
+
+    private fun restoreQueueSnapshot(snap: PlaybackQueueStore.Snapshot) {
+        if (snap.entries.isEmpty()) return
+        val items = snap.entries.map {
+            mediaItem(
+                Uri.parse(it.uri),
+                it.title,
+                it.artist,
+                it.album,
+                it.isVideo,
+            )
+        }
+        val idx = snap.index.coerceIn(0, items.lastIndex)
+        withPlayer { p ->
+            p.setMediaItems(items, idx, snap.positionMs)
+            p.prepare()
+            p.play()
+            queueStore.saveQueue(snap.entries, idx, snap.positionMs)
+        }
+        val cur = snap.entries[idx]
+        _state.update {
+            it.copy(
+                localTitle = cur.title,
+                localArtist = cur.artist,
+                localAlbum = cur.album,
+                localIsVideo = cur.isVideo,
+                localQueueIndex = idx,
+                localQueueSize = snap.entries.size,
+                localPlaying = true,
+                activeOutput = "This device",
+                tab = AppTab.Local,
+            )
+        }
+        player?.let { syncUiFromPlayer(it) }
     }
 
     fun localNext() {
@@ -1467,9 +1631,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(statusToast = "") }
     }
 
-    private fun clearStatusToastLater() {
+    private fun clearStatusToastLater(afterMs: Long = 3_200L) {
         viewModelScope.launch {
-            delay(3_200L)
+            delay(afterMs)
             _state.update { s -> if (s.statusToast.isNotBlank()) s.copy(statusToast = "") else s }
         }
     }

@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.60.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.61.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -148,6 +148,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 34. **Now Playing seek scrubber**: Material3 Slider drag/tap seek with live preview; local Media3 only (**Done 1.58.0**)
 35. **Notification action richness**: System UI media controls — ±15s, overflow Previous/Next, Bookmark, cycle Speed; session activity opens app (**Done 1.59.0**)
 36. **Playback status chips**: Now Playing chips for Fade / Skip silence / Speed / EQ / Shuffle / Repeat; ephemeral toast on skip-silence and related toggles (**Done 1.60.0**)
+37. **Queue clear confirm + undo**: two-tap Clear queue confirmation; undo restores the last cleared Up next snapshot (**Done 1.61.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

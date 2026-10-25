@@ -96,6 +96,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Status chips:** Now Playing shows active Fade / Skip silence / Speed / EQ / Shuffle / Repeat chips; toggles flash a short status toast.
 
+**Clear queue:** Up next → Clear queue (tap twice to confirm). Undo restores the last cleared queue while the toast window is open.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

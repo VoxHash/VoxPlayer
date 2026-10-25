@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (queue clear confirmation / undo snackbar)
+- Further Android companion polish (recently deleted queue item undo)
+
+## [1.61.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Queue clear confirm + undo** — Clear queue requires a second confirm tap; Undo restores the cleared Up next snapshot for a few seconds
 
 ## [1.60.0] - 2026-10-25
 

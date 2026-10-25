@@ -366,6 +366,9 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onPlayQueueIndex = vm::playQueueIndex,
                                 onMoveQueue = vm::moveQueueItem,
                                 onRemoveQueue = vm::removeQueueItem,
+                                onClearQueue = vm::requestClearLocalQueue,
+                                onCancelClearQueue = vm::cancelClearLocalQueue,
+                                onUndoClearQueue = vm::undoClearLocalQueue,
                                 modifier = Modifier
                                     .width(300.dp)
                                     .fillMaxHeight()
@@ -1311,6 +1314,9 @@ private fun NowPlayingPane(
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (Int, Int) -> Unit,
     onRemoveQueue: (Int) -> Unit,
+    onClearQueue: () -> Unit,
+    onCancelClearQueue: () -> Unit,
+    onUndoClearQueue: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val desktop = state.activeOutput.startsWith("Desktop")
@@ -1773,23 +1779,53 @@ private fun NowPlayingPane(
                     }
                 }
             }
-            if (state.localQueue.size > 1) {
-                Text("Up next", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
-                LazyColumn(
-                    Modifier.weight(1f, fill = false).heightIn(max = 280.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+            if (state.localQueue.isNotEmpty() || state.queueUndoAvailable) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(state.localQueue, key = { it.index to it.title }) { row ->
-                        QueueRowItem(
-                            row = row,
-                            canMoveUp = row.index > 0,
-                            canMoveDown = row.index < state.localQueue.lastIndex,
-                            onPlay = { onPlayQueueIndex(row.index) },
-                            onMoveUp = { onMoveQueue(row.index, row.index - 1) },
-                            onMoveDown = { onMoveQueue(row.index, row.index + 1) },
-                            onRemove = { onRemoveQueue(row.index) },
-                        )
+                    Text(
+                        "Up next",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = VoxColors.Accent,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (state.queueUndoAvailable) {
+                        QuietButton("Undo", onUndoClearQueue)
                     }
+                    if (state.localQueue.isNotEmpty()) {
+                        if (state.queueClearArmed) {
+                            QuietButton("Cancel", onCancelClearQueue)
+                            QuietButton("Confirm clear", onClearQueue)
+                        } else {
+                            QuietButton("Clear queue", onClearQueue)
+                        }
+                    }
+                }
+                if (state.localQueue.size > 1) {
+                    LazyColumn(
+                        Modifier.weight(1f, fill = false).heightIn(max = 280.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(state.localQueue, key = { it.index to it.title }) { row ->
+                            QueueRowItem(
+                                row = row,
+                                canMoveUp = row.index > 0,
+                                canMoveDown = row.index < state.localQueue.lastIndex,
+                                onPlay = { onPlayQueueIndex(row.index) },
+                                onMoveUp = { onMoveQueue(row.index, row.index - 1) },
+                                onMoveDown = { onMoveQueue(row.index, row.index + 1) },
+                                onRemove = { onRemoveQueue(row.index) },
+                            )
+                        }
+                    }
+                } else if (state.localQueue.size == 1) {
+                    Text(
+                        "1 item in queue",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VoxColors.TextMuted,
+                    )
                 }
             }
         }

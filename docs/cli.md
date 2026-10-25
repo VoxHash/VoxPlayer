@@ -116,7 +116,7 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Item count:** Home title row shows an accent count chip (and shown/total while searching).
 
-**Add to list:** Long-press a Home library card or a Recent / Top / Week / Month history card → pick an existing folder or New list + add (on-device playlists only).
+**Add to list:** Long-press a Home library card, a Recent / Top / Week / Month history card, or a Lists track → pick an existing folder or New list + add (on-device playlists only; current Lists folder is excluded).
 
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 

@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (Lists-browse track long-press Add to another list)
+- Further Android companion polish (queue row long-press Add to list)
+
+## [1.79.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Lists-browse Add to another list** — long-press a track in Lists (smart or folder) opens the playlist picker; the current folder is excluded
 
 ## [1.78.0] - 2026-10-25
 

@@ -59,6 +59,8 @@ data class PlayerUiState(
     val libraryRefreshing: Boolean = false,
     /** Long-press library card: track waiting for playlist pick (null = sheet closed). */
     val addToListPending: LocalPlaylistStore.Track? = null,
+    /** When set, Add-to-list sheet hides this folder (copy to another list). */
+    val addToListExcludePlaylistId: String? = null,
     val permissionNeeded: Boolean = false,
     val localTitle: String = "(nothing loaded)",
     val localArtist: String = "",
@@ -1627,6 +1629,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 addToListPending = item.toPlaylistTrack(),
+                addToListExcludePlaylistId = null,
                 statusToast = "Choose a list for “${item.title}”",
             )
         }
@@ -1634,23 +1637,31 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openAddToListFromHistory(entry: PlayHistoryStore.Entry) {
+        openAddToListFromTrack(
+            LocalPlaylistStore.Track(
+                uri = entry.uri,
+                title = entry.title,
+                artist = entry.artist,
+                album = entry.album,
+                isVideo = entry.isVideo,
+            ),
+        )
+    }
+
+    fun openAddToListFromTrack(track: LocalPlaylistStore.Track, excludePlaylistId: String? = null) {
+        if (track.uri.isBlank()) return
         _state.update {
             it.copy(
-                addToListPending = LocalPlaylistStore.Track(
-                    uri = entry.uri,
-                    title = entry.title,
-                    artist = entry.artist,
-                    album = entry.album,
-                    isVideo = entry.isVideo,
-                ),
-                statusToast = "Choose a list for “${entry.title}”",
+                addToListPending = track,
+                addToListExcludePlaylistId = excludePlaylistId,
+                statusToast = "Choose a list for “${track.title}”",
             )
         }
         clearStatusToastLater()
     }
 
     fun dismissAddToList() {
-        _state.update { it.copy(addToListPending = null) }
+        _state.update { it.copy(addToListPending = null, addToListExcludePlaylistId = null) }
     }
 
     fun addPendingToPlaylist(playlistId: String) {
@@ -1661,6 +1672,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 addToListPending = null,
+                addToListExcludePlaylistId = null,
                 statusToast = "Added “${track.title}” to $name",
             )
         }
@@ -1675,6 +1687,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 addToListPending = null,
+                addToListExcludePlaylistId = null,
                 localFilter = "lists",
                 listsBrowseId = pl.id,
                 statusToast = "Added “${track.title}” to ${pl.name}",

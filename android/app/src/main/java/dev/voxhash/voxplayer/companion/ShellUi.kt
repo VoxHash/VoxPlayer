@@ -317,6 +317,11 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onPlayLocalPlaylist = { id -> vm.playLocalPlaylist(id) },
                                     onPlayListsTrack = vm::playListsBrowseTrack,
                                     onRemovePlaylistTrack = vm::removeFromLocalPlaylist,
+                                    onAddListsTrackToList = { track ->
+                                        val exclude = state.listsBrowseId
+                                            ?.takeUnless { it.startsWith("smart:") }
+                                        vm.openAddToListFromTrack(track, exclude)
+                                    },
                                     onAddNowPlayingTo = vm::addNowPlayingToPlaylist,
                                     onImportM3u = {
                                         importM3u.launch(
@@ -439,7 +444,9 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         ) {
             AddToListSheet(
                 trackTitle = pendingAdd.title,
-                playlists = state.localPlaylists,
+                playlists = state.localPlaylists.filter {
+                    it.id != state.addToListExcludePlaylistId
+                },
                 onPick = vm::addPendingToPlaylist,
                 onCreateNew = vm::createPlaylistAndAddPending,
                 onDismiss = vm::dismissAddToList,
@@ -762,6 +769,7 @@ private fun LocalLibraryPane(
     onPlayLocalPlaylist: (String) -> Unit,
     onPlayListsTrack: (String) -> Unit,
     onRemovePlaylistTrack: (String, String) -> Unit,
+    onAddListsTrackToList: (LocalPlaylistStore.Track) -> Unit,
     onAddNowPlayingTo: (String) -> Unit,
     onImportM3u: () -> Unit,
     onExportPlaylistM3u: (String) -> Unit,
@@ -1016,6 +1024,7 @@ private fun LocalLibraryPane(
                 onPlayLocalPlaylist = onPlayLocalPlaylist,
                 onPlayListsTrack = onPlayListsTrack,
                 onRemovePlaylistTrack = onRemovePlaylistTrack,
+                onAddListsTrackToList = onAddListsTrackToList,
                 onAddNowPlayingTo = onAddNowPlayingTo,
                 onExportPlaylistM3u = onExportPlaylistM3u,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -1283,6 +1292,7 @@ private fun ListsPane(
     onPlayLocalPlaylist: (String) -> Unit,
     onPlayListsTrack: (String) -> Unit,
     onRemovePlaylistTrack: (String, String) -> Unit,
+    onAddListsTrackToList: (LocalPlaylistStore.Track) -> Unit,
     onAddNowPlayingTo: (String) -> Unit,
     onExportPlaylistM3u: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -1375,32 +1385,67 @@ private fun ListsPane(
             )
         }
         tracks.forEach { t ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(VoxShapes.card)
-                    .background(VoxColors.BgElevated)
-                    .clickable { onPlayListsTrack(t.uri) }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(t.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-                    Text(
-                        t.artist.ifBlank { if (t.isVideo) "Video" else "Audio" },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = VoxColors.TextSecondary,
-                        maxLines = 1,
-                    )
-                }
-                if (isUser) {
-                    IconButton(onClick = { onRemovePlaylistTrack(browse, t.uri) }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Close, "Remove", tint = VoxColors.TextMuted)
-                    }
-                }
-            }
+            ListsTrackRow(
+                track = t,
+                canRemove = isUser,
+                onPlay = { onPlayListsTrack(t.uri) },
+                onAddToList = { onAddListsTrackToList(t) },
+                onRemove = { onRemovePlaylistTrack(browse, t.uri) },
+            )
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ListsTrackRow(
+    track: LocalPlaylistStore.Track,
+    canRemove: Boolean,
+    onPlay: () -> Unit,
+    onAddToList: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(VoxShapes.card)
+            .background(VoxColors.BgElevated)
+            .combinedClickable(
+                onClick = onPlay,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onAddToList()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(track.title)
+                    if (track.artist.isNotBlank()) {
+                        append(" by ")
+                        append(track.artist)
+                    }
+                    append(". Double-tap to play. Long-press to add to another list.")
+                }
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(track.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+            Text(
+                track.artist.ifBlank { if (track.isVideo) "Video" else "Audio" },
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextSecondary,
+                maxLines = 1,
+            )
+        }
+        if (canRemove) {
+            IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Close, "Remove", tint = VoxColors.TextMuted)
+            }
+        }
     }
 }
 

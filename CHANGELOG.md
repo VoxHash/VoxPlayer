@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (A–Z jump / letter index for large local libraries)
+- Further Android companion polish (dark / light theme toggle for companion shell)
+
+## [1.56.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **A–Z library index** — Home grid sorted by title with letter section headers and a side letter jump rail for large libraries
 
 ## [1.55.0] - 2026-10-24
 

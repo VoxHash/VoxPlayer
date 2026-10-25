@@ -27,13 +27,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
@@ -857,20 +861,122 @@ private fun LocalLibraryPane(
         }
 
         val cols = if (wide) 4 else 2
+        if (historyFacet) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(cols),
+                contentPadding = PaddingValues(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                items(historyRows, key = { "h-${it.uri}" }) { entry ->
+                    HistoryCard(entry = entry, facet = state.localFilter, onClick = { onPlayHistory(entry) })
+                }
+            }
+        } else {
+            AzLibraryGrid(
+                items = filtered,
+                cols = cols,
+                onPlay = onPlay,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+private fun libraryIndexLetter(title: String): Char {
+    val c = title.trim().firstOrNull()?.uppercaseChar()
+    return if (c != null && c in 'A'..'Z') c else '#'
+}
+
+@Composable
+private fun AzLibraryGrid(
+    items: List<LocalMediaItem>,
+    cols: Int,
+    onPlay: (LocalMediaItem) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val sorted = remember(items) {
+        items.sortedWith(
+            compareBy(String.CASE_INSENSITIVE_ORDER) { it.title.ifBlank { it.uri.lastPathSegment.orEmpty() } },
+        )
+    }
+    val grouped = remember(sorted) {
+        sorted.groupBy { libraryIndexLetter(it.title.ifBlank { it.uri.lastPathSegment.orEmpty() }) }
+            .toSortedMap(compareBy { if (it == '#') '@' else it })
+    }
+    val letters = remember(grouped) { grouped.keys.toList() }
+    // Flat index: each section = 1 full-span header + N cells
+    val letterStartIndex = remember(grouped) {
+        var idx = 0
+        buildMap {
+            grouped.forEach { (letter, list) ->
+                put(letter, idx)
+                idx += 1 + list.size
+            }
+        }
+    }
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+
+    Box(modifier) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(cols),
-            contentPadding = PaddingValues(bottom = 16.dp),
+            state = gridState,
+            contentPadding = PaddingValues(bottom = 16.dp, end = if (letters.size > 1) 22.dp else 0.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            if (historyFacet) {
-                items(historyRows, key = { "h-${it.uri}" }) { entry ->
-                    HistoryCard(entry = entry, facet = state.localFilter, onClick = { onPlayHistory(entry) })
+            grouped.forEach { (letter, section) ->
+                item(
+                    key = "hdr-$letter",
+                    span = { GridItemSpan(maxLineSpan) },
+                ) {
+                    Text(
+                        letter.toString(),
+                        Modifier
+                            .fillMaxWidth()
+                            .background(VoxColors.BgPanel)
+                            .padding(vertical = 4.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = VoxColors.Accent,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
-            } else {
-                items(filtered, key = { "${it.isVideo}-${it.id}" }) { item ->
+                items(
+                    items = section,
+                    key = { "${it.isVideo}-${it.id}" },
+                ) { item ->
                     MediaCard(item = item, onClick = { onPlay(item) })
+                }
+            }
+        }
+        if (letters.size > 1) {
+            Column(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 2.dp)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                letters.forEach { letter ->
+                    Text(
+                        letter.toString(),
+                        Modifier
+                            .clickable {
+                                val target = letterStartIndex[letter] ?: return@clickable
+                                scope.launch {
+                                    gridState.animateScrollToItem(target)
+                                }
+                            }
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = VoxColors.TextMuted,
+                        fontSize = 10.sp,
+                    )
                 }
             }
         }

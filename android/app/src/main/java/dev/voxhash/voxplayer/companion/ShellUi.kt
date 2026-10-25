@@ -275,6 +275,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onRemovePlaylistTrack = vm::removeFromLocalPlaylist,
                                     onAddNowPlayingTo = vm::addNowPlayingToPlaylist,
                                     onFilter = vm::setLocalFilter,
+                                    onSearch = vm::setLocalSearchQuery,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
                                         val perms = if (Build.VERSION.SDK_INT >= 33) {
@@ -601,6 +602,7 @@ private fun LocalLibraryPane(
     onRemovePlaylistTrack: (String, String) -> Unit,
     onAddNowPlayingTo: (String) -> Unit,
     onFilter: (String) -> Unit,
+    onSearch: (String) -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
 ) {
@@ -674,21 +676,60 @@ private fun LocalLibraryPane(
             QuietButton("Open", onOpenFile)
         }
 
+        if (state.localFilter != "lists") {
+            OutlinedTextField(
+                value = state.localSearchQuery,
+                onValueChange = onSearch,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                singleLine = true,
+                label = { Text("Search title, artist, album") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = VoxColors.Accent,
+                    unfocusedBorderColor = VoxColors.BorderSoft,
+                    focusedLabelColor = VoxColors.Accent,
+                    cursorColor = VoxColors.Accent,
+                    focusedTextColor = VoxColors.Text,
+                    unfocusedTextColor = VoxColors.Text,
+                ),
+            )
+        }
+
         val historyFacet = state.localFilter == "recent" || state.localFilter == "top"
         val listsFacet = state.localFilter == "lists"
-        val historyRows = remember(state.historyRecent, state.historyTop, state.localFilter) {
-            when (state.localFilter) {
+        val q = state.localSearchQuery.trim()
+        val historyRows = remember(state.historyRecent, state.historyTop, state.localFilter, q) {
+            val base = when (state.localFilter) {
                 "recent" -> state.historyRecent
                 "top" -> state.historyTop
                 else -> emptyList()
             }
+            if (q.isEmpty()) base
+            else {
+                val needle = q.lowercase()
+                base.filter {
+                    it.title.lowercase().contains(needle) ||
+                        it.artist.lowercase().contains(needle) ||
+                        it.album.lowercase().contains(needle)
+                }
+            }
         }
-        val filtered = remember(state.localItems, state.localFilter) {
-            when (state.localFilter) {
+        val filtered = remember(state.localItems, state.localFilter, q) {
+            val base = when (state.localFilter) {
                 "audio" -> state.localItems.filter { !it.isVideo }
                 "video" -> state.localItems.filter { it.isVideo }
                 "recent", "top", "lists" -> emptyList()
                 else -> state.localItems
+            }
+            if (q.isEmpty()) base
+            else {
+                val needle = q.lowercase()
+                base.filter {
+                    it.title.lowercase().contains(needle) ||
+                        it.artist.lowercase().contains(needle) ||
+                        it.album.lowercase().contains(needle)
+                }
             }
         }
 

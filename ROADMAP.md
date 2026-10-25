@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.46.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.47.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -134,6 +134,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 20. **Landscape driving layout**: large-hit-target car mode when wide landscape (≥900dp); big transport + Recent; no GMS Auto (**Done 1.44.0**)
 21. **Quest panel / foldable multi-window**: Jetpack WindowManager fold + multi-window awareness; compact panel chrome when height is short; configChanges keep playback alive; hinge padding (**Done 1.45.0**)
 22. **Offline artwork thumbnails**: MediaStore `loadThumbnail` / album-art URIs in Home grid + Recent/Top cards; no cloud CDN (**Done 1.46.0**)
+23. **Local library search**: title / artist / album substring filter on Home + Recent/Top (**Done 1.47.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

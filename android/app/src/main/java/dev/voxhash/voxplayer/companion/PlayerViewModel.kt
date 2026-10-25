@@ -49,7 +49,9 @@ data class QueueRow(
 data class PlayerUiState(
     val tab: AppTab = AppTab.Local,
     val localItems: List<LocalMediaItem> = emptyList(),
-    val localFilter: String = "all", // all|audio|video
+    val localFilter: String = "all", // all|audio|video|recent|top|lists
+    /** Case-insensitive title / artist / album substring (Home library + history facets). */
+    val localSearchQuery: String = "",
     val permissionNeeded: Boolean = false,
     val localTitle: String = "(nothing loaded)",
     val localArtist: String = "",
@@ -402,6 +404,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun setLocalFilter(f: String) = _state.update {
         it.copy(localFilter = f, listsBrowseId = if (f == "lists") it.listsBrowseId else null)
     }
+
+    fun setLocalSearchQuery(q: String) = _state.update { it.copy(localSearchQuery = q) }
 
     fun playLocal(item: LocalMediaItem) {
         // Gapless queue: filtered library as Media3 playlist, start at the tapped item.

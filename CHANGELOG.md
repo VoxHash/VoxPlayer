@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (search / filter local library by title artist album)
+- Further Android companion polish (cast / DLNA opt-in without GMS Cast SDK)
+
+## [1.47.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: local library search — filter Home / Recent / Top by title, artist, or album (on-device only)
 
 ## [1.46.0] - 2026-10-24
 

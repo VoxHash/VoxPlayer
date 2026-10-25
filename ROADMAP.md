@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.66.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.67.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -154,6 +154,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 40. **Queue drag haptics + a11y**: Long-press haptic on drag start / step; TalkBack labels for handle, move, remove, and row play (**Done 1.64.0**)
 41. **Scroll Up next to current**: auto-scroll Up next to the playing row on track change; Jump to playing button (**Done 1.65.0**)
 42. **Queue position chip**: Now Playing status chips lead with accent Queue n/N (replaces plain muted line) (**Done 1.66.0**)
+43. **Sleep-timer remaining chip**: accent Sleep m:ss chip while a sleep timer is armed (**Done 1.67.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

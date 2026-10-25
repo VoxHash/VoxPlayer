@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (sleep-timer remaining chip)
+- Further Android companion polish (output-route chip on Now Playing)
+
+## [1.67.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Sleep-timer remaining chip** — accent Sleep m:ss status chip while a sleep timer is armed
 
 ## [1.66.0] - 2026-10-25
 

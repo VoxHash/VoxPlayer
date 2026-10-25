@@ -2281,6 +2281,11 @@ private fun PlaybackStatusChips(
         if (state.localQueueSize > 0) {
             add("Queue ${state.localQueueIndex + 1}/${state.localQueueSize}")
         }
+        if (state.sleepEndEpochMs > 0L && state.sleepRemainingLabel.isNotBlank() &&
+            state.sleepRemainingLabel != "Off"
+        ) {
+            add("Sleep ${state.sleepRemainingLabel}")
+        }
         if (state.crossfadeEnabled) add("Fade ${CrossfadeControl.fadeLabel(state.fadeMs)}")
         if (state.skipSilence) add("Skip silence")
         if (kotlin.math.abs(state.playbackSpeed - 1f) > 0.001f) {
@@ -2304,20 +2309,20 @@ private fun PlaybackStatusChips(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         chips.forEach { label ->
-            val isQueue = label.startsWith("Queue ")
+            val emphasize = label.startsWith("Queue ") || label.startsWith("Sleep ")
             Text(
                 label,
                 Modifier
                     .clip(VoxShapes.pill)
-                    .background(if (isQueue) VoxColors.AccentSoft else VoxColors.BgElevated)
+                    .background(if (emphasize) VoxColors.AccentSoft else VoxColors.BgElevated)
                     .border(
                         1.dp,
-                        if (isQueue) VoxColors.Accent else VoxColors.BorderSoft,
+                        if (emphasize) VoxColors.Accent else VoxColors.BorderSoft,
                         VoxShapes.pill,
                     )
                     .padding(horizontal = 10.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.labelSmall,
-                color = if (isQueue) VoxColors.Accent else VoxColors.TextSecondary,
+                color = if (emphasize) VoxColors.Accent else VoxColors.TextSecondary,
                 maxLines = 1,
             )
         }

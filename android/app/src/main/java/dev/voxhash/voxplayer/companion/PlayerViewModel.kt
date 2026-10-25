@@ -102,6 +102,8 @@ data class PlayerUiState(
     val skipSilence: Boolean = false,
     val fadeMs: Long = CrossfadeControl.DEFAULT_FADE_MS,
     val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
+    /** Sticky preferred speed; NaN = none. */
+    val playbackSpeedPreferred: Float = Float.NaN,
     val themeMode: ThemeMode = ThemeMode.Dark,
     /** Multi-window / Quest panel / fold — for UI chrome (playback stays in service). */
     val multiWindow: Boolean = false,
@@ -190,7 +192,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 crossfadeEnabled = CrossfadeControl.loadCrossfade(app),
                 skipSilence = CrossfadeControl.loadSkipSilence(app),
                 fadeMs = CrossfadeControl.loadFadeMs(app),
-                playbackSpeed = PlaybackSpeed.load(app),
+                playbackSpeed = PlaybackSpeed.loadBoot(app),
+                playbackSpeedPreferred = PlaybackSpeed.loadPreferred(app) ?: Float.NaN,
                 themeMode = ThemePrefs.load(app),
                 dlnaEnabled = DlnaCastControl.loadEnabled(app),
                 dlnaDefaultId = DlnaCastControl.loadDefaultId(app),
@@ -1213,6 +1216,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 audioPinName = pin?.name.orEmpty(),
                 eqPreset = EqualizerControl.loadBootPreset(getApplication()),
                 eqPreferredId = EqualizerControl.loadPreferred(getApplication()).orEmpty(),
+                playbackSpeed = PlaybackSpeed.loadBoot(getApplication()),
+                playbackSpeedPreferred = PlaybackSpeed.loadPreferred(getApplication()) ?: Float.NaN,
             )
         }
         pushLocalVolumeToService()
@@ -2134,6 +2139,33 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             Log.w(TAG, "SET_PLAYBACK_SPEED failed", e)
             player?.let { PlaybackSpeed.apply(it, s) }
         }
+    }
+
+    /** Long-press: pin / clear preferred playback speed. */
+    fun setPreferredPlaybackSpeed(speed: Float) {
+        val s = PlaybackSpeed.normalize(speed)
+        val app = getApplication<Application>()
+        val current = PlaybackSpeed.loadPreferred(app)
+        if (current != null && PlaybackSpeed.isSame(current, s)) {
+            PlaybackSpeed.clearPreferred(app)
+            _state.update {
+                it.copy(
+                    playbackSpeedPreferred = Float.NaN,
+                    statusToast = "Preferred speed cleared",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        PlaybackSpeed.savePreferred(app, s)
+        setPlaybackSpeed(s)
+        _state.update {
+            it.copy(
+                playbackSpeedPreferred = s,
+                statusToast = "Preferred speed · ${PlaybackSpeed.label(s)}",
+            )
+        }
+        clearStatusToastLater()
     }
 
     fun setThemeMode(mode: ThemeMode) {

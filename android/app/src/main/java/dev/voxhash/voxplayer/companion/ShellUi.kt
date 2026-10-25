@@ -381,6 +381,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onToggleSkipSilence = { vm.setSkipSilence(!state.skipSilence) },
                                 onFadeMs = vm::setFadeMs,
                                 onPlaybackSpeed = vm::setPlaybackSpeed,
+                                onPinPlaybackSpeed = vm::setPreferredPlaybackSpeed,
                                 onToggleDlna = { vm.setDlnaEnabled(!state.dlnaEnabled) },
                                 onScanDlna = vm::scanDlnaRenderers,
                                 onSelectDlna = vm::selectDlnaRenderer,
@@ -1656,6 +1657,7 @@ private fun NowPlayingPane(
     onToggleSkipSilence: () -> Unit,
     onFadeMs: (Long) -> Unit,
     onPlaybackSpeed: (Float) -> Unit,
+    onPinPlaybackSpeed: (Float) -> Unit,
     onToggleDlna: () -> Unit,
     onScanDlna: () -> Unit,
     onSelectDlna: (String) -> Unit,
@@ -1999,7 +2001,14 @@ private fun NowPlayingPane(
                 modifier = markSection("speed"),
             )
             Text(
-                "Playback rate · ${PlaybackSpeed.label(state.playbackSpeed)} (podcasts / spoken word)",
+                buildString {
+                    append("Tap to apply · long-press pin preferred. Now ")
+                    append(PlaybackSpeed.label(state.playbackSpeed))
+                    if (!state.playbackSpeedPreferred.isNaN()) {
+                        append(" · Preferred ")
+                        append(PlaybackSpeed.label(state.playbackSpeedPreferred))
+                    }
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
@@ -2009,18 +2018,14 @@ private fun NowPlayingPane(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     row.forEach { (speed, label) ->
-                        val selected = kotlin.math.abs(state.playbackSpeed - speed) < 0.001f
-                        Text(
-                            if (selected) "✓ $label" else label,
-                            Modifier
-                                .weight(1f)
-                                .clip(VoxShapes.card)
-                                .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
-                                .clickable { onPlaybackSpeed(speed) }
-                                .padding(horizontal = 6.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (selected) VoxColors.Accent else VoxColors.Text,
-                            maxLines = 1,
+                        SpeedPresetChip(
+                            label = label,
+                            selected = PlaybackSpeed.isSame(state.playbackSpeed, speed),
+                            preferred = !state.playbackSpeedPreferred.isNaN() &&
+                                PlaybackSpeed.isSame(state.playbackSpeedPreferred, speed),
+                            onSelect = { onPlaybackSpeed(speed) },
+                            onPin = { onPinPlaybackSpeed(speed) },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
@@ -2256,6 +2261,60 @@ private fun NowPlayingPane(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SpeedPresetChip(
+    label: String,
+    selected: Boolean,
+    preferred: Boolean,
+    onSelect: () -> Unit,
+    onPin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val text = buildString {
+        if (selected) append("✓ ")
+        append(label)
+        if (preferred) append(" ★")
+    }
+    Text(
+        text,
+        modifier
+            .clip(VoxShapes.card)
+            .background(
+                when {
+                    preferred -> VoxColors.AccentSoft
+                    selected -> VoxColors.BgPanel
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                if (preferred) VoxColors.Accent else VoxColors.BorderSoft,
+                VoxShapes.card,
+            )
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPin()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(label)
+                    if (selected) append(", selected")
+                    if (preferred) append(", preferred")
+                    append(". Double-tap to apply. Long-press to pin or clear preferred.")
+                }
+            }
+            .padding(horizontal = 6.dp, vertical = 8.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (preferred || selected) VoxColors.Accent else VoxColors.Text,
+        maxLines = 1,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

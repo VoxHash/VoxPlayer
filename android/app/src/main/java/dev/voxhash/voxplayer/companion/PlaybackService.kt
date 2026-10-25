@@ -201,7 +201,13 @@ class PlaybackService : MediaSessionService() {
                         eqPreset = EqualizerControl.loadPreset(this@PlaybackService)
                     }
                     equalizerApplier.setPreset(eqPreset)
-                    playbackSpeed = PlaybackSpeed.load(this@PlaybackService)
+                    val preferredSpeed = PlaybackSpeed.loadPreferred(this@PlaybackService)
+                    if (preferredSpeed != null) {
+                        playbackSpeed = preferredSpeed
+                        PlaybackSpeed.save(this@PlaybackService, playbackSpeed)
+                    } else {
+                        playbackSpeed = PlaybackSpeed.load(this@PlaybackService)
+                    }
                     mediaSession?.player?.let { PlaybackSpeed.apply(it, playbackSpeed) }
                     applyAudioChain()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
@@ -285,7 +291,8 @@ class PlaybackService : MediaSessionService() {
         crossfadeEnabled = CrossfadeControl.loadCrossfade(this)
         skipSilence = CrossfadeControl.loadSkipSilence(this)
         fadeMs = CrossfadeControl.loadFadeMs(this)
-        playbackSpeed = PlaybackSpeed.load(this)
+        playbackSpeed = PlaybackSpeed.loadBoot(this)
+        PlaybackSpeed.save(this, playbackSpeed)
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         audioManager?.registerAudioDeviceCallback(deviceCallback, mainHandler)
@@ -456,12 +463,18 @@ class PlaybackService : MediaSessionService() {
             Log.i(TAG, "sticky pin restored preferred sink id=$resolved")
             preferredDeviceId = resolved
             AudioRoute.savePreferredId(this, preferredDeviceId)
-            // Also re-apply preferred EQ when the pinned sink comes back.
+            // Also re-apply preferred EQ / speed when the pinned sink comes back.
             val preferredEq = EqualizerControl.loadPreferred(this)
             if (preferredEq != null && preferredEq != eqPreset) {
                 eqPreset = preferredEq
                 EqualizerControl.savePreset(this, eqPreset)
                 equalizerApplier.setPreset(eqPreset)
+            }
+            val preferredSpeed = PlaybackSpeed.loadPreferred(this)
+            if (preferredSpeed != null && !PlaybackSpeed.isSame(preferredSpeed, playbackSpeed)) {
+                playbackSpeed = preferredSpeed
+                PlaybackSpeed.save(this, playbackSpeed)
+                mediaSession?.player?.let { PlaybackSpeed.apply(it, playbackSpeed) }
             }
         }
     }

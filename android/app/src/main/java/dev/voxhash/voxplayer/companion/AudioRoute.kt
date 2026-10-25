@@ -36,8 +36,31 @@ object AudioRoute {
         val id: Int,
         val name: String,
         val typeLabel: String,
+        val type: Int,
         val isSink: Boolean,
-    )
+    ) {
+        /** UI group for clearer multi-output routing. */
+        val routeGroup: String
+            get() = when (type) {
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+                AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+                -> "This device"
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                -> "Wired"
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_HEARING_AID,
+                -> "Bluetooth"
+                AudioDeviceInfo.TYPE_USB_DEVICE,
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                -> "USB"
+                AudioDeviceInfo.TYPE_HDMI,
+                AudioDeviceInfo.TYPE_HDMI_ARC,
+                -> "Display"
+                else -> "Other"
+            }
+    }
 
     fun loadPreferredId(context: Context): Int =
         context.applicationContext
@@ -60,9 +83,25 @@ object AudioRoute {
                 id = info.id,
                 name = deviceName(info),
                 typeLabel = typeLabel(info.type),
+                type = info.type,
                 isSink = true,
             )
-        }.sortedWith(compareBy({ it.typeLabel }, { it.name }))
+        }.sortedWith(
+            compareBy(
+                { routeGroupOrder(it.routeGroup) },
+                { it.typeLabel },
+                { it.name },
+            ),
+        )
+    }
+
+    private fun routeGroupOrder(group: String): Int = when (group) {
+        "This device" -> 0
+        "Wired" -> 1
+        "Bluetooth" -> 2
+        "USB" -> 3
+        "Display" -> 4
+        else -> 5
     }
 
     fun findDevice(context: Context, id: Int): AudioDeviceInfo? {

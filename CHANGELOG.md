@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (equalizer UI presets polish / multi-output routing clarity)
+- Further Android companion polish (queue export / import as local M3U)
+
+## [1.51.0] - 2026-10-24
+
+### Changed
+- Android / GrapheneOS / Quest: **EQ + sound output polish** — clear selected EQ presets with descriptions; sinks grouped by route (This device / Wired / Bluetooth / USB / Display) with explicit “Routing:” status
 
 ## [1.50.0] - 2026-10-24
 

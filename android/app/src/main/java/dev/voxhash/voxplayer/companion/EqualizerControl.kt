@@ -32,6 +32,17 @@ object EqualizerControl {
         PRESET_LOUDNESS to "Loud",
     )
 
+    /** Short on-device copy for the selected preset (no cloud profiles). */
+    fun describe(preset: String): String = when (preset) {
+        PRESET_OFF -> "EQ disabled — dry session output"
+        PRESET_FLAT -> "Neutral bands (unity levels)"
+        PRESET_BASS -> "Lift low end, ease highs"
+        PRESET_TREBLE -> "Lift highs, ease lows"
+        PRESET_VOCAL -> "Midrange bump for voices"
+        PRESET_LOUDNESS -> "Mild smile curve (bass + treble)"
+        else -> "AOSP Equalizer effect"
+    }
+
     const val ACTION_SET = "dev.voxhash.voxplayer.SET_EQ_PRESET"
     val CMD_SET: SessionCommand = SessionCommand(ACTION_SET, Bundle.EMPTY)
     const val EXTRA_PRESET = "preset"

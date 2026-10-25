@@ -1252,68 +1252,90 @@ private fun NowPlayingPane(
                 )
             }
             Text("Sound output", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                "Force a sink below, or use System default so Android picks (e.g. BT when connected).",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                QuietButton("Refresh", onRefreshDevices)
+                QuietButton("Refresh sinks", onRefreshDevices)
             }
+            val usingDefault = state.preferredAudioDeviceId == AudioRoute.DEFAULT_DEVICE_ID
             val selectedName = when {
-                state.preferredAudioDeviceId == AudioRoute.DEFAULT_DEVICE_ID -> "System default"
+                usingDefault -> "Routing: System default"
                 else -> state.audioDevices.firstOrNull { it.id == state.preferredAudioDeviceId }
-                    ?.let { "${it.name} · ${it.typeLabel}" }
-                    ?: "System default"
+                    ?.let { "Routing: ${it.name} · ${it.typeLabel}" }
+                    ?: "Routing: System default (preferred sink gone)"
             }
-            Text(selectedName, style = MaterialTheme.typography.bodySmall, color = VoxColors.TextMuted)
-            QuietButton(
-                "System default",
-                { onSelectDevice(AudioRoute.DEFAULT_DEVICE_ID) },
-                Modifier.fillMaxWidth(),
+            Text(selectedName, style = MaterialTheme.typography.bodySmall, color = VoxColors.Accent)
+            Text(
+                if (usingDefault) "✓ System default" else "System default",
+                Modifier
+                    .fillMaxWidth()
+                    .clip(VoxShapes.card)
+                    .background(if (usingDefault) VoxColors.AccentSoft else VoxColors.BgElevated)
+                    .clickable { onSelectDevice(AudioRoute.DEFAULT_DEVICE_ID) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (usingDefault) VoxColors.Accent else VoxColors.Text,
             )
-            state.audioDevices.take(8).forEach { dev ->
-                val selected = state.preferredAudioDeviceId == dev.id
+            state.audioDevices.take(16).groupBy { it.routeGroup }.forEach { (group, devices) ->
                 Text(
-                    "${dev.name} · ${dev.typeLabel}",
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(VoxShapes.card)
-                        .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
-                        .clickable { onSelectDevice(dev.id) }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (selected) VoxColors.Accent else VoxColors.Text,
+                    group,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = VoxColors.TextMuted,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
                 )
-            }
-            Text("Equalizer", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                EqualizerControl.PRESETS.take(3).forEach { (id, label) ->
-                    QuietButton(
-                        label,
-                        { onEqPreset(id) },
-                        Modifier.weight(1f),
+                devices.forEach { dev ->
+                    val selected = state.preferredAudioDeviceId == dev.id
+                    Text(
+                        if (selected) "✓ ${dev.name} · ${dev.typeLabel}" else "${dev.name} · ${dev.typeLabel}",
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(VoxShapes.card)
+                            .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
+                            .clickable { onSelectDevice(dev.id) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (selected) VoxColors.Accent else VoxColors.Text,
                     )
                 }
             }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                EqualizerControl.PRESETS.drop(3).forEach { (id, label) ->
-                    QuietButton(
-                        if (state.eqPreset == id) "· $label" else label,
-                        { onEqPreset(id) },
-                        Modifier.weight(1f),
-                    )
+            Text("Equalizer", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            EqualizerControl.PRESETS.chunked(3).forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    row.forEach { (id, label) ->
+                        val selected = state.eqPreset == id
+                        Text(
+                            if (selected) "✓ $label" else label,
+                            Modifier
+                                .weight(1f)
+                                .clip(VoxShapes.card)
+                                .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
+                                .clickable { onEqPreset(id) }
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (selected) VoxColors.Accent else VoxColors.Text,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    repeat(3 - row.size) {
+                        Spacer(Modifier.weight(1f))
+                    }
                 }
             }
             Text(
-                "EQ: ${EqualizerControl.PRESETS.firstOrNull { it.first == state.eqPreset }?.second ?: "Off"} · AOSP effect",
+                EqualizerControl.describe(state.eqPreset),
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )

@@ -96,6 +96,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Status chips:** Now Playing shows Queue n/N, Out: route, Sleep m:ss (accent when relevant) plus Fade / Skip silence / Speed / EQ / Shuffle / Repeat chips; tap a chip to jump to that section; toggles flash a short status toast.
 
+**Route fallback:** If a forced headset/BT sink disconnects, routing returns to System default with a toast; loud playback is soft-ducked to 40% to avoid speaker blast.
+
 **Clear queue:** Up next → Clear queue (tap twice to confirm). Undo restores the last cleared queue while the toast window is open.
 
 **Remove from queue:** Up next row ✕ removes the item; Undo re-inserts it at the same index for a few seconds.

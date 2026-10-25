@@ -187,8 +187,42 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             when (intent?.action) {
                 AudioRoute.ACTION_DEVICES_CHANGED -> {
                     refreshAudioDevices()
-                    _state.update {
-                        it.copy(preferredAudioDeviceId = AudioRoute.loadPreferredId(getApplication()))
+                    val fellBack = intent?.getBooleanExtra(AudioRoute.EXTRA_ROUTE_FALLBACK, false) == true
+                    val from = intent?.getStringExtra(AudioRoute.EXTRA_FALLBACK_FROM).orEmpty()
+                        .ifBlank { "Headset" }
+                    val prevPreferred = _state.value.preferredAudioDeviceId
+                    val nextPreferred = AudioRoute.loadPreferredId(getApplication())
+                    if (fellBack) {
+                        val playing = _state.value.localPlaying
+                        val vol = _state.value.localVolume
+                        val ducked = playing && !_state.value.localMuted && vol > ROUTE_FALLBACK_VOLUME_CAP
+                        if (ducked) {
+                            setLocalVolume(ROUTE_FALLBACK_VOLUME_CAP)
+                        }
+                        _state.update {
+                            it.copy(
+                                preferredAudioDeviceId = nextPreferred,
+                                statusToast = buildString {
+                                    append(from)
+                                    append(" disconnected · System default")
+                                    if (ducked) append(" · volume capped at $ROUTE_FALLBACK_VOLUME_CAP%")
+                                },
+                            )
+                        }
+                        clearStatusToastLater(6_000L)
+                    } else {
+                        _state.update {
+                            it.copy(preferredAudioDeviceId = nextPreferred)
+                        }
+                        if (prevPreferred != nextPreferred &&
+                            nextPreferred == AudioRoute.DEFAULT_DEVICE_ID &&
+                            prevPreferred != AudioRoute.DEFAULT_DEVICE_ID
+                        ) {
+                            _state.update {
+                                it.copy(statusToast = "Audio route reset to System default")
+                            }
+                            clearStatusToastLater()
+                        }
                     }
                 }
                 SleepTimer.ACTION_FIRED -> {
@@ -2198,5 +2232,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         private const val TAG = "VoxPlayerBT"
         private const val PREF_REPEAT = "local_repeat_mode"
         private const val PREF_SHUFFLE = "local_shuffle"
+        /** Soft duck when preferred headset unplugs while loud playback continues on speaker. */
+        private const val ROUTE_FALLBACK_VOLUME_CAP = 40
     }
 }

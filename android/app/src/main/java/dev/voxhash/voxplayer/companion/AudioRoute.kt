@@ -31,6 +31,9 @@ object AudioRoute {
 
     /** Broadcast when sinks are added/removed (package-scoped). */
     const val ACTION_DEVICES_CHANGED = "dev.voxhash.voxplayer.AUDIO_DEVICES_CHANGED"
+    /** True when preferred sink vanished and routing fell back to system default. */
+    const val EXTRA_ROUTE_FALLBACK = "route_fallback"
+    const val EXTRA_FALLBACK_FROM = "fallback_from"
 
     data class Device(
         val id: Int,

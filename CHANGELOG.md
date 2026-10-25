@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (bookmark quick-add from notification already shipped; next: volume duck on headset disconnect toast)
+- Further Android companion polish (car-mode large seek buttons already shipped; next: Home empty-state library tips)
+
+## [1.70.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Headset disconnect toast + soft duck** — preferred sink removal falls back to System default with a toast; caps volume at 40% if playback continues loud on speaker
 
 ## [1.69.0] - 2026-10-25
 

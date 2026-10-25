@@ -75,13 +75,23 @@ class PlaybackService : MediaSessionService() {
             Log.i(TAG, "audio devices removed count=${removedDevices.size}")
             mainHandler.post {
                 val removedIds = removedDevices.map { it.id }.toSet()
+                var fallbackFrom: String? = null
                 if (preferredDeviceId != AudioRoute.DEFAULT_DEVICE_ID && preferredDeviceId in removedIds) {
+                    val gone = removedDevices.firstOrNull { it.id == preferredDeviceId }
+                    fallbackFrom = gone?.let { info ->
+                        val raw = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                            info.productName?.toString()?.trim().orEmpty()
+                        } else {
+                            ""
+                        }
+                        raw.ifBlank { "Headset" }
+                    } ?: "Headset"
                     Log.w(TAG, "preferred sink $preferredDeviceId gone — falling back to system default")
                     preferredDeviceId = AudioRoute.DEFAULT_DEVICE_ID
                     AudioRoute.savePreferredId(this@PlaybackService, preferredDeviceId)
                 }
                 applyAudioChain()
-                notifyDevicesChanged()
+                notifyDevicesChanged(fallbackFrom = fallbackFrom)
             }
         }
     }
@@ -450,10 +460,13 @@ class PlaybackService : MediaSessionService() {
         applySkipSilence()
     }
 
-    private fun notifyDevicesChanged() {
-        sendBroadcast(
-            Intent(AudioRoute.ACTION_DEVICES_CHANGED).setPackage(packageName),
-        )
+    private fun notifyDevicesChanged(fallbackFrom: String? = null) {
+        val intent = Intent(AudioRoute.ACTION_DEVICES_CHANGED).setPackage(packageName)
+        if (!fallbackFrom.isNullOrBlank()) {
+            intent.putExtra(AudioRoute.EXTRA_ROUTE_FALLBACK, true)
+            intent.putExtra(AudioRoute.EXTRA_FALLBACK_FROM, fallbackFrom)
+        }
+        sendBroadcast(intent)
     }
 
     private fun persistQueue() {

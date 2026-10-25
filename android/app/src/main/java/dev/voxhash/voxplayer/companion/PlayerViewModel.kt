@@ -1633,6 +1633,22 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         clearStatusToastLater()
     }
 
+    fun openAddToListFromHistory(entry: PlayHistoryStore.Entry) {
+        _state.update {
+            it.copy(
+                addToListPending = LocalPlaylistStore.Track(
+                    uri = entry.uri,
+                    title = entry.title,
+                    artist = entry.artist,
+                    album = entry.album,
+                    isVideo = entry.isVideo,
+                ),
+                statusToast = "Choose a list for “${entry.title}”",
+            )
+        }
+        clearStatusToastLater()
+    }
+
     fun dismissAddToList() {
         _state.update { it.copy(addToListPending = null) }
     }

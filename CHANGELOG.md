@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (history card long-press Add to list)
+- Further Android companion polish (Lists-browse track long-press Add to another list)
+
+## [1.78.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **History card Add to list** — Recent / Top / Week / Month cards long-press the same playlist picker as Home
 
 ## [1.77.0] - 2026-10-25
 

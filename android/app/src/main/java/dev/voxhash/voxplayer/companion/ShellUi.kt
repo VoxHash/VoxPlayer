@@ -335,6 +335,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onHomeAzLetter = vm::setHomeAzLetter,
                                     onRefreshLibrary = vm::reloadLocalLibrary,
                                     onAddToList = vm::openAddToList,
+                                    onAddHistoryToList = vm::openAddToListFromHistory,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
                                         val perms = if (Build.VERSION.SDK_INT >= 33) {
@@ -769,6 +770,7 @@ private fun LocalLibraryPane(
     onHomeAzLetter: (Char?) -> Unit,
     onRefreshLibrary: () -> Unit,
     onAddToList: (LocalMediaItem) -> Unit,
+    onAddHistoryToList: (PlayHistoryStore.Entry) -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
 ) {
@@ -1066,7 +1068,12 @@ private fun LocalLibraryPane(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(historyRows, key = { "h-${it.uri}" }) { entry ->
-                            HistoryCard(entry = entry, facet = state.localFilter, onClick = { onPlayHistory(entry) })
+                            HistoryCard(
+                                entry = entry,
+                                facet = state.localFilter,
+                                onClick = { onPlayHistory(entry) },
+                                onLongClick = { onAddHistoryToList(entry) },
+                            )
                         }
                     }
                 }
@@ -1427,17 +1434,36 @@ private fun ListFolderRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HistoryCard(
     entry: PlayHistoryStore.Entry,
     facet: String,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
+    val haptics = LocalHapticFeedback.current
     Column(
         Modifier
             .clip(VoxShapes.card)
             .background(VoxColors.BgElevated)
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(entry.title)
+                    if (entry.artist.isNotBlank()) {
+                        append(" by ")
+                        append(entry.artist)
+                    }
+                    append(". Double-tap to play. Long-press to add to a list.")
+                }
+            }
             .padding(10.dp),
     ) {
         Box(

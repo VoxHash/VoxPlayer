@@ -122,6 +122,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Audio preferred pin:** Long-press a sound-output sink to pin / clear preferred (type + name). After disconnect fallback, reconnect restores that sink.
 
+**EQ preferred pin:** Long-press an EQ preset to pin / clear preferred. Restored on cold start, Quest/audio reapply, and when the preferred sink reconnects.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

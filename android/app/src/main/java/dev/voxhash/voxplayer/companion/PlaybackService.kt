@@ -193,7 +193,13 @@ class PlaybackService : MediaSessionService() {
                     volumeMuted = LocalVolume.loadMuted(this@PlaybackService)
                     preferredDeviceId = AudioRoute.loadPreferredId(this@PlaybackService)
                     restorePinnedPreferredIfPresent()
-                    eqPreset = EqualizerControl.loadPreset(this@PlaybackService)
+                    val preferredEq = EqualizerControl.loadPreferred(this@PlaybackService)
+                    if (preferredEq != null) {
+                        eqPreset = preferredEq
+                        EqualizerControl.savePreset(this@PlaybackService, eqPreset)
+                    } else {
+                        eqPreset = EqualizerControl.loadPreset(this@PlaybackService)
+                    }
                     equalizerApplier.setPreset(eqPreset)
                     playbackSpeed = PlaybackSpeed.load(this@PlaybackService)
                     mediaSession?.player?.let { PlaybackSpeed.apply(it, playbackSpeed) }
@@ -273,7 +279,8 @@ class PlaybackService : MediaSessionService() {
         volumeMuted = LocalVolume.loadMuted(this)
         preferredDeviceId = AudioRoute.loadPreferredId(this)
         restorePinnedPreferredIfPresent()
-        eqPreset = EqualizerControl.loadPreset(this)
+        eqPreset = EqualizerControl.loadBootPreset(this)
+        EqualizerControl.savePreset(this, eqPreset)
         equalizerApplier.setPreset(eqPreset)
         crossfadeEnabled = CrossfadeControl.loadCrossfade(this)
         skipSilence = CrossfadeControl.loadSkipSilence(this)
@@ -449,6 +456,13 @@ class PlaybackService : MediaSessionService() {
             Log.i(TAG, "sticky pin restored preferred sink id=$resolved")
             preferredDeviceId = resolved
             AudioRoute.savePreferredId(this, preferredDeviceId)
+            // Also re-apply preferred EQ when the pinned sink comes back.
+            val preferredEq = EqualizerControl.loadPreferred(this)
+            if (preferredEq != null && preferredEq != eqPreset) {
+                eqPreset = preferredEq
+                EqualizerControl.savePreset(this, eqPreset)
+                equalizerApplier.setPreset(eqPreset)
+            }
         }
     }
 

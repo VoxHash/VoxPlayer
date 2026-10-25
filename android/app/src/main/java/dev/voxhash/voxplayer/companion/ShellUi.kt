@@ -374,6 +374,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onSelectDevice = vm::setPreferredAudioDevice,
                                 onPinDevice = vm::setPinnedAudioDevice,
                                 onEqPreset = vm::setEqPreset,
+                                onPinEqPreset = vm::setPreferredEqPreset,
                                 onSleepMinutes = vm::setSleepTimerMinutes,
                                 onClearSleep = vm::clearSleepTimer,
                                 onToggleCrossfade = { vm.setCrossfadeEnabled(!state.crossfadeEnabled) },
@@ -1648,6 +1649,7 @@ private fun NowPlayingPane(
     onSelectDevice: (Int) -> Unit,
     onPinDevice: (Int) -> Unit,
     onEqPreset: (String) -> Unit,
+    onPinEqPreset: (String) -> Unit,
     onSleepMinutes: (Int) -> Unit,
     onClearSleep: () -> Unit,
     onToggleCrossfade: () -> Unit,
@@ -1906,25 +1908,24 @@ private fun NowPlayingPane(
                 color = VoxColors.Accent,
                 modifier = markSection("eq"),
             )
+            Text(
+                "Tap to apply. Long-press to pin preferred (restored on start / reapply).",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
             EqualizerControl.PRESETS.chunked(3).forEach { row ->
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     row.forEach { (id, label) ->
-                        val selected = state.eqPreset == id
-                        Text(
-                            if (selected) "✓ $label" else label,
-                            Modifier
-                                .weight(1f)
-                                .clip(VoxShapes.card)
-                                .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
-                                .clickable { onEqPreset(id) }
-                                .padding(horizontal = 8.dp, vertical = 10.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (selected) VoxColors.Accent else VoxColors.Text,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        EqPresetChip(
+                            label = label,
+                            selected = state.eqPreset == id,
+                            preferred = state.eqPreferredId == id,
+                            onSelect = { onEqPreset(id) },
+                            onPin = { onPinEqPreset(id) },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                     repeat(3 - row.size) {
@@ -1933,7 +1934,13 @@ private fun NowPlayingPane(
                 }
             }
             Text(
-                EqualizerControl.describe(state.eqPreset),
+                buildString {
+                    append(EqualizerControl.describe(state.eqPreset))
+                    if (state.eqPreferredId.isNotEmpty()) {
+                        append(" · Preferred ")
+                        append(EqualizerControl.label(state.eqPreferredId))
+                    }
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
@@ -2249,6 +2256,61 @@ private fun NowPlayingPane(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EqPresetChip(
+    label: String,
+    selected: Boolean,
+    preferred: Boolean,
+    onSelect: () -> Unit,
+    onPin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val text = buildString {
+        if (selected) append("✓ ")
+        append(label)
+        if (preferred) append(" ★")
+    }
+    Text(
+        text,
+        modifier
+            .clip(VoxShapes.card)
+            .background(
+                when {
+                    preferred -> VoxColors.AccentSoft
+                    selected -> VoxColors.BgPanel
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                if (preferred) VoxColors.Accent else VoxColors.BorderSoft,
+                VoxShapes.card,
+            )
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPin()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(label)
+                    if (selected) append(", selected")
+                    if (preferred) append(", preferred")
+                    append(". Double-tap to apply. Long-press to pin or clear preferred.")
+                }
+            }
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (preferred || selected) VoxColors.Accent else VoxColors.Text,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

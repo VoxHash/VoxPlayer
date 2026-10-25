@@ -16,6 +16,8 @@ import androidx.media3.session.SessionCommand
 object EqualizerControl {
     const val PREFS = "voxplayer_eq"
     const val KEY_PRESET = "preset"
+    /** Sticky preferred preset (long-press); applied on cold start / audio reapply. */
+    const val KEY_PREFERRED = "preferred_preset"
     const val PRESET_OFF = "off"
     const val PRESET_FLAT = "flat"
     const val PRESET_BASS = "bass"
@@ -43,25 +45,58 @@ object EqualizerControl {
         else -> "AOSP Equalizer effect"
     }
 
+    fun label(preset: String): String =
+        PRESETS.firstOrNull { it.first == preset }?.second ?: preset
+
     const val ACTION_SET = "dev.voxhash.voxplayer.SET_EQ_PRESET"
     val CMD_SET: SessionCommand = SessionCommand(ACTION_SET, Bundle.EMPTY)
     const val EXTRA_PRESET = "preset"
+
+    fun normalize(preset: String): String =
+        preset.takeIf { p -> PRESETS.any { it.first == p } } ?: PRESET_OFF
 
     fun loadPreset(context: Context): String =
         context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_PRESET, PRESET_OFF)
-            ?.takeIf { id -> PRESETS.any { it.first == id } }
+            ?.let { normalize(it) }
             ?: PRESET_OFF
 
     fun savePreset(context: Context, preset: String) {
-        val id = preset.takeIf { p -> PRESETS.any { it.first == p } } ?: PRESET_OFF
+        val id = normalize(preset)
         context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_PRESET, id)
             .apply()
     }
+
+    fun loadPreferred(context: Context): String? =
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_PREFERRED, null)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { normalize(it) }
+
+    fun savePreferred(context: Context, preset: String) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_PREFERRED, normalize(preset))
+            .apply()
+    }
+
+    fun clearPreferred(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_PREFERRED)
+            .apply()
+    }
+
+    /** Preferred pin if set, else last selected preset. */
+    fun loadBootPreset(context: Context): String =
+        loadPreferred(context) ?: loadPreset(context)
 }
 
 class EqualizerApplier {

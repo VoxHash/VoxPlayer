@@ -80,6 +80,8 @@ data class PlayerUiState(
     val audioPinType: Int = Int.MIN_VALUE,
     val audioPinName: String = "",
     val eqPreset: String = EqualizerControl.PRESET_OFF,
+    /** Sticky preferred EQ preset id (empty = none). */
+    val eqPreferredId: String = "",
     val sleepEndEpochMs: Long = 0L,
     val sleepRemainingLabel: String = "Off",
     val bookmarks: List<BookmarkStore.Bookmark> = emptyList(),
@@ -175,7 +177,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 preferredAudioDeviceId = AudioRoute.loadPreferredId(app),
                 audioPinType = audioPin?.type ?: Int.MIN_VALUE,
                 audioPinName = audioPin?.name.orEmpty(),
-                eqPreset = EqualizerControl.loadPreset(app),
+                eqPreset = EqualizerControl.loadBootPreset(app),
+                eqPreferredId = EqualizerControl.loadPreferred(app).orEmpty(),
                 sleepEndEpochMs = SleepTimer.loadEndEpochMs(app),
                 sleepRemainingLabel = SleepTimer.remainingLabel(SleepTimer.loadEndEpochMs(app)),
                 bookmarks = bookmarkStore.load(),
@@ -1142,8 +1145,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setEqPreset(preset: String) {
-        val id = preset.takeIf { p -> EqualizerControl.PRESETS.any { it.first == p } }
-            ?: EqualizerControl.PRESET_OFF
+        val id = EqualizerControl.normalize(preset)
         _state.update { it.copy(eqPreset = id) }
         EqualizerControl.savePreset(getApplication(), id)
         val controller = player as? MediaController ?: return
@@ -1153,6 +1155,33 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             Log.w(TAG, "SET_EQ_PRESET failed", e)
         }
+    }
+
+    /** Long-press: pin / clear preferred EQ (restored on cold start / audio reapply). */
+    fun setPreferredEqPreset(preset: String) {
+        val id = EqualizerControl.normalize(preset)
+        val app = getApplication<Application>()
+        val current = EqualizerControl.loadPreferred(app)
+        if (current == id) {
+            EqualizerControl.clearPreferred(app)
+            _state.update {
+                it.copy(
+                    eqPreferredId = "",
+                    statusToast = "Preferred EQ cleared",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        EqualizerControl.savePreferred(app, id)
+        setEqPreset(id)
+        _state.update {
+            it.copy(
+                eqPreferredId = id,
+                statusToast = "Preferred EQ · ${EqualizerControl.label(id)}",
+            )
+        }
+        clearStatusToastLater()
     }
 
     /** Quest panel / foldable / multi-window: record layout flags; playback stays in the service. */
@@ -1182,7 +1211,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 preferredAudioDeviceId = AudioRoute.loadPreferredId(getApplication()),
                 audioPinType = pin?.type ?: Int.MIN_VALUE,
                 audioPinName = pin?.name.orEmpty(),
-                eqPreset = EqualizerControl.loadPreset(getApplication()),
+                eqPreset = EqualizerControl.loadBootPreset(getApplication()),
+                eqPreferredId = EqualizerControl.loadPreferred(getApplication()).orEmpty(),
             )
         }
         pushLocalVolumeToService()

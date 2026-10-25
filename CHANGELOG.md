@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (EQ preset long-press pin as preferred)
+- Further Android companion polish (playback speed long-press pin as preferred)
+
+## [1.84.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **EQ preferred pin** — long-press an EQ preset to pin / clear preferred; restored on cold start, audio reapply, and preferred-sink reconnect
 
 ## [1.83.0] - 2026-10-25
 

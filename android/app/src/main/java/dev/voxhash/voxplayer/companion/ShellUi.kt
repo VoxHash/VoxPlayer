@@ -768,6 +768,17 @@ private fun LocalLibraryPane(
                     .padding(top = 8.dp),
                 singleLine = true,
                 label = { Text("Search title, artist, album") },
+                trailingIcon = {
+                    if (state.localSearchQuery.isNotEmpty()) {
+                        IconButton(onClick = { onSearch("") }) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Clear search",
+                                tint = VoxColors.TextMuted,
+                            )
+                        }
+                    }
+                },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = VoxColors.Accent,
                     unfocusedBorderColor = VoxColors.BorderSoft,

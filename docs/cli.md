@@ -108,6 +108,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Empty library:** Home shows contextual tips when a filter or search has no rows (Open file / permissions / history facets).
 
+**Clear search:** Home search field shows ✕ when a query is active.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

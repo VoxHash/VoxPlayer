@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (clear search affordance on Home)
+- Further Android companion polish (persist Home filter + search across process death)
+
+## [1.72.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Clear search affordance** — Home search field trailing Clear (✕) when the query is non-empty
 
 ## [1.71.0] - 2026-10-25
 

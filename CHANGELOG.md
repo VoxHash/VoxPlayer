@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (notification actions richness / custom actions polish)
+- Further Android companion polish (headset skip silence toast / playback status chips)
+
+## [1.59.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **Richer media notification actions** — ±15s seek; overflow Previous / Next / Bookmark / cycle Speed; tap notification opens the app (Media3 session; no GMS)
 
 ## [1.58.0] - 2026-10-24
 

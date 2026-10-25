@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.58.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.59.0**). Stack: **PyQt6 shell** + **native-C-core-only playback** (python-vlc + system libvlc). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -146,6 +146,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 32. **A–Z library index**: Home grid sorted by title with letter section headers + side letter jump rail for large libraries (**Done 1.56.0**)
 33. **Dark / light / system theme**: companion shell palette toggle (ember dark + warm paper light); persisted; header cycles Dark → Light → System (**Done 1.57.0**)
 34. **Now Playing seek scrubber**: Material3 Slider drag/tap seek with live preview; local Media3 only (**Done 1.58.0**)
+35. **Notification action richness**: System UI media controls — ±15s, overflow Previous/Next, Bookmark, cycle Speed; session activity opens app (**Done 1.59.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

@@ -1,9 +1,12 @@
 package dev.voxhash.voxplayer.companion
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -27,7 +30,8 @@ import com.google.common.util.concurrent.ListenableFuture
  * activity is backgrounded (lock screen / other apps / Quest panel unfocused).
  *
  * Headset / Car (no GMS Auto): Media3 maps headset media keys; we advertise
- * ±15s seek media-button preferences for Bluetooth AVRCP / System UI.
+ * ±15s seek media-button preferences for Bluetooth AVRCP / System UI, plus
+ * overflow Previous / Next / Bookmark / Speed for richer notifications.
  *
  * Quest / route edge cases: [AudioDeviceCallback] re-applies the preferred
  * sink (or falls back to system default when it disconnects) and re-attaches
@@ -129,6 +133,8 @@ class PlaybackService : MediaSessionService() {
                 .add(SleepTimer.CMD_SET)
                 .add(CrossfadeControl.CMD_SET)
                 .add(PlaybackSpeed.CMD_SET)
+                .add(NotificationActions.CMD_BOOKMARK)
+                .add(NotificationActions.CMD_CYCLE_SPEED)
                 .build()
             val playerCmds = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
                 .add(Player.COMMAND_SEEK_BACK)
@@ -218,6 +224,14 @@ class PlaybackService : MediaSessionService() {
                     mediaSession?.player?.let { PlaybackSpeed.apply(it, playbackSpeed) }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
+                NotificationActions.ACTION_BOOKMARK -> {
+                    bookmarkFromNotification()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                NotificationActions.ACTION_CYCLE_SPEED -> {
+                    cycleSpeedFromNotification()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
         }
@@ -282,23 +296,23 @@ class PlaybackService : MediaSessionService() {
             },
         )
 
-        val mediaButtons = listOf(
-            CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
-                .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-                .setSlots(CommandButton.SLOT_BACK)
-                .setDisplayName("Back 15s")
-                .build(),
-            CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
-                .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-                .setSlots(CommandButton.SLOT_FORWARD)
-                .setDisplayName("Forward 15s")
-                .build(),
+        val mediaButtons = buildMediaButtonPreferences()
+
+        val openApp = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0,
         )
 
         mediaSession = MediaSession.Builder(this, player)
             .setId("voxplayer-local")
             .setCallback(sessionCallback)
             .setMediaButtonPreferences(mediaButtons)
+            .setSessionActivity(openApp)
             .build()
         applyAudioChain()
         val pendingSleep = SleepTimer.loadEndEpochMs(this)
@@ -460,6 +474,71 @@ class PlaybackService : MediaSessionService() {
             subtitle = artist,
             playing = player?.isPlaying == true,
         )
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun buildMediaButtonPreferences(): List<CommandButton> = listOf(
+        CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
+            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+            .setSlots(CommandButton.SLOT_BACK)
+            .setDisplayName("Back 15s")
+            .build(),
+        CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
+            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+            .setSlots(CommandButton.SLOT_FORWARD)
+            .setDisplayName("Forward 15s")
+            .build(),
+        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+            .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setDisplayName("Previous")
+            .build(),
+        CommandButton.Builder(CommandButton.ICON_NEXT)
+            .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setDisplayName("Next")
+            .build(),
+        CommandButton.Builder(CommandButton.ICON_BOOKMARK_UNFILLED)
+            .setSessionCommand(NotificationActions.CMD_BOOKMARK)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setDisplayName("Bookmark")
+            .build(),
+        CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+            .setCustomIconResId(android.R.drawable.ic_menu_recent_history)
+            .setSessionCommand(NotificationActions.CMD_CYCLE_SPEED)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setDisplayName("Speed")
+            .build(),
+    )
+
+    private fun bookmarkFromNotification() {
+        val player = mediaSession?.player ?: return
+        val item = player.currentMediaItem ?: return
+        val uri = item.localConfiguration?.uri?.toString()
+            ?: item.requestMetadata.mediaUri?.toString()
+            ?: return
+        val title = item.mediaMetadata.title?.toString()
+            ?: Uri.parse(uri).lastPathSegment
+            ?: "Bookmark"
+        val isVideo = item.mediaMetadata.mediaType ==
+            androidx.media3.common.MediaMetadata.MEDIA_TYPE_VIDEO
+        BookmarkStore(this).upsert(
+            uri,
+            title,
+            player.currentPosition.coerceAtLeast(0L),
+            isVideo,
+        )
+        Log.i(TAG, "notification bookmark uri=$uri pos=${player.currentPosition}")
+    }
+
+    private fun cycleSpeedFromNotification() {
+        val options = PlaybackSpeed.OPTIONS.map { it.first }
+        val idx = options.indexOfFirst { kotlin.math.abs(it - playbackSpeed) < 0.001f }
+        val next = options[(idx + 1).coerceAtLeast(0) % options.size]
+        playbackSpeed = PlaybackSpeed.normalize(next)
+        PlaybackSpeed.save(this, playbackSpeed)
+        mediaSession?.player?.let { PlaybackSpeed.apply(it, playbackSpeed) }
+        Log.i(TAG, "notification speed → $playbackSpeed")
     }
 
     companion object {

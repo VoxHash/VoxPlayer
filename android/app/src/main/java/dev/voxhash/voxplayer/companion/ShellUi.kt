@@ -88,6 +88,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -99,6 +100,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -110,6 +113,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 
@@ -1335,9 +1339,24 @@ private fun NowPlayingPane(
     val title = if (desktop) state.remoteTitle else state.localTitle
     val playing = if (desktop) state.remotePlaying else state.localPlaying
     val pos = if (desktop) state.remotePositionLabel else state.localPositionLabel
+    val paneScroll = rememberScrollState()
+    val paneScope = rememberCoroutineScope()
+    val sectionY = remember { mutableStateMapOf<String, Int>() }
+    val jumpToSection: (String) -> Unit = { id ->
+        sectionY[id]?.let { y ->
+            paneScope.launch { paneScroll.animateScrollTo(y.coerceAtLeast(0)) }
+        }
+    }
+    val markSection: (String) -> Modifier = { id ->
+        Modifier.onGloballyPositioned { coords ->
+            sectionY[id] = coords.positionInParent().y.roundToInt()
+        }
+    }
 
     Column(
-        modifier.padding(16.dp),
+        modifier
+            .verticalScroll(paneScroll)
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("Now playing", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
@@ -1366,7 +1385,11 @@ private fun NowPlayingPane(
         }
         Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
         if (!desktop && title != "(nothing loaded)") {
-            PlaybackStatusChips(state = state, modifier = Modifier.fillMaxWidth())
+            PlaybackStatusChips(
+                state = state,
+                onChipClick = jumpToSection,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         if (!desktop && state.statusToast.isNotBlank()) {
             Text(
@@ -1451,7 +1474,9 @@ private fun NowPlayingPane(
                 QuietButton("Vol +", onVolUp, Modifier.weight(1f))
             }
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .then(markSection("transport")),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 QuietButton(
@@ -1469,7 +1494,12 @@ private fun NowPlayingPane(
                     Modifier.weight(1f),
                 )
             }
-            Text("Sound output", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                "Sound output",
+                style = MaterialTheme.typography.titleMedium,
+                color = VoxColors.Accent,
+                modifier = markSection("out"),
+            )
             Text(
                 "Force a sink below, or use System default so Android picks (e.g. BT when connected).",
                 style = MaterialTheme.typography.bodySmall,
@@ -1525,7 +1555,12 @@ private fun NowPlayingPane(
                     )
                 }
             }
-            Text("Equalizer", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                "Equalizer",
+                style = MaterialTheme.typography.titleMedium,
+                color = VoxColors.Accent,
+                modifier = markSection("eq"),
+            )
             EqualizerControl.PRESETS.chunked(3).forEach { row ->
                 Row(
                     Modifier.fillMaxWidth(),
@@ -1557,7 +1592,12 @@ private fun NowPlayingPane(
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
-            Text("Transitions", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                "Transitions",
+                style = MaterialTheme.typography.titleMedium,
+                color = VoxColors.Accent,
+                modifier = markSection("transitions"),
+            )
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1600,7 +1640,12 @@ private fun NowPlayingPane(
                     }
                 }
             }
-            Text("Speed", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                "Speed",
+                style = MaterialTheme.typography.titleMedium,
+                color = VoxColors.Accent,
+                modifier = markSection("speed"),
+            )
             Text(
                 "Playback rate · ${PlaybackSpeed.label(state.playbackSpeed)} (podcasts / spoken word)",
                 style = MaterialTheme.typography.bodySmall,
@@ -1682,7 +1727,12 @@ private fun NowPlayingPane(
                     )
                 }
             }
-            Text("Sleep timer", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                "Sleep timer",
+                style = MaterialTheme.typography.titleMedium,
+                color = VoxColors.Accent,
+                modifier = markSection("sleep"),
+            )
             Text(
                 if (state.sleepEndEpochMs > 0L) "Ends in ${state.sleepRemainingLabel}" else "Off · fades then pauses",
                 style = MaterialTheme.typography.bodySmall,
@@ -1785,7 +1835,9 @@ private fun NowPlayingPane(
             }
             if (state.localQueue.isNotEmpty() || state.queueUndoAvailable || state.queueItemUndoAvailable) {
                 Row(
-                    Modifier.fillMaxWidth(),
+                    Modifier
+                        .fillMaxWidth()
+                        .then(markSection("queue")),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -2271,13 +2323,20 @@ private fun TransportBar(
     }
 }
 
+private data class StatusChipSpec(
+    val id: String,
+    val label: String,
+    val emphasize: Boolean,
+)
+
 @Composable
 private fun PlaybackStatusChips(
     state: PlayerUiState,
+    onChipClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val eqLabel = EqualizerControl.PRESETS.firstOrNull { it.first == state.eqPreset }?.second ?: "Off"
-    val routeChip = when {
+    val routeLabel = when {
         state.preferredAudioDeviceId == AudioRoute.DEFAULT_DEVICE_ID -> "Out: System"
         else -> {
             val dev = state.audioDevices.firstOrNull { it.id == state.preferredAudioDeviceId }
@@ -2293,24 +2352,52 @@ private fun PlaybackStatusChips(
     }
     val chips = buildList {
         if (state.localQueueSize > 0) {
-            add("Queue ${state.localQueueIndex + 1}/${state.localQueueSize}")
+            add(
+                StatusChipSpec(
+                    "queue",
+                    "Queue ${state.localQueueIndex + 1}/${state.localQueueSize}",
+                    emphasize = true,
+                ),
+            )
         }
-        add(routeChip)
+        add(
+            StatusChipSpec(
+                "out",
+                routeLabel,
+                emphasize = state.preferredAudioDeviceId != AudioRoute.DEFAULT_DEVICE_ID,
+            ),
+        )
         if (state.sleepEndEpochMs > 0L && state.sleepRemainingLabel.isNotBlank() &&
             state.sleepRemainingLabel != "Off"
         ) {
-            add("Sleep ${state.sleepRemainingLabel}")
+            add(StatusChipSpec("sleep", "Sleep ${state.sleepRemainingLabel}", emphasize = true))
         }
-        if (state.crossfadeEnabled) add("Fade ${CrossfadeControl.fadeLabel(state.fadeMs)}")
-        if (state.skipSilence) add("Skip silence")
+        if (state.crossfadeEnabled) {
+            add(
+                StatusChipSpec(
+                    "transitions",
+                    "Fade ${CrossfadeControl.fadeLabel(state.fadeMs)}",
+                    emphasize = false,
+                ),
+            )
+        }
+        if (state.skipSilence) {
+            add(StatusChipSpec("transitions", "Skip silence", emphasize = false))
+        }
         if (kotlin.math.abs(state.playbackSpeed - 1f) > 0.001f) {
-            add(PlaybackSpeed.label(state.playbackSpeed))
+            add(StatusChipSpec("speed", PlaybackSpeed.label(state.playbackSpeed), emphasize = false))
         }
-        if (state.eqPreset != EqualizerControl.PRESET_OFF) add("EQ $eqLabel")
-        if (state.localShuffle) add("Shuffle")
+        if (state.eqPreset != EqualizerControl.PRESET_OFF) {
+            add(StatusChipSpec("eq", "EQ $eqLabel", emphasize = false))
+        }
+        if (state.localShuffle) {
+            add(StatusChipSpec("transport", "Shuffle", emphasize = false))
+        }
         when (state.localRepeatMode) {
-            Media3Player.REPEAT_MODE_ONE -> add("Repeat one")
-            Media3Player.REPEAT_MODE_ALL -> add("Repeat all")
+            Media3Player.REPEAT_MODE_ONE ->
+                add(StatusChipSpec("transport", "Repeat one", emphasize = false))
+            Media3Player.REPEAT_MODE_ALL ->
+                add(StatusChipSpec("transport", "Repeat all", emphasize = false))
         }
     }
     if (chips.isEmpty()) return
@@ -2318,28 +2405,30 @@ private fun PlaybackStatusChips(
         modifier
             .horizontalScroll(rememberScrollState())
             .semantics {
-                contentDescription = chips.joinToString(", ")
+                contentDescription = chips.joinToString(", ") { it.label } +
+                    ". Tap a chip to jump to its controls."
             },
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        chips.forEach { label ->
-            val emphasize = label.startsWith("Queue ") ||
-                label.startsWith("Sleep ") ||
-                (label.startsWith("Out:") && !label.endsWith("System"))
+        chips.forEach { chip ->
             Text(
-                label,
+                chip.label,
                 Modifier
                     .clip(VoxShapes.pill)
-                    .background(if (emphasize) VoxColors.AccentSoft else VoxColors.BgElevated)
+                    .background(if (chip.emphasize) VoxColors.AccentSoft else VoxColors.BgElevated)
                     .border(
                         1.dp,
-                        if (emphasize) VoxColors.Accent else VoxColors.BorderSoft,
+                        if (chip.emphasize) VoxColors.Accent else VoxColors.BorderSoft,
                         VoxShapes.pill,
                     )
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .clickable { onChipClick(chip.id) }
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .semantics {
+                        contentDescription = "${chip.label}. Jump to controls."
+                    },
                 style = MaterialTheme.typography.labelSmall,
-                color = if (emphasize) VoxColors.Accent else VoxColors.TextSecondary,
+                color = if (chip.emphasize) VoxColors.Accent else VoxColors.TextSecondary,
                 maxLines = 1,
             )
         }

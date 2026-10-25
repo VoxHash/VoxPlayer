@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (tap status chips to jump to related controls)
+- Further Android companion polish (bookmark quick-add from notification already shipped; next: volume duck on headset disconnect toast)
+
+## [1.69.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Tap status chips to jump** — tapping Queue / Out / Sleep / Fade / EQ / Speed / Shuffle / Repeat scrolls Now Playing to that section
 
 ## [1.68.0] - 2026-10-25
 

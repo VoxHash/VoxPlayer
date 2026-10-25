@@ -84,6 +84,7 @@ data class PlayerUiState(
     val lyricsActiveIndex: Int = -1,
     val crossfadeEnabled: Boolean = true,
     val skipSilence: Boolean = false,
+    val fadeMs: Long = CrossfadeControl.DEFAULT_FADE_MS,
     /** Multi-window / Quest panel / fold — for UI chrome (playback stays in service). */
     val multiWindow: Boolean = false,
     val foldSeparating: Boolean = false,
@@ -149,6 +150,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             localPlaylists = playlistStore.load(),
             crossfadeEnabled = CrossfadeControl.loadCrossfade(app),
             skipSilence = CrossfadeControl.loadSkipSilence(app),
+            fadeMs = CrossfadeControl.loadFadeMs(app),
             dlnaEnabled = DlnaCastControl.loadEnabled(app),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
@@ -1379,23 +1381,35 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setCrossfadeEnabled(enabled: Boolean) {
         val skip = _state.value.skipSilence
-        CrossfadeControl.save(getApplication(), enabled, skip)
+        val fade = _state.value.fadeMs
+        CrossfadeControl.save(getApplication(), enabled, skip, fade)
         _state.update { it.copy(crossfadeEnabled = enabled) }
-        sendCrossfadeCommand(enabled, skip)
+        sendCrossfadeCommand(enabled, skip, fade)
     }
 
     fun setSkipSilence(enabled: Boolean) {
         val cross = _state.value.crossfadeEnabled
-        CrossfadeControl.save(getApplication(), cross, enabled)
+        val fade = _state.value.fadeMs
+        CrossfadeControl.save(getApplication(), cross, enabled, fade)
         _state.update { it.copy(skipSilence = enabled) }
-        sendCrossfadeCommand(cross, enabled)
+        sendCrossfadeCommand(cross, enabled, fade)
     }
 
-    private fun sendCrossfadeCommand(crossfade: Boolean, skipSilence: Boolean) {
+    fun setFadeMs(ms: Long) {
+        val fade = CrossfadeControl.normalizeFadeMs(ms)
+        val cross = _state.value.crossfadeEnabled
+        val skip = _state.value.skipSilence
+        CrossfadeControl.save(getApplication(), cross, skip, fade)
+        _state.update { it.copy(fadeMs = fade, crossfadeEnabled = true) }
+        sendCrossfadeCommand(true, skip, fade)
+    }
+
+    private fun sendCrossfadeCommand(crossfade: Boolean, skipSilence: Boolean, fadeMs: Long) {
         val controller = player as? MediaController ?: return
         val args = Bundle().apply {
             putBoolean(CrossfadeControl.EXTRA_CROSSFADE, crossfade)
             putBoolean(CrossfadeControl.EXTRA_SKIP_SILENCE, skipSilence)
+            putLong(CrossfadeControl.EXTRA_FADE_MS, fadeMs)
         }
         try {
             controller.sendCustomCommand(CrossfadeControl.CMD_SET, args)

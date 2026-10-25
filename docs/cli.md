@@ -80,7 +80,7 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **AVRCP / car displays:** Local library items advertise title, artist·album subtitle, duration, and album-art URI on the Media3 session for Bluetooth head units (no Google Automotive).
 
-**Transitions:** Now Playing Fade-in (soft volume ramp on auto next) and Skip silence (ExoPlayer). Mixed audio/video playlists keep same-kind continuity.
+**Transitions:** Now Playing Fade-in (soft volume ramp on auto next; Short / Med / Long / Soft length) and Skip silence (ExoPlayer). Mixed audio/video playlists keep same-kind continuity.
 
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 

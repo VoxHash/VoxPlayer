@@ -46,6 +46,7 @@ class PlaybackService : MediaSessionService() {
     private var sleepEndEpochMs: Long = 0L
     private var crossfadeEnabled: Boolean = true
     private var skipSilence: Boolean = false
+    private var fadeMs: Long = CrossfadeControl.DEFAULT_FADE_MS
     private val crossfadeApplier = CrossfadeApplier()
     private var audioManager: AudioManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -95,7 +96,13 @@ class PlaybackService : MediaSessionService() {
             ) {
                 val player = mediaSession?.player ?: return
                 val target = LocalVolume.playerVolume(volumePercent, muted = false)
-                crossfadeApplier.onAutoTransition(player, crossfadeEnabled, target, volumeMuted)
+                crossfadeApplier.onAutoTransition(
+                    player,
+                    crossfadeEnabled,
+                    target,
+                    volumeMuted,
+                    fadeMs,
+                )
             }
         }
 
@@ -187,7 +194,15 @@ class PlaybackService : MediaSessionService() {
                 CrossfadeControl.ACTION_SET -> {
                     crossfadeEnabled = args.getBoolean(CrossfadeControl.EXTRA_CROSSFADE, crossfadeEnabled)
                     skipSilence = args.getBoolean(CrossfadeControl.EXTRA_SKIP_SILENCE, skipSilence)
-                    CrossfadeControl.save(this@PlaybackService, crossfadeEnabled, skipSilence)
+                    fadeMs = CrossfadeControl.normalizeFadeMs(
+                        args.getLong(CrossfadeControl.EXTRA_FADE_MS, fadeMs),
+                    )
+                    CrossfadeControl.save(
+                        this@PlaybackService,
+                        crossfadeEnabled,
+                        skipSilence,
+                        fadeMs,
+                    )
                     applySkipSilence()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -222,6 +237,7 @@ class PlaybackService : MediaSessionService() {
         equalizerApplier.setPreset(eqPreset)
         crossfadeEnabled = CrossfadeControl.loadCrossfade(this)
         skipSilence = CrossfadeControl.loadSkipSilence(this)
+        fadeMs = CrossfadeControl.loadFadeMs(this)
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         audioManager?.registerAudioDeviceCallback(deviceCallback, mainHandler)

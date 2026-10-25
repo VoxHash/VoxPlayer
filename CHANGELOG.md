@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (gapless crossfade duration control)
+- Further Android companion polish (playback speed control for podcasts / spoken word)
+
+## [1.53.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **Fade-in duration** — Short / Med / Long / Soft soft-ramp lengths on auto track transitions (persisted; no dual-stream crossfade)
 
 ## [1.52.0] - 2026-10-24
 

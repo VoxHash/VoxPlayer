@@ -331,6 +331,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onClearSleep = vm::clearSleepTimer,
                                 onToggleCrossfade = { vm.setCrossfadeEnabled(!state.crossfadeEnabled) },
                                 onToggleSkipSilence = { vm.setSkipSilence(!state.skipSilence) },
+                                onFadeMs = vm::setFadeMs,
                                 onToggleDlna = { vm.setDlnaEnabled(!state.dlnaEnabled) },
                                 onScanDlna = vm::scanDlnaRenderers,
                                 onSelectDlna = vm::selectDlnaRenderer,
@@ -1161,6 +1162,7 @@ private fun NowPlayingPane(
     onClearSleep: () -> Unit,
     onToggleCrossfade: () -> Unit,
     onToggleSkipSilence: () -> Unit,
+    onFadeMs: (Long) -> Unit,
     onToggleDlna: () -> Unit,
     onScanDlna: () -> Unit,
     onSelectDlna: (String) -> Unit,
@@ -1390,6 +1392,33 @@ private fun NowPlayingPane(
                     onToggleSkipSilence,
                     Modifier.weight(1f),
                 )
+            }
+            if (state.crossfadeEnabled) {
+                Text(
+                    "Fade length · ${CrossfadeControl.fadeLabel(state.fadeMs)} (${state.fadeMs} ms)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.TextMuted,
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    CrossfadeControl.FADE_OPTIONS.forEach { (ms, label) ->
+                        val selected = state.fadeMs == ms
+                        Text(
+                            if (selected) "✓ $label" else label,
+                            Modifier
+                                .weight(1f)
+                                .clip(VoxShapes.card)
+                                .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
+                                .clickable { onFadeMs(ms) }
+                                .padding(horizontal = 6.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (selected) VoxColors.Accent else VoxColors.Text,
+                            maxLines = 1,
+                        )
+                    }
+                }
             }
             Text("DLNA cast", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
             Text(

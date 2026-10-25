@@ -6,24 +6,36 @@ import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.Player
 import androidx.media3.session.SessionCommand
+import kotlin.math.abs
 
 /**
  * Soft fade-in on auto track transitions and optional silence skip.
  * True dual-stream crossfade needs two players; this covers mixed-codec
  * gap clicks by ramping ExoPlayer volume after MEDIA_ITEM_TRANSITION.
+ * Fade duration is user-selectable (Short / Med / Long / Soft).
  */
 object CrossfadeControl {
     const val PREFS = "voxplayer_crossfade"
     const val KEY_CROSSFADE = "crossfade_enabled"
     const val KEY_SKIP_SILENCE = "skip_silence"
-    const val FADE_MS = 450L
+    const val KEY_FADE_MS = "fade_ms"
     const val FADE_STEPS = 12
+    const val DEFAULT_FADE_MS = 450L
+
+    /** Selectable fade-in lengths (ms) with UI labels. */
+    val FADE_OPTIONS: List<Pair<Long, String>> = listOf(
+        250L to "Short",
+        450L to "Med",
+        800L to "Long",
+        1200L to "Soft",
+    )
 
     const val ACTION_SET = "dev.voxhash.voxplayer.SET_CROSSFADE"
     val CMD_SET: SessionCommand = SessionCommand(ACTION_SET, Bundle.EMPTY)
 
     const val EXTRA_CROSSFADE = "crossfade"
     const val EXTRA_SKIP_SILENCE = "skip_silence"
+    const val EXTRA_FADE_MS = "fade_ms"
 
     fun loadCrossfade(context: Context): Boolean =
         context.applicationContext
@@ -35,12 +47,33 @@ object CrossfadeControl {
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_SKIP_SILENCE, false)
 
-    fun save(context: Context, crossfade: Boolean, skipSilence: Boolean) {
+    fun loadFadeMs(context: Context): Long =
+        normalizeFadeMs(
+            context.applicationContext
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getLong(KEY_FADE_MS, DEFAULT_FADE_MS),
+        )
+
+    fun normalizeFadeMs(ms: Long): Long {
+        if (FADE_OPTIONS.any { it.first == ms }) return ms
+        return FADE_OPTIONS.minBy { abs(it.first - ms) }.first
+    }
+
+    fun fadeLabel(ms: Long): String =
+        FADE_OPTIONS.firstOrNull { it.first == normalizeFadeMs(ms) }?.second ?: "Med"
+
+    fun save(
+        context: Context,
+        crossfade: Boolean,
+        skipSilence: Boolean,
+        fadeMs: Long = loadFadeMs(context),
+    ) {
         context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_CROSSFADE, crossfade)
             .putBoolean(KEY_SKIP_SILENCE, skipSilence)
+            .putLong(KEY_FADE_MS, normalizeFadeMs(fadeMs))
             .apply()
     }
 }
@@ -61,15 +94,17 @@ class CrossfadeApplier {
         enabled: Boolean,
         targetVolume: Float,
         muted: Boolean,
+        fadeMs: Long = CrossfadeControl.DEFAULT_FADE_MS,
     ) {
         cancel()
         if (!enabled || muted || targetVolume <= 0f) {
             player.volume = if (muted) 0f else targetVolume
             return
         }
+        val duration = CrossfadeControl.normalizeFadeMs(fadeMs).coerceAtLeast(50L)
         player.volume = 0f
         val steps = CrossfadeControl.FADE_STEPS
-        val stepMs = CrossfadeControl.FADE_MS / steps
+        val stepMs = (duration / steps).coerceAtLeast(1L)
         var i = 0
         val run = object : Runnable {
             override fun run() {

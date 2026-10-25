@@ -926,10 +926,10 @@ private fun HistoryCard(
                 .background(VoxColors.BgPanel),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                if (entry.isVideo) "Video" else "Audio",
-                color = VoxColors.TextMuted,
-                style = MaterialTheme.typography.labelMedium,
+            ArtworkThumb(
+                contentUri = Uri.parse(entry.uri),
+                isVideo = entry.isVideo,
+                modifier = Modifier.fillMaxSize(),
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -969,11 +969,10 @@ private fun MediaCard(item: LocalMediaItem, onClick: () -> Unit) {
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (item.isVideo) Icons.Default.PlayArrow else Icons.Default.LibraryMusic,
-                contentDescription = null,
-                tint = VoxColors.Accent,
-                modifier = Modifier.size(36.dp),
+            ArtworkThumb(
+                contentUri = item.artworkContentUri(),
+                isVideo = item.isVideo,
+                modifier = Modifier.fillMaxSize(),
             )
             Text(
                 if (item.isVideo) "VIDEO" else "AUDIO",
@@ -981,7 +980,9 @@ private fun MediaCard(item: LocalMediaItem, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(8.dp),
+                    .padding(8.dp)
+                    .background(VoxColors.BgApp.copy(alpha = 0.55f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
         Spacer(Modifier.height(8.dp))

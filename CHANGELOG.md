@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (offline artwork / album grid thumbnails from MediaStore)
+- Further Android companion polish (search / filter local library by title artist album)
+
+## [1.46.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: offline library artwork — MediaStore thumbnails / album-art URIs on Home grid and history cards (no cloud)
 
 ## [1.45.0] - 2026-10-24
 

@@ -16,7 +16,18 @@ data class LocalMediaItem(
     val isVideo: Boolean,
     /** MediaStore album id for AVRCP artwork URI (audio only; 0 if unknown). */
     val albumId: Long = 0L,
-)
+) {
+    /** URI for MediaStore thumbnail / album art (offline, no cloud). */
+    fun artworkContentUri(): Uri =
+        if (!isVideo && albumId > 0L) {
+            ContentUris.withAppendedId(
+                Uri.parse("content://media/external/audio/albumart"),
+                albumId,
+            )
+        } else {
+            uri
+        }
+}
 
 object LocalMediaStore {
     fun loadAudio(context: Context, limit: Int = 500): List<LocalMediaItem> {

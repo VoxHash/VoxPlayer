@@ -55,6 +55,8 @@ data class PlayerUiState(
     val localSearchQuery: String = "",
     /** Last Home A–Z section letter (null = top). */
     val homeAzLetter: Char? = null,
+    /** Home pull-to-refresh in progress. */
+    val libraryRefreshing: Boolean = false,
     val permissionNeeded: Boolean = false,
     val localTitle: String = "(nothing loaded)",
     val localArtist: String = "",
@@ -372,16 +374,33 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun reloadLocalLibrary() {
         viewModelScope.launch {
-            if (!hasMediaPermission()) {
-                _state.update { it.copy(permissionNeeded = true) }
-                return@launch
+            _state.update { it.copy(libraryRefreshing = true) }
+            try {
+                if (!hasMediaPermission()) {
+                    _state.update { it.copy(permissionNeeded = true) }
+                    return@launch
+                }
+                _state.update { it.copy(permissionNeeded = false) }
+                val ctx = getApplication<Application>()
+                val items = withContext(Dispatchers.IO) {
+                    LocalMediaStore.loadAudio(ctx) + LocalMediaStore.loadVideo(ctx)
+                }
+                _state.update {
+                    it.copy(
+                        localItems = items,
+                        error = "",
+                        historyRecent = historyStore.recentlyPlayed(),
+                        historyTop = historyStore.mostPlayed(),
+                        historyWeek = historyStore.weekFacet(),
+                        historyMonth = historyStore.monthFacet(),
+                        localPlaylists = playlistStore.load(),
+                        statusToast = "Library refreshed · ${items.size} items",
+                    )
+                }
+                clearStatusToastLater()
+            } finally {
+                _state.update { it.copy(libraryRefreshing = false) }
             }
-            _state.update { it.copy(permissionNeeded = false) }
-            val ctx = getApplication<Application>()
-            val items = withContext(Dispatchers.IO) {
-                LocalMediaStore.loadAudio(ctx) + LocalMediaStore.loadVideo(ctx)
-            }
-            _state.update { it.copy(localItems = items, error = "") }
         }
     }
 

@@ -81,6 +81,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -330,6 +331,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onFilter = vm::setLocalFilter,
                                     onSearch = vm::setLocalSearchQuery,
                                     onHomeAzLetter = vm::setHomeAzLetter,
+                                    onRefreshLibrary = vm::reloadLocalLibrary,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
                                         val perms = if (Build.VERSION.SDK_INT >= 33) {
@@ -664,6 +666,7 @@ private fun ShellHeader(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LocalLibraryPane(
     state: PlayerUiState,
@@ -685,6 +688,7 @@ private fun LocalLibraryPane(
     onFilter: (String) -> Unit,
     onSearch: (String) -> Unit,
     onHomeAzLetter: (Char?) -> Unit,
+    onRefreshLibrary: () -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
 ) {
@@ -917,50 +921,58 @@ private fun LocalLibraryPane(
         }
 
         val cols = if (wide) 4 else 2
-        if (historyFacet) {
-            if (historyRows.isEmpty()) {
+        PullToRefreshBox(
+            isRefreshing = state.libraryRefreshing,
+            onRefresh = onRefreshLibrary,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            if (historyFacet) {
+                if (historyRows.isEmpty()) {
+                    LibraryEmptyTips(
+                        filter = state.localFilter,
+                        searchActive = q.isNotEmpty(),
+                        onOpenFile = onOpenFile,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 24.dp),
+                    )
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(cols),
+                        contentPadding = PaddingValues(bottom = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        items(historyRows, key = { "h-${it.uri}" }) { entry ->
+                            HistoryCard(entry = entry, facet = state.localFilter, onClick = { onPlayHistory(entry) })
+                        }
+                    }
+                }
+            } else if (filtered.isEmpty()) {
                 LibraryEmptyTips(
                     filter = state.localFilter,
                     searchActive = q.isNotEmpty(),
+                    libraryTotal = state.localItems.size,
                     onOpenFile = onOpenFile,
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                         .padding(vertical = 24.dp),
                 )
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(cols),
-                    contentPadding = PaddingValues(bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                AzLibraryGrid(
+                    items = filtered,
+                    cols = cols,
+                    initialLetter = state.homeAzLetter,
+                    onLetterChanged = onHomeAzLetter,
+                    onPlay = onPlay,
                     modifier = Modifier.fillMaxSize(),
-                ) {
-                    items(historyRows, key = { "h-${it.uri}" }) { entry ->
-                        HistoryCard(entry = entry, facet = state.localFilter, onClick = { onPlayHistory(entry) })
-                    }
-                }
+                )
             }
-        } else if (filtered.isEmpty()) {
-            LibraryEmptyTips(
-                filter = state.localFilter,
-                searchActive = q.isNotEmpty(),
-                libraryTotal = state.localItems.size,
-                onOpenFile = onOpenFile,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(vertical = 24.dp),
-            )
-        } else {
-            AzLibraryGrid(
-                items = filtered,
-                cols = cols,
-                initialLetter = state.homeAzLetter,
-                onLetterChanged = onHomeAzLetter,
-                onPlay = onPlay,
-                modifier = Modifier.fillMaxSize(),
-            )
         }
     }
 }

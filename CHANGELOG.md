@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (Home pull-to-refresh library reload)
+- Further Android companion polish (Home item count chip in header)
+
+## [1.75.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Home pull-to-refresh** — Material3 PullToRefreshBox reloads MediaStore library plus local history / lists
 
 ## [1.74.0] - 2026-10-25
 

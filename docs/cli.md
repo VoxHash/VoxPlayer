@@ -112,6 +112,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Remember Home:** Filter chip, search query, and A–Z section letter persist across process death (on-device prefs).
 
+**Pull to refresh:** On Home, pull down to reload MediaStore + local history / lists.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

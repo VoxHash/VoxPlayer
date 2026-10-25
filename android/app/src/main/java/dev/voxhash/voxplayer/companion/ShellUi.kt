@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -84,6 +86,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -91,13 +94,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.media3.common.Player
 import androidx.media3.ui.PlayerView
 
@@ -1804,16 +1811,26 @@ private fun NowPlayingPane(
                     }
                 }
                 if (state.localQueue.size > 1) {
+                    Text(
+                        "Drag ≡ to reorder · arrows still work",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VoxColors.TextMuted,
+                    )
                     LazyColumn(
                         Modifier.weight(1f, fill = false).heightIn(max = 280.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        items(state.localQueue, key = { it.index to it.title }) { row ->
+                        items(
+                            state.localQueue,
+                            key = { row -> row.uri.ifBlank { "${row.index}:${row.title}" } },
+                        ) { row ->
                             QueueRowItem(
                                 row = row,
+                                queueSize = state.localQueue.size,
                                 canMoveUp = row.index > 0,
                                 canMoveDown = row.index < state.localQueue.lastIndex,
                                 onPlay = { onPlayQueueIndex(row.index) },
+                                onMove = onMoveQueue,
                                 onMoveUp = { onMoveQueue(row.index, row.index - 1) },
                                 onMoveDown = { onMoveQueue(row.index, row.index + 1) },
                                 onRemove = { onRemoveQueue(row.index) },
@@ -1839,22 +1856,75 @@ private fun NowPlayingPane(
 @Composable
 private fun QueueRowItem(
     row: QueueRow,
+    queueSize: Int,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onPlay: () -> Unit,
+    onMove: (Int, Int) -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onRemove: () -> Unit,
 ) {
+    val density = LocalDensity.current
+    val thresholdPx = with(density) { 48.dp.toPx() }
+    var dragging by remember { mutableStateOf(false) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var dragIndex by remember { mutableIntStateOf(row.index) }
+
     Row(
         Modifier
             .fillMaxWidth()
+            .zIndex(if (dragging) 1f else 0f)
+            .graphicsLayer {
+                translationY = if (dragging) dragOffsetY else 0f
+                shadowElevation = if (dragging) 8f else 0f
+            }
             .clip(VoxShapes.card)
             .background(if (row.isCurrent) VoxColors.AccentSoft else VoxColors.BgElevated)
-            .clickable(onClick = onPlay)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .clickable(enabled = !dragging, onClick = onPlay)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(
+            Icons.Default.DragHandle,
+            contentDescription = "Drag to reorder",
+            tint = VoxColors.TextMuted,
+            modifier = Modifier
+                .size(36.dp)
+                .pointerInput(queueSize) {
+                    detectVerticalDragGestures(
+                        onDragStart = {
+                            dragging = true
+                            dragIndex = row.index
+                            dragOffsetY = 0f
+                        },
+                        onDragEnd = {
+                            dragging = false
+                            dragOffsetY = 0f
+                        },
+                        onDragCancel = {
+                            dragging = false
+                            dragOffsetY = 0f
+                        },
+                        onVerticalDrag = { change, amount ->
+                            change.consume()
+                            dragOffsetY += amount
+                            while (dragOffsetY <= -thresholdPx && dragIndex > 0) {
+                                val from = dragIndex
+                                onMove(from, from - 1)
+                                dragIndex = from - 1
+                                dragOffsetY += thresholdPx
+                            }
+                            while (dragOffsetY >= thresholdPx && dragIndex < queueSize - 1) {
+                                val from = dragIndex
+                                onMove(from, from + 1)
+                                dragIndex = from + 1
+                                dragOffsetY -= thresholdPx
+                            }
+                        },
+                    )
+                },
+        )
         Column(Modifier.weight(1f)) {
             Text(
                 row.title,
@@ -1873,13 +1943,13 @@ private fun QueueRowItem(
                 )
             }
         }
-        IconButton(onClick = onMoveUp, enabled = canMoveUp, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onMoveUp, enabled = canMoveUp && !dragging, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Default.KeyboardArrowUp, "Move up", tint = VoxColors.TextSecondary)
         }
-        IconButton(onClick = onMoveDown, enabled = canMoveDown, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onMoveDown, enabled = canMoveDown && !dragging, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Default.KeyboardArrowDown, "Move down", tint = VoxColors.TextSecondary)
         }
-        IconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onRemove, enabled = !dragging, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Default.Close, "Remove", tint = VoxColors.TextMuted)
         }
     }

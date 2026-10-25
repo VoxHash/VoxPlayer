@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (queue drag-to-reorder polish)
+- Further Android companion polish (queue long-press haptic + accessibility labels)
+
+## [1.63.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Queue drag-to-reorder** — Up next ≡ handle for live vertical drag reorder; arrow buttons kept for accessibility
 
 ## [1.62.0] - 2026-10-25
 

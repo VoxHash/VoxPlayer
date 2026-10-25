@@ -100,6 +100,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Remove from queue:** Up next row ✕ removes the item; Undo re-inserts it at the same index for a few seconds.
 
+**Reorder queue:** Drag the ≡ handle on an Up next row, or use the arrow buttons.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

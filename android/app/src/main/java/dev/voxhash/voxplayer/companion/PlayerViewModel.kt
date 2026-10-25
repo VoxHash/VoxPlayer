@@ -44,6 +44,7 @@ data class QueueRow(
     val title: String,
     val artist: String,
     val isCurrent: Boolean,
+    val uri: String = "",
 )
 
 data class PlayerUiState(
@@ -1059,7 +1060,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     ?: item.localConfiguration?.uri?.lastPathSegment
                     ?: "Item ${i + 1}"
                 val artist = md.artist?.toString().orEmpty().let { if (it == "VoxPlayer") "" else it }
-                add(QueueRow(index = i, title = title, artist = artist, isCurrent = i == current))
+                val uri = item.localConfiguration?.uri?.toString()
+                    ?: item.requestMetadata.mediaUri?.toString()
+                    ?: ""
+                add(
+                    QueueRow(
+                        index = i,
+                        title = title,
+                        artist = artist,
+                        isCurrent = i == current,
+                        uri = uri,
+                    ),
+                )
             }
         }
     }
@@ -1104,7 +1116,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 localQueueIndex = snap.index,
                 localQueueSize = snap.entries.size,
                 localQueue = snap.entries.mapIndexed { i, e ->
-                    QueueRow(i, e.title, e.artist, i == snap.index)
+                    QueueRow(i, e.title, e.artist, i == snap.index, e.uri)
                 },
                 localIsVideo = cur.isVideo,
             )

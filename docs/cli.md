@@ -82,6 +82,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Transitions:** Now Playing Fade-in (soft volume ramp on auto next; Short / Med / Long / Soft length) and Skip silence (ExoPlayer). Mixed audio/video playlists keep same-kind continuity.
 
+**Speed:** Now Playing → Speed — 0.75×–2× playback rate (Media3; useful for podcasts).
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

@@ -85,6 +85,7 @@ data class PlayerUiState(
     val crossfadeEnabled: Boolean = true,
     val skipSilence: Boolean = false,
     val fadeMs: Long = CrossfadeControl.DEFAULT_FADE_MS,
+    val playbackSpeed: Float = PlaybackSpeed.DEFAULT,
     /** Multi-window / Quest panel / fold — for UI chrome (playback stays in service). */
     val multiWindow: Boolean = false,
     val foldSeparating: Boolean = false,
@@ -151,6 +152,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             crossfadeEnabled = CrossfadeControl.loadCrossfade(app),
             skipSilence = CrossfadeControl.loadSkipSilence(app),
             fadeMs = CrossfadeControl.loadFadeMs(app),
+            playbackSpeed = PlaybackSpeed.load(app),
             dlnaEnabled = DlnaCastControl.loadEnabled(app),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
@@ -1402,6 +1404,20 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         CrossfadeControl.save(getApplication(), cross, skip, fade)
         _state.update { it.copy(fadeMs = fade, crossfadeEnabled = true) }
         sendCrossfadeCommand(true, skip, fade)
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        val s = PlaybackSpeed.normalize(speed)
+        PlaybackSpeed.save(getApplication(), s)
+        _state.update { it.copy(playbackSpeed = s) }
+        val controller = player as? MediaController ?: return
+        val args = Bundle().apply { putFloat(PlaybackSpeed.EXTRA_SPEED, s) }
+        try {
+            controller.sendCustomCommand(PlaybackSpeed.CMD_SET, args)
+        } catch (e: Exception) {
+            Log.w(TAG, "SET_PLAYBACK_SPEED failed", e)
+            player?.let { PlaybackSpeed.apply(it, s) }
+        }
     }
 
     private fun sendCrossfadeCommand(crossfade: Boolean, skipSilence: Boolean, fadeMs: Long) {

@@ -332,6 +332,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onToggleCrossfade = { vm.setCrossfadeEnabled(!state.crossfadeEnabled) },
                                 onToggleSkipSilence = { vm.setSkipSilence(!state.skipSilence) },
                                 onFadeMs = vm::setFadeMs,
+                                onPlaybackSpeed = vm::setPlaybackSpeed,
                                 onToggleDlna = { vm.setDlnaEnabled(!state.dlnaEnabled) },
                                 onScanDlna = vm::scanDlnaRenderers,
                                 onSelectDlna = vm::selectDlnaRenderer,
@@ -1163,6 +1164,7 @@ private fun NowPlayingPane(
     onToggleCrossfade: () -> Unit,
     onToggleSkipSilence: () -> Unit,
     onFadeMs: (Long) -> Unit,
+    onPlaybackSpeed: (Float) -> Unit,
     onToggleDlna: () -> Unit,
     onScanDlna: () -> Unit,
     onSelectDlna: (String) -> Unit,
@@ -1418,6 +1420,35 @@ private fun NowPlayingPane(
                             maxLines = 1,
                         )
                     }
+                }
+            }
+            Text("Speed", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+            Text(
+                "Playback rate · ${PlaybackSpeed.label(state.playbackSpeed)} (podcasts / spoken word)",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+            PlaybackSpeed.OPTIONS.chunked(3).forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    row.forEach { (speed, label) ->
+                        val selected = kotlin.math.abs(state.playbackSpeed - speed) < 0.001f
+                        Text(
+                            if (selected) "✓ $label" else label,
+                            Modifier
+                                .weight(1f)
+                                .clip(VoxShapes.card)
+                                .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
+                                .clickable { onPlaybackSpeed(speed) }
+                                .padding(horizontal = 6.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (selected) VoxColors.Accent else VoxColors.Text,
+                            maxLines = 1,
+                        )
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             Text("DLNA cast", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)

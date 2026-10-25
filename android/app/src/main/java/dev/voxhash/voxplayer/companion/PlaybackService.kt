@@ -47,6 +47,7 @@ class PlaybackService : MediaSessionService() {
     private var crossfadeEnabled: Boolean = true
     private var skipSilence: Boolean = false
     private var fadeMs: Long = CrossfadeControl.DEFAULT_FADE_MS
+    private var playbackSpeed: Float = PlaybackSpeed.DEFAULT
     private val crossfadeApplier = CrossfadeApplier()
     private var audioManager: AudioManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -127,6 +128,7 @@ class PlaybackService : MediaSessionService() {
                 .add(AudioRoute.CMD_REAPPLY)
                 .add(SleepTimer.CMD_SET)
                 .add(CrossfadeControl.CMD_SET)
+                .add(PlaybackSpeed.CMD_SET)
                 .build()
             val playerCmds = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
                 .add(Player.COMMAND_SEEK_BACK)
@@ -174,6 +176,8 @@ class PlaybackService : MediaSessionService() {
                     preferredDeviceId = AudioRoute.loadPreferredId(this@PlaybackService)
                     eqPreset = EqualizerControl.loadPreset(this@PlaybackService)
                     equalizerApplier.setPreset(eqPreset)
+                    playbackSpeed = PlaybackSpeed.load(this@PlaybackService)
+                    mediaSession?.player?.let { PlaybackSpeed.apply(it, playbackSpeed) }
                     applyAudioChain()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -204,6 +208,14 @@ class PlaybackService : MediaSessionService() {
                         fadeMs,
                     )
                     applySkipSilence()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                PlaybackSpeed.ACTION_SET -> {
+                    playbackSpeed = PlaybackSpeed.normalize(
+                        args.getFloat(PlaybackSpeed.EXTRA_SPEED, playbackSpeed),
+                    )
+                    PlaybackSpeed.save(this@PlaybackService, playbackSpeed)
+                    mediaSession?.player?.let { PlaybackSpeed.apply(it, playbackSpeed) }
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             }
@@ -238,6 +250,7 @@ class PlaybackService : MediaSessionService() {
         crossfadeEnabled = CrossfadeControl.loadCrossfade(this)
         skipSilence = CrossfadeControl.loadSkipSilence(this)
         fadeMs = CrossfadeControl.loadFadeMs(this)
+        playbackSpeed = PlaybackSpeed.load(this)
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
         audioManager?.registerAudioDeviceCallback(deviceCallback, mainHandler)
@@ -256,6 +269,7 @@ class PlaybackService : MediaSessionService() {
             .build()
         player.repeatMode = Player.REPEAT_MODE_OFF
         player.skipSilenceEnabled = skipSilence
+        PlaybackSpeed.apply(player, playbackSpeed)
         player.addListener(persistListener)
         player.addAnalyticsListener(
             object : AnalyticsListener {

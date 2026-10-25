@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (playback speed control for podcasts / spoken word)
+- Further Android companion polish (per-track remember last position beyond bookmarks)
+
+## [1.54.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **Playback speed** — 0.75× / 1× / 1.25× / 1.5× / 1.75× / 2× via Media3 (podcasts / spoken word); persisted on-device
 
 ## [1.53.0] - 2026-10-24
 

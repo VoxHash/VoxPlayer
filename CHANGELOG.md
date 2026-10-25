@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (long-press library card for Add to list)
+- Further Android companion polish (history card long-press Add to list)
+
+## [1.77.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Long-press Add to list** — Home library card long-press opens a playlist picker (existing folders or New list + add)
 
 ## [1.76.0] - 2026-10-25
 

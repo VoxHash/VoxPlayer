@@ -6,9 +6,11 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -332,6 +334,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onSearch = vm::setLocalSearchQuery,
                                     onHomeAzLetter = vm::setHomeAzLetter,
                                     onRefreshLibrary = vm::reloadLocalLibrary,
+                                    onAddToList = vm::openAddToList,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
                                         val perms = if (Build.VERSION.SDK_INT >= 33) {
@@ -424,6 +427,82 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                 },
             )
         }
+    }
+
+    val pendingAdd = state.addToListPending
+    if (pendingAdd != null) {
+        ModalBottomSheet(
+            onDismissRequest = vm::dismissAddToList,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VoxColors.BgElevated,
+        ) {
+            AddToListSheet(
+                trackTitle = pendingAdd.title,
+                playlists = state.localPlaylists,
+                onPick = vm::addPendingToPlaylist,
+                onCreateNew = vm::createPlaylistAndAddPending,
+                onDismiss = vm::dismissAddToList,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AddToListSheet(
+    trackTitle: String,
+    playlists: List<LocalPlaylistStore.Playlist>,
+    onPick: (String) -> Unit,
+    onCreateNew: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            "Add to list",
+            style = MaterialTheme.typography.titleLarge,
+            color = VoxColors.Accent,
+        )
+        Text(
+            trackTitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = VoxColors.TextSecondary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        AccentButton("New list + add", onCreateNew, Modifier.fillMaxWidth())
+        if (playlists.isEmpty()) {
+            Text(
+                "No folders yet — New list creates one and adds this track.",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+        } else {
+            Text(
+                "Existing folders",
+                style = MaterialTheme.typography.titleMedium,
+                color = VoxColors.Accent,
+            )
+            playlists.forEach { pl ->
+                Text(
+                    "${pl.name} · ${pl.tracks.size} tracks",
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(VoxShapes.card)
+                        .background(VoxColors.BgPanel)
+                        .clickable { onPick(pl.id) }
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = VoxColors.Text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        QuietButton("Cancel", onDismiss, Modifier.fillMaxWidth())
     }
 }
 
@@ -689,6 +768,7 @@ private fun LocalLibraryPane(
     onSearch: (String) -> Unit,
     onHomeAzLetter: (Char?) -> Unit,
     onRefreshLibrary: () -> Unit,
+    onAddToList: (LocalMediaItem) -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
 ) {
@@ -1008,6 +1088,7 @@ private fun LocalLibraryPane(
                     initialLetter = state.homeAzLetter,
                     onLetterChanged = onHomeAzLetter,
                     onPlay = onPlay,
+                    onAddToList = onAddToList,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -1044,7 +1125,7 @@ private fun LibraryEmptyTips(
         Text(headline, style = MaterialTheme.typography.titleLarge, color = VoxColors.Accent)
         Text(body, style = MaterialTheme.typography.bodyMedium, color = VoxColors.TextSecondary)
         Text(
-            "Tips: All / Audio / Video browse MediaStore · Recent / Top / Week / Month are local history · Lists for folders & M3U",
+            "Tips: Long-press a card to add to a list · All / Audio / Video browse MediaStore · Recent / Top / Week / Month are local history · Lists for folders & M3U",
             style = MaterialTheme.typography.bodySmall,
             color = VoxColors.TextMuted,
         )
@@ -1064,6 +1145,7 @@ private fun AzLibraryGrid(
     initialLetter: Char?,
     onLetterChanged: (Char?) -> Unit,
     onPlay: (LocalMediaItem) -> Unit,
+    onAddToList: (LocalMediaItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sorted = remember(items) {
@@ -1145,7 +1227,11 @@ private fun AzLibraryGrid(
                     items = section,
                     key = { "${it.isVideo}-${it.id}" },
                 ) { item ->
-                    MediaCard(item = item, onClick = { onPlay(item) })
+                    MediaCard(
+                        item = item,
+                        onClick = { onPlay(item) },
+                        onLongClick = { onAddToList(item) },
+                    )
                 }
             }
         }
@@ -1386,13 +1472,35 @@ private fun HistoryCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MediaCard(item: LocalMediaItem, onClick: () -> Unit) {
+private fun MediaCard(
+    item: LocalMediaItem,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
     Column(
         Modifier
             .clip(VoxShapes.card)
             .background(VoxColors.BgElevated)
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(item.title)
+                    if (item.artist.isNotBlank()) {
+                        append(" by ")
+                        append(item.artist)
+                    }
+                    append(". Double-tap to play. Long-press to add to a list.")
+                }
+            }
             .padding(10.dp),
     ) {
         Box(

@@ -57,6 +57,8 @@ data class PlayerUiState(
     val homeAzLetter: Char? = null,
     /** Home pull-to-refresh in progress. */
     val libraryRefreshing: Boolean = false,
+    /** Long-press library card: track waiting for playlist pick (null = sheet closed). */
+    val addToListPending: LocalPlaylistStore.Track? = null,
     val permissionNeeded: Boolean = false,
     val localTitle: String = "(nothing loaded)",
     val localArtist: String = "",
@@ -1619,6 +1621,50 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val n = playlistStore.load().size + 1
         playlistStore.create("Playlist $n")
         refreshPlaylists()
+    }
+
+    fun openAddToList(item: LocalMediaItem) {
+        _state.update {
+            it.copy(
+                addToListPending = item.toPlaylistTrack(),
+                statusToast = "Choose a list for “${item.title}”",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    fun dismissAddToList() {
+        _state.update { it.copy(addToListPending = null) }
+    }
+
+    fun addPendingToPlaylist(playlistId: String) {
+        val track = _state.value.addToListPending ?: return
+        playlistStore.addTrack(playlistId, track)
+        val name = playlistStore.load().find { it.id == playlistId }?.name ?: "list"
+        refreshPlaylists()
+        _state.update {
+            it.copy(
+                addToListPending = null,
+                statusToast = "Added “${track.title}” to $name",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    fun createPlaylistAndAddPending() {
+        val track = _state.value.addToListPending ?: return
+        val n = playlistStore.load().size + 1
+        val pl = playlistStore.createWithTracks("Playlist $n", listOf(track))
+        refreshPlaylists()
+        _state.update {
+            it.copy(
+                addToListPending = null,
+                localFilter = "lists",
+                listsBrowseId = pl.id,
+                statusToast = "Added “${track.title}” to ${pl.name}",
+            )
+        }
+        clearStatusToastLater()
     }
 
     /** Export Up Next / current Media3 queue as offline M3U via system share. */

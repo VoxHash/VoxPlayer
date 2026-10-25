@@ -60,6 +60,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Widget:** Add the VoxPlayer widget from the launcher — play/pause / prev / next without opening the app (no Google Glance / GMS).
 
+**Share card:** Now Playing → Share card builds an offline PNG (title/artist/album/art) and opens the system share sheet — no cloud.
+
 **DLNA cast:** Now Playing → Enable DLNA → Scan → Cast now. Uses FOSS UPnPCast on the LAN only — no Google Cast / GMS.
 
 **Search:** Home search field filters by title / artist / album (also applies to Recent / Top).

@@ -319,6 +319,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onDlnaPlay = vm::dlnaPlay,
                                 onDlnaPause = vm::dlnaPause,
                                 onDlnaStop = vm::dlnaStop,
+                                onShareNowPlaying = { vm.shareNowPlayingCard(context) },
                                 onBookmarkNow = vm::bookmarkNow,
                                 onPlayBookmark = vm::playBookmark,
                                 onRemoveBookmark = vm::removeBookmark,
@@ -1085,6 +1086,7 @@ private fun NowPlayingPane(
     onDlnaPlay: () -> Unit,
     onDlnaPause: () -> Unit,
     onDlnaStop: () -> Unit,
+    onShareNowPlaying: () -> Unit,
     onBookmarkNow: () -> Unit,
     onPlayBookmark: (BookmarkStore.Bookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
@@ -1164,6 +1166,9 @@ private fun NowPlayingPane(
             onPlayPause,
             modifier = Modifier.fillMaxWidth(),
         )
+        if (!desktop) {
+            QuietButton("Share card", onShareNowPlaying, Modifier.fillMaxWidth())
+        }
         if (!desktop) {
             Row(
                 Modifier.fillMaxWidth(),

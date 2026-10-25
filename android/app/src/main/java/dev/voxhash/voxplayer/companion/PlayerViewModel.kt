@@ -1127,6 +1127,38 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Offline now-playing PNG card → system share sheet (no cloud). */
+    fun shareNowPlayingCard(activityContext: android.content.Context) {
+        val s = _state.value
+        if (s.localTitle.isBlank() || s.localTitle == "(nothing loaded)") {
+            _state.update { it.copy(error = "Nothing playing to share") }
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val p = player
+                val uri = p?.currentMediaItem?.localConfiguration?.uri
+                    ?: p?.currentMediaItem?.requestMetadata?.mediaUri
+                val art = uri?.let { u ->
+                    val match = s.localItems.find { it.uri == u }
+                    match?.artworkContentUri() ?: u
+                }
+                val intent = withContext(Dispatchers.IO) {
+                    NowPlayingShare.shareCard(
+                        activityContext.applicationContext,
+                        title = s.localTitle,
+                        artist = s.localArtist,
+                        album = s.localAlbum,
+                        artworkUri = art,
+                    )
+                }
+                activityContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (e: Exception) {
+                _state.update { it.copy(error = e.message ?: e.toString()) }
+            }
+        }
+    }
+
     fun openListsBrowse(id: String?) {
         _state.update { it.copy(listsBrowseId = id, localFilter = "lists") }
     }

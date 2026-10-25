@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (screenshot / share now-playing card offline)
+- Further Android companion polish (scrobble-free listening stats week/month facets)
+
+## [1.49.0] - 2026-10-24
+
+### Added
+- Android / GrapheneOS / Quest: **Share card** on Now Playing — offline PNG (title / artist / album / artwork) via system share sheet; FileProvider cache; no cloud upload
 
 ## [1.48.0] - 2026-10-24
 

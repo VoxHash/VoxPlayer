@@ -68,6 +68,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Offline now-playing share card (cache PNG → system chooser; no cloud) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.share"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Background / lock-screen local playback (Media3 MediaSessionService) -->
         <service
             android:name=".PlaybackService"

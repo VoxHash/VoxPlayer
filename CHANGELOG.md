@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (output-route chip on Now Playing)
+- Further Android companion polish (tap status chips to jump to related controls)
+
+## [1.68.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Output-route chip** — Now Playing Out: System / device name; accent when a forced sink is selected
 
 ## [1.67.0] - 2026-10-25
 

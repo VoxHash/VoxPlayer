@@ -2277,10 +2277,25 @@ private fun PlaybackStatusChips(
     modifier: Modifier = Modifier,
 ) {
     val eqLabel = EqualizerControl.PRESETS.firstOrNull { it.first == state.eqPreset }?.second ?: "Off"
+    val routeChip = when {
+        state.preferredAudioDeviceId == AudioRoute.DEFAULT_DEVICE_ID -> "Out: System"
+        else -> {
+            val dev = state.audioDevices.firstOrNull { it.id == state.preferredAudioDeviceId }
+            if (dev != null) {
+                val short = dev.name.trim().ifBlank { dev.typeLabel }.let { n ->
+                    if (n.length > 18) n.take(17) + "…" else n
+                }
+                "Out: $short"
+            } else {
+                "Out: Unavailable"
+            }
+        }
+    }
     val chips = buildList {
         if (state.localQueueSize > 0) {
             add("Queue ${state.localQueueIndex + 1}/${state.localQueueSize}")
         }
+        add(routeChip)
         if (state.sleepEndEpochMs > 0L && state.sleepRemainingLabel.isNotBlank() &&
             state.sleepRemainingLabel != "Off"
         ) {
@@ -2309,7 +2324,9 @@ private fun PlaybackStatusChips(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         chips.forEach { label ->
-            val emphasize = label.startsWith("Queue ") || label.startsWith("Sleep ")
+            val emphasize = label.startsWith("Queue ") ||
+                label.startsWith("Sleep ") ||
+                (label.startsWith("Out:") && !label.endsWith("System"))
             Text(
                 label,
                 Modifier

@@ -94,7 +94,7 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Notification:** System media controls expose ±15s, Previous/Next, Bookmark, and Speed cycle (overflow). Tap the notification to return to VoxPlayer.
 
-**Status chips:** Now Playing shows Queue n/N and Sleep m:ss (accent when armed) plus Fade / Skip silence / Speed / EQ / Shuffle / Repeat chips; toggles flash a short status toast.
+**Status chips:** Now Playing shows Queue n/N, Out: route, Sleep m:ss (accent when relevant) plus Fade / Skip silence / Speed / EQ / Shuffle / Repeat chips; toggles flash a short status toast.
 
 **Clear queue:** Up next → Clear queue (tap twice to confirm). Undo restores the last cleared queue while the toast window is open.
 

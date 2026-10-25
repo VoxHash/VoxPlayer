@@ -84,6 +84,8 @@ data class PlayerUiState(
     val eqPreferredId: String = "",
     val sleepEndEpochMs: Long = 0L,
     val sleepRemainingLabel: String = "Off",
+    /** Sticky preferred sleep duration minutes; 0 = none. */
+    val sleepPreferredMinutes: Int = 0,
     val bookmarks: List<BookmarkStore.Bookmark> = emptyList(),
     /** Silent per-track resume hint shown after auto-seek (empty when none). */
     val resumeHint: String = "",
@@ -185,6 +187,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 eqPreferredId = EqualizerControl.loadPreferred(app).orEmpty(),
                 sleepEndEpochMs = SleepTimer.loadEndEpochMs(app),
                 sleepRemainingLabel = SleepTimer.remainingLabel(SleepTimer.loadEndEpochMs(app)),
+                sleepPreferredMinutes = SleepTimer.loadPreferredMinutes(app) ?: 0,
                 bookmarks = bookmarkStore.load(),
                 historyRecent = historyStore.recentlyPlayed(),
                 historyTop = historyStore.mostPlayed(),
@@ -1463,6 +1466,42 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearSleepTimer() = setSleepTimerMinutes(0)
+
+    /** Long-press: pin / clear preferred sleep duration (does not arm by itself). */
+    fun setPreferredSleepMinutes(minutes: Int) {
+        if (minutes <= 0) return
+        val m = SleepTimer.normalizeMinutes(minutes)
+        val app = getApplication<Application>()
+        val current = SleepTimer.loadPreferredMinutes(app)
+        if (current != null && current == m) {
+            SleepTimer.clearPreferredMinutes(app)
+            _state.update {
+                it.copy(
+                    sleepPreferredMinutes = 0,
+                    statusToast = "Preferred sleep cleared",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        SleepTimer.savePreferredMinutes(app, m)
+        setSleepTimerMinutes(m)
+        _state.update {
+            it.copy(
+                sleepPreferredMinutes = m,
+                statusToast = "Preferred sleep · ${m}m",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    /** One-tap re-arm using the pinned preferred duration. */
+    fun startPreferredSleepTimer() {
+        val m = SleepTimer.loadPreferredMinutes(getApplication()) ?: return
+        setSleepTimerMinutes(m)
+        _state.update { it.copy(statusToast = "Sleep ${m}m") }
+        clearStatusToastLater()
+    }
 
     fun bookmarkNow() {
         val p = player ?: return

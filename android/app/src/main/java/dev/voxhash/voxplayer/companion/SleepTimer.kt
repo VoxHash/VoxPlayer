@@ -7,10 +7,13 @@ import androidx.media3.session.SessionCommand
 /**
  * Local sleep timer (no cloud). End time stored as epoch millis; ``0`` means off.
  * Fade runs in [PlaybackService] over the last ~30s before pause.
+ * Optional sticky preferred duration (long-press) for one-tap re-arm.
  */
 object SleepTimer {
     const val PREFS = "voxplayer_sleep"
     const val KEY_END_EPOCH_MS = "end_epoch_ms"
+    const val KEY_PREFERRED_MIN = "preferred_minutes"
+    private const val NO_PREFERRED = -1
 
     val DURATIONS_MIN: List<Int> = listOf(15, 30, 45, 60, 90)
 
@@ -33,6 +36,35 @@ object SleepTimer {
             .edit()
             .putLong(KEY_END_EPOCH_MS, endEpochMs.coerceAtLeast(0L))
             .apply()
+    }
+
+    fun loadPreferredMinutes(context: Context): Int? {
+        val raw = context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_PREFERRED_MIN, NO_PREFERRED)
+        if (raw == NO_PREFERRED) return null
+        return normalizeMinutes(raw)
+    }
+
+    fun savePreferredMinutes(context: Context, minutes: Int) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_PREFERRED_MIN, normalizeMinutes(minutes))
+            .apply()
+    }
+
+    fun clearPreferredMinutes(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_PREFERRED_MIN)
+            .apply()
+    }
+
+    fun normalizeMinutes(minutes: Int): Int {
+        if (minutes in DURATIONS_MIN) return minutes
+        return DURATIONS_MIN.minBy { kotlin.math.abs(it - minutes) }
     }
 
     fun remainingLabel(endEpochMs: Long): String {

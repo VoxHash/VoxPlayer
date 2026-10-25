@@ -376,6 +376,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onEqPreset = vm::setEqPreset,
                                 onPinEqPreset = vm::setPreferredEqPreset,
                                 onSleepMinutes = vm::setSleepTimerMinutes,
+                                onPinSleepMinutes = vm::setPreferredSleepMinutes,
+                                onStartPreferredSleep = vm::startPreferredSleepTimer,
                                 onClearSleep = vm::clearSleepTimer,
                                 onToggleCrossfade = { vm.setCrossfadeEnabled(!state.crossfadeEnabled) },
                                 onToggleSkipSilence = { vm.setSkipSilence(!state.skipSilence) },
@@ -1653,6 +1655,8 @@ private fun NowPlayingPane(
     onEqPreset: (String) -> Unit,
     onPinEqPreset: (String) -> Unit,
     onSleepMinutes: (Int) -> Unit,
+    onPinSleepMinutes: (Int) -> Unit,
+    onStartPreferredSleep: () -> Unit,
     onClearSleep: () -> Unit,
     onToggleCrossfade: () -> Unit,
     onToggleSkipSilence: () -> Unit,
@@ -2093,7 +2097,20 @@ private fun NowPlayingPane(
                 modifier = markSection("sleep"),
             )
             Text(
-                if (state.sleepEndEpochMs > 0L) "Ends in ${state.sleepRemainingLabel}" else "Off · fades then pauses",
+                buildString {
+                    if (state.sleepEndEpochMs > 0L) {
+                        append("Ends in ")
+                        append(state.sleepRemainingLabel)
+                    } else {
+                        append("Off · fades then pauses")
+                    }
+                    append(". Tap to arm · long-press pin preferred")
+                    if (state.sleepPreferredMinutes > 0) {
+                        append(" (")
+                        append(state.sleepPreferredMinutes)
+                        append("m)")
+                    }
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
@@ -2102,7 +2119,14 @@ private fun NowPlayingPane(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 SleepTimer.DURATIONS_MIN.take(3).forEach { m ->
-                    QuietButton("${m}m", { onSleepMinutes(m) }, Modifier.weight(1f))
+                    SleepDurationChip(
+                        label = "${m}m",
+                        selected = false,
+                        preferred = state.sleepPreferredMinutes == m,
+                        onSelect = { onSleepMinutes(m) },
+                        onPin = { onPinSleepMinutes(m) },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
             Row(
@@ -2110,9 +2134,23 @@ private fun NowPlayingPane(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 SleepTimer.DURATIONS_MIN.drop(3).forEach { m ->
-                    QuietButton("${m}m", { onSleepMinutes(m) }, Modifier.weight(1f))
+                    SleepDurationChip(
+                        label = "${m}m",
+                        selected = false,
+                        preferred = state.sleepPreferredMinutes == m,
+                        onSelect = { onSleepMinutes(m) },
+                        onPin = { onPinSleepMinutes(m) },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
                 QuietButton("Off", onClearSleep, Modifier.weight(1f))
+            }
+            if (state.sleepPreferredMinutes > 0) {
+                QuietButton(
+                    "Start preferred ${state.sleepPreferredMinutes}m",
+                    onStartPreferredSleep,
+                    Modifier.fillMaxWidth(),
+                )
             }
             Text("Bookmarks", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
             Text(
@@ -2268,6 +2306,60 @@ private fun NowPlayingPane(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SleepDurationChip(
+    label: String,
+    selected: Boolean,
+    preferred: Boolean,
+    onSelect: () -> Unit,
+    onPin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    val text = buildString {
+        if (selected) append("✓ ")
+        append(label)
+        if (preferred) append(" ★")
+    }
+    Text(
+        text,
+        modifier
+            .clip(VoxShapes.card)
+            .background(
+                when {
+                    preferred -> VoxColors.AccentSoft
+                    selected -> VoxColors.BgPanel
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                if (preferred) VoxColors.Accent else VoxColors.BorderSoft,
+                VoxShapes.card,
+            )
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPin()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(label)
+                    if (preferred) append(", preferred")
+                    append(". Double-tap to arm. Long-press to pin or clear preferred.")
+                }
+            }
+            .padding(horizontal = 6.dp, vertical = 10.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (preferred || selected) VoxColors.Accent else VoxColors.Text,
+        maxLines = 1,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

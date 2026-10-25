@@ -128,6 +128,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Fade preferred pin:** Long-press a fade-in length (Short/Med/Long/Soft) to pin / clear preferred. Same restore points as EQ preferred.
 
+**Sleep preferred pin:** Long-press a sleep duration to pin / clear preferred. Start preferred re-arms that length (does not auto-arm on cold start).
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

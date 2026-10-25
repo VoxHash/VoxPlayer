@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (sleep-timer duration long-press pin as preferred)
+- Further Android companion polish (repeat mode long-press pin as preferred)
+
+## [1.87.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Sleep preferred pin** — long-press a sleep duration to pin / clear preferred; Start preferred re-arms that length
 
 ## [1.86.0] - 2026-10-25
 

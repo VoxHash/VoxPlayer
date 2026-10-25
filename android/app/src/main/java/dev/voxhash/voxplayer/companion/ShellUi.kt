@@ -368,7 +368,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onRemoveQueue = vm::removeQueueItem,
                                 onClearQueue = vm::requestClearLocalQueue,
                                 onCancelClearQueue = vm::cancelClearLocalQueue,
-                                onUndoClearQueue = vm::undoClearLocalQueue,
+                                onUndoClearQueue = vm::undoLastQueueChange,
                                 modifier = Modifier
                                     .width(300.dp)
                                     .fillMaxHeight()
@@ -1779,7 +1779,7 @@ private fun NowPlayingPane(
                     }
                 }
             }
-            if (state.localQueue.isNotEmpty() || state.queueUndoAvailable) {
+            if (state.localQueue.isNotEmpty() || state.queueUndoAvailable || state.queueItemUndoAvailable) {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1791,7 +1791,7 @@ private fun NowPlayingPane(
                         color = VoxColors.Accent,
                         modifier = Modifier.weight(1f),
                     )
-                    if (state.queueUndoAvailable) {
+                    if (state.queueUndoAvailable || state.queueItemUndoAvailable) {
                         QuietButton("Undo", onUndoClearQueue)
                     }
                     if (state.localQueue.isNotEmpty()) {

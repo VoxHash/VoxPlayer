@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (recently deleted queue item undo)
+- Further Android companion polish (queue drag-to-reorder polish)
+
+## [1.62.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Queue item remove undo** — removing an Up next row shows Undo for a few seconds and re-inserts the track at its prior index
 
 ## [1.61.0] - 2026-10-25
 

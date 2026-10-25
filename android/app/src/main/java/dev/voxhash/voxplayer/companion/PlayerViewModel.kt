@@ -130,6 +130,8 @@ data class PlayerUiState(
     /** First Clear tap arms confirmation; second clears with undo window. */
     val queueClearArmed: Boolean = false,
     val queueUndoAvailable: Boolean = false,
+    /** Single Up-next row remove can be undone briefly. */
+    val queueItemUndoAvailable: Boolean = false,
 )
 
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
@@ -591,6 +593,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (p.mediaItemCount == 0) return
         val snap = queueSnapshotFromPlayer(p)
         clearedQueueUndo = snap
+        removedItemUndo = null
         withPlayer {
             it.stop()
             it.clearMediaItems()
@@ -607,6 +610,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 localQueue = emptyList(),
                 queueClearArmed = false,
                 queueUndoAvailable = true,
+                queueItemUndoAvailable = false,
                 statusToast = "Queue cleared · Undo available",
             )
         }
@@ -631,6 +635,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 queueUndoAvailable = false,
+                queueItemUndoAvailable = false,
                 queueClearArmed = false,
                 statusToast = "Queue restored",
             )
@@ -638,7 +643,34 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         clearStatusToastLater()
     }
 
+    /** Undo either a full clear or the last single-row remove, whichever is active. */
+    fun undoLastQueueChange() {
+        when {
+            removedItemUndo != null -> undoRemoveQueueItem()
+            clearedQueueUndo != null -> undoClearLocalQueue()
+            else -> {
+                _state.update {
+                    it.copy(
+                        statusToast = "Nothing to undo",
+                        queueUndoAvailable = false,
+                        queueItemUndoAvailable = false,
+                    )
+                }
+                clearStatusToastLater()
+            }
+        }
+    }
+
     private var clearedQueueUndo: PlaybackQueueStore.Snapshot? = null
+
+    private data class RemovedQueueItem(
+        val index: Int,
+        val entry: PlaybackQueueStore.Entry,
+        val wasCurrent: Boolean,
+        val positionMs: Long,
+    )
+
+    private var removedItemUndo: RemovedQueueItem? = null
 
     private fun queueSnapshotFromPlayer(p: Player): PlaybackQueueStore.Snapshot {
         val entries = buildList {
@@ -780,6 +812,46 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun removeQueueItem(index: Int) {
         withPlayer { p ->
             if (index < 0 || index >= p.mediaItemCount) return@withPlayer
+            val item = p.getMediaItemAt(index)
+            val uri = item.localConfiguration?.uri?.toString()
+                ?: item.requestMetadata.mediaUri?.toString()
+            if (uri.isNullOrBlank()) {
+                p.removeMediaItem(index)
+                if (p.mediaItemCount == 0) {
+                    queueStore.clear()
+                    _state.update {
+                        it.copy(
+                            localPlaying = false,
+                            localTitle = "(nothing loaded)",
+                            localArtist = "",
+                            localAlbum = "",
+                            localQueueIndex = 0,
+                            localQueueSize = 0,
+                            localQueue = emptyList(),
+                        )
+                    }
+                } else {
+                    queueStore.saveFromPlayer(p)
+                    syncUiFromPlayer(p)
+                }
+                return@withPlayer
+            }
+            val md = item.mediaMetadata
+            val entry = PlaybackQueueStore.Entry(
+                uri = uri,
+                title = md.title?.toString()
+                    ?: Uri.parse(uri).lastPathSegment
+                    ?: "Media",
+                artist = md.artist?.toString().orEmpty(),
+                album = md.albumTitle?.toString().orEmpty(),
+                isVideo = md.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO
+                    || md.mediaType == MediaMetadata.MEDIA_TYPE_MOVIE,
+            )
+            val wasCurrent = index == p.currentMediaItemIndex
+            val positionMs = if (wasCurrent) p.currentPosition.coerceAtLeast(0L) else 0L
+            val undo = RemovedQueueItem(index, entry, wasCurrent, positionMs)
+            removedItemUndo = undo
+            clearedQueueUndo = null
             p.removeMediaItem(index)
             if (p.mediaItemCount == 0) {
                 queueStore.clear()
@@ -792,13 +864,74 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         localQueueIndex = 0,
                         localQueueSize = 0,
                         localQueue = emptyList(),
+                        queueUndoAvailable = false,
+                        queueItemUndoAvailable = true,
+                        queueClearArmed = false,
+                        statusToast = "Removed “${entry.title}” · Undo",
                     )
                 }
             } else {
                 queueStore.saveFromPlayer(p)
                 syncUiFromPlayer(p)
+                _state.update {
+                    it.copy(
+                        queueUndoAvailable = false,
+                        queueItemUndoAvailable = true,
+                        queueClearArmed = false,
+                        statusToast = "Removed “${entry.title}” · Undo",
+                    )
+                }
+            }
+            clearStatusToastLater(6_000L)
+            viewModelScope.launch {
+                delay(8_000L)
+                if (removedItemUndo === undo) {
+                    removedItemUndo = null
+                    _state.update { s ->
+                        if (s.queueItemUndoAvailable) s.copy(queueItemUndoAvailable = false) else s
+                    }
+                }
             }
         }
+    }
+
+    fun undoRemoveQueueItem() {
+        val rem = removedItemUndo ?: run {
+            _state.update {
+                it.copy(statusToast = "Nothing to undo", queueItemUndoAvailable = false)
+            }
+            clearStatusToastLater()
+            return
+        }
+        removedItemUndo = null
+        val e = rem.entry
+        val media = mediaItem(Uri.parse(e.uri), e.title, e.artist, e.album, e.isVideo)
+        withPlayer { p ->
+            if (p.mediaItemCount == 0) {
+                p.setMediaItems(listOf(media), 0, rem.positionMs)
+                p.prepare()
+                if (rem.wasCurrent) p.play()
+                queueStore.saveQueue(listOf(e), 0, rem.positionMs)
+            } else {
+                val idx = rem.index.coerceIn(0, p.mediaItemCount)
+                p.addMediaItem(idx, media)
+                if (rem.wasCurrent) {
+                    p.seekTo(idx, rem.positionMs)
+                    p.play()
+                }
+                queueStore.saveFromPlayer(p)
+            }
+            syncUiFromPlayer(p)
+        }
+        _state.update {
+            it.copy(
+                queueItemUndoAvailable = false,
+                queueUndoAvailable = false,
+                queueClearArmed = false,
+                statusToast = "Restored “${e.title}”",
+            )
+        }
+        clearStatusToastLater()
     }
 
     fun playQueueIndex(index: Int) {

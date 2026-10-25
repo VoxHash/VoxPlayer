@@ -100,7 +100,7 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Remove from queue:** Up next row ✕ removes the item; Undo re-inserts it at the same index for a few seconds.
 
-**Reorder queue:** Drag the ≡ handle on an Up next row, or use the arrow buttons.
+**Reorder queue:** Drag the ≡ handle on an Up next row (haptic on grab / each step), or use the arrow buttons. TalkBack announces position, title, and actions.
 
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 

@@ -96,9 +96,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1866,10 +1870,13 @@ private fun QueueRowItem(
     onRemove: () -> Unit,
 ) {
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     val thresholdPx = with(density) { 48.dp.toPx() }
     var dragging by remember { mutableStateOf(false) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var dragIndex by remember { mutableIntStateOf(row.index) }
+    val positionLabel = "Queue item ${row.index + 1} of $queueSize"
+    val titleLabel = row.title.ifBlank { "Untitled" }
 
     Row(
         Modifier
@@ -1881,24 +1888,41 @@ private fun QueueRowItem(
             }
             .clip(VoxShapes.card)
             .background(if (row.isCurrent) VoxColors.AccentSoft else VoxColors.BgElevated)
+            .semantics(mergeDescendants = true) {
+                contentDescription = buildString {
+                    append(positionLabel)
+                    append(", ")
+                    append(titleLabel)
+                    if (row.artist.isNotBlank()) {
+                        append(" by ")
+                        append(row.artist)
+                    }
+                    if (row.isCurrent) append(", now playing")
+                    append(". Double-tap to play. Use drag handle or move buttons to reorder.")
+                }
+            }
             .clickable(enabled = !dragging, onClick = onPlay)
             .padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             Icons.Default.DragHandle,
-            contentDescription = "Drag to reorder",
+            contentDescription = "Drag handle, reorder $titleLabel",
             tint = VoxColors.TextMuted,
             modifier = Modifier
                 .size(36.dp)
                 .pointerInput(queueSize) {
                     detectVerticalDragGestures(
                         onDragStart = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             dragging = true
                             dragIndex = row.index
                             dragOffsetY = 0f
                         },
                         onDragEnd = {
+                            if (dragging) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
                             dragging = false
                             dragOffsetY = 0f
                         },
@@ -1914,12 +1938,14 @@ private fun QueueRowItem(
                                 onMove(from, from - 1)
                                 dragIndex = from - 1
                                 dragOffsetY += thresholdPx
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             }
                             while (dragOffsetY >= thresholdPx && dragIndex < queueSize - 1) {
                                 val from = dragIndex
                                 onMove(from, from + 1)
                                 dragIndex = from + 1
                                 dragOffsetY -= thresholdPx
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             }
                         },
                     )
@@ -1943,14 +1969,38 @@ private fun QueueRowItem(
                 )
             }
         }
-        IconButton(onClick = onMoveUp, enabled = canMoveUp && !dragging, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Default.KeyboardArrowUp, "Move up", tint = VoxColors.TextSecondary)
+        IconButton(
+            onClick = onMoveUp,
+            enabled = canMoveUp && !dragging,
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(
+                Icons.Default.KeyboardArrowUp,
+                contentDescription = "Move $titleLabel up in queue",
+                tint = VoxColors.TextSecondary,
+            )
         }
-        IconButton(onClick = onMoveDown, enabled = canMoveDown && !dragging, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Default.KeyboardArrowDown, "Move down", tint = VoxColors.TextSecondary)
+        IconButton(
+            onClick = onMoveDown,
+            enabled = canMoveDown && !dragging,
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(
+                Icons.Default.KeyboardArrowDown,
+                contentDescription = "Move $titleLabel down in queue",
+                tint = VoxColors.TextSecondary,
+            )
         }
-        IconButton(onClick = onRemove, enabled = !dragging, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Default.Close, "Remove", tint = VoxColors.TextMuted)
+        IconButton(
+            onClick = onRemove,
+            enabled = !dragging,
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "Remove $titleLabel from queue",
+                tint = VoxColors.TextMuted,
+            )
         }
     }
 }

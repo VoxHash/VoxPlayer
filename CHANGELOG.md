@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (queue long-press haptic + accessibility labels)
+- Further Android companion polish (scroll Up next to current track)
+
+## [1.64.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **Queue drag haptics + a11y** — haptic on drag start and each reorder step; TalkBack labels for drag handle, move, remove, and row play
 
 ## [1.63.0] - 2026-10-25
 

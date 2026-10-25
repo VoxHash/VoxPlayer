@@ -18,6 +18,7 @@ import java.io.FileOutputStream
 object DlnaCastControl {
     const val PREFS = "voxplayer_dlna"
     const val KEY_ENABLED = "enabled"
+    const val KEY_DEFAULT_ID = "default_renderer_id"
 
     data class Renderer(
         val id: String,
@@ -36,6 +37,29 @@ object DlnaCastControl {
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_ENABLED, enabled)
+            .apply()
+    }
+
+    fun loadDefaultId(context: Context): String =
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_DEFAULT_ID, "")
+            ?.trim()
+            .orEmpty()
+
+    fun saveDefaultId(context: Context, id: String) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_DEFAULT_ID, id.trim())
+            .apply()
+    }
+
+    fun clearDefaultId(context: Context) {
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_DEFAULT_ID)
             .apply()
     }
 

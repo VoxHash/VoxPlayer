@@ -107,6 +107,8 @@ data class PlayerUiState(
     val dlnaMessage: String = "",
     val dlnaRenderers: List<DlnaCastControl.Renderer> = emptyList(),
     val dlnaSelectedId: String = "",
+    /** Persisted preferred MediaRenderer id (empty = none). */
+    val dlnaDefaultId: String = "",
     val localPlaying: Boolean = false,
     val localPositionLabel: String = "0:00 / 0:00",
     val localPositionMs: Long = 0L,
@@ -181,6 +183,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             playbackSpeed = PlaybackSpeed.load(app),
             themeMode = ThemePrefs.load(app),
             dlnaEnabled = DlnaCastControl.loadEnabled(app),
+            dlnaDefaultId = DlnaCastControl.loadDefaultId(app),
+            dlnaSelectedId = DlnaCastControl.loadDefaultId(app),
             syncedPlaylists = syncStore.loadPlaylists(),
             syncedFeeds = syncStore.loadPodcasts(),
         ),
@@ -1475,16 +1479,28 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(dlnaBusy = true, dlnaMessage = "Scanning LAN for MediaRenderers…") }
             try {
                 val list = DlnaCastControl.search(getApplication())
+                val defaultId = DlnaCastControl.loadDefaultId(getApplication())
                 _state.update {
+                    val pick = when {
+                        defaultId.isNotBlank() && list.any { r -> r.id == defaultId } -> defaultId
+                        it.dlnaSelectedId.isNotBlank() && list.any { r -> r.id == it.dlnaSelectedId } ->
+                            it.dlnaSelectedId
+                        else -> list.firstOrNull()?.id.orEmpty()
+                    }
                     it.copy(
                         dlnaBusy = false,
                         dlnaRenderers = list,
-                        dlnaSelectedId = it.dlnaSelectedId.takeIf { id -> list.any { r -> r.id == id } }
-                            ?: list.firstOrNull()?.id.orEmpty(),
+                        dlnaDefaultId = defaultId,
+                        dlnaSelectedId = pick,
                         dlnaMessage = if (list.isEmpty()) {
                             "No DLNA renderers found on this network"
                         } else {
-                            "Found ${list.size} renderer(s)"
+                            buildString {
+                                append("Found ${list.size} renderer(s)")
+                                if (defaultId.isNotBlank() && pick == defaultId) {
+                                    append(" · default selected")
+                                }
+                            }
                         },
                     )
                 }
@@ -1498,6 +1514,36 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectDlnaRenderer(id: String) {
         _state.update { it.copy(dlnaSelectedId = id) }
+    }
+
+    /** Long-press: pin as default renderer (toggle off if already default). */
+    fun setDlnaDefaultRenderer(id: String) {
+        if (id.isBlank()) return
+        val app = getApplication<Application>()
+        val current = DlnaCastControl.loadDefaultId(app)
+        if (current == id) {
+            DlnaCastControl.clearDefaultId(app)
+            _state.update {
+                it.copy(
+                    dlnaDefaultId = "",
+                    statusToast = "DLNA default cleared",
+                    dlnaMessage = "No default renderer",
+                )
+            }
+            clearStatusToastLater()
+            return
+        }
+        DlnaCastControl.saveDefaultId(app, id)
+        val name = _state.value.dlnaRenderers.find { it.id == id }?.name ?: "renderer"
+        _state.update {
+            it.copy(
+                dlnaDefaultId = id,
+                dlnaSelectedId = id,
+                statusToast = "Default DLNA · $name",
+                dlnaMessage = "Default · $name",
+            )
+        }
+        clearStatusToastLater()
     }
 
     fun castNowPlayingToDlna() {

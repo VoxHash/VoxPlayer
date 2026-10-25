@@ -382,6 +382,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onToggleDlna = { vm.setDlnaEnabled(!state.dlnaEnabled) },
                                 onScanDlna = vm::scanDlnaRenderers,
                                 onSelectDlna = vm::selectDlnaRenderer,
+                                onSetDefaultDlna = vm::setDlnaDefaultRenderer,
                                 onCastDlna = vm::castNowPlayingToDlna,
                                 onDlnaPlay = vm::dlnaPlay,
                                 onDlnaPause = vm::dlnaPause,
@@ -1654,6 +1655,7 @@ private fun NowPlayingPane(
     onToggleDlna: () -> Unit,
     onScanDlna: () -> Unit,
     onSelectDlna: (String) -> Unit,
+    onSetDefaultDlna: (String) -> Unit,
     onCastDlna: () -> Unit,
     onDlnaPlay: () -> Unit,
     onDlnaPause: () -> Unit,
@@ -2017,7 +2019,7 @@ private fun NowPlayingPane(
             }
             Text("DLNA cast", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
             Text(
-                "LAN MediaRenderer only — no Google Cast / GMS",
+                "LAN MediaRenderer only — no Google Cast / GMS. Long-press a renderer to set / clear default.",
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
@@ -2047,17 +2049,12 @@ private fun NowPlayingPane(
                     QuietButton("Stop", onDlnaStop, Modifier.weight(1f))
                 }
                 state.dlnaRenderers.take(8).forEach { r ->
-                    val selected = state.dlnaSelectedId == r.id
-                    Text(
-                        "${r.name}${if (r.isTv) " · TV" else ""} · ${r.address}",
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(VoxShapes.card)
-                            .background(if (selected) VoxColors.AccentSoft else VoxColors.BgElevated)
-                            .clickable { onSelectDlna(r.id) }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (selected) VoxColors.Accent else VoxColors.Text,
+                    DlnaRendererRow(
+                        renderer = r,
+                        selected = state.dlnaSelectedId == r.id,
+                        isDefault = state.dlnaDefaultId == r.id,
+                        onSelect = { onSelectDlna(r.id) },
+                        onSetDefault = { onSetDefaultDlna(r.id) },
                     )
                 }
                 if (state.dlnaMessage.isNotBlank()) {
@@ -2250,6 +2247,65 @@ private fun NowPlayingPane(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DlnaRendererRow(
+    renderer: DlnaCastControl.Renderer,
+    selected: Boolean,
+    isDefault: Boolean,
+    onSelect: () -> Unit,
+    onSetDefault: () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    val label = buildString {
+        if (selected) append("✓ ")
+        append(renderer.name)
+        if (renderer.isTv) append(" · TV")
+        append(" · ")
+        append(renderer.address)
+        if (isDefault) append(" · Default")
+    }
+    Text(
+        label,
+        Modifier
+            .fillMaxWidth()
+            .clip(VoxShapes.card)
+            .background(
+                when {
+                    isDefault -> VoxColors.AccentSoft
+                    selected -> VoxColors.BgPanel
+                    else -> VoxColors.BgElevated
+                },
+            )
+            .border(
+                1.dp,
+                if (isDefault) VoxColors.Accent else VoxColors.BorderSoft,
+                VoxShapes.card,
+            )
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onSetDefault()
+                },
+            )
+            .semantics {
+                contentDescription = buildString {
+                    append(renderer.name)
+                    if (renderer.isTv) append(", TV")
+                    append(", ")
+                    append(renderer.address)
+                    if (selected) append(", selected")
+                    if (isDefault) append(", default")
+                    append(". Double-tap to select. Long-press to set or clear default.")
+                }
+            }
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (isDefault || selected) VoxColors.Accent else VoxColors.Text,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

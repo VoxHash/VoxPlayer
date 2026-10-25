@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish (DLNA renderer row long-press set as default)
+- Further Android companion polish (audio sink long-press pin as preferred)
+
+## [1.82.0] - 2026-10-25
+
+### Added
+- Android / GrapheneOS / Quest: **DLNA default renderer** — long-press a MediaRenderer to pin / clear as default; scan prefers the pinned device
 
 ## [1.81.0] - 2026-10-25
 

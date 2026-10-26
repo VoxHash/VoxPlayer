@@ -124,12 +124,18 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
+    - name: Stage native_core + isolation e2e
+      run: |
+        python packaging/stage_native_core.py --force
+        python scripts/e2e_native_core_bundle.py
+
     - name: Build onedir bundle
       run: |
         python -m PyInstaller --clean --noconfirm voxplayer.spec
         test -d dist/VoxPlayer
         # native_core should be present when apt packages installed
         find dist/VoxPlayer -type d -name native_core | head -5
+        python -c "from pathlib import Path; from voxplayer.native_core_paths import validate_native_core; roots=list(Path('dist/VoxPlayer').rglob('native_core')); assert roots, 'no native_core in bundle'; r=validate_native_core(roots[0]); assert r['ok'], r"
 
     - name: Zip Linux artifact
       run: |

@@ -7,7 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Desktop Phase 7: complete `native_core` CI bundle; parallel FOSS (libav) decode backend; retire required system VLC; meta/thumbs off ffmpeg CLI; cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+- Desktop Phase 7: parallel FOSS (libav) decode backend; retire required system VLC when FOSS core ships; meta/thumbs off ffmpeg CLI; cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+
+## [1.101.0] - 2026-10-26
+
+### Added
+- Desktop: **stageable `native_core/`** — `packaging/stage_native_core.py` copies host libvlc + plugins; `validate_native_core`; auto-discover repo `native_core/` in source checkouts
+- **Bundle isolation e2e** — `scripts/e2e_native_core_bundle.py` loads libvlc from the staged tree only (simulates removing system VLC packages)
+- CI (Linux test + Linux build): apt libvlc → stage → isolation e2e; build validates bundled `native_core`
+- Prefer `VLC_PLUGIN_PATH` over deprecated `--plugin-path` (VLC 3.x)
 
 ## [1.100.0] - 2026-10-26
 

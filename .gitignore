@@ -441,3 +441,7 @@ android/**/build/
 android/local.properties
 android/*.iml
 android/.idea/
+
+# Staged native C media core (binaries/plugins; README tracked)
+native_core/*
+!native_core/README.md

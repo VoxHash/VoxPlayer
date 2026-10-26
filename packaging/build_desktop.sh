@@ -13,6 +13,8 @@ fi
 
 "$PYTHON" -m pip install -q -r requirements.txt pyinstaller
 "$PYTHON" -c "from voxplayer.native_core_paths import discover_system_native_core; print(discover_system_native_core()['message'])"
+"$PYTHON" "$ROOT/packaging/stage_native_core.py" --force
+"$PYTHON" "$ROOT/scripts/e2e_native_core_bundle.py"
 "$PYTHON" -m PyInstaller --clean --noconfirm voxplayer.spec
 
 echo ""

@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.100.0**). Stack: **PyQt6 shell** + **native C media core** for desktop playback (Vox `libvlc_ffi` + system/bundled libvlc — Phase 7 retires system VLC). Android companion uses Media3 (no GMS). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.101.0**). Stack: **PyQt6 shell** + **native C media core** for desktop playback (Vox `libvlc_ffi` + system/staged `native_core/` — Phase 7 retires system VLC). Android companion uses Media3 (no GMS). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -75,7 +75,7 @@ Industry desktop players keep demux → decode → output in C/native code and r
 | **4** | Keep PyQt6 as the product surface; avoid second playback engines | Ongoing |
 | **5** | Harden in-app video WID embed + non-blocking seeks on all desktop targets | **Done (1.7.0)** |
 | **6** | Grow scan/metadata hot paths: parallel ``vox_scan_dir_meta`` + blake3 ``vox_scan_quick_ids``; library index uses native stats | **Done (1.24.0)** |
-| **7** | **Vox-owned FOSS decode** — independence matrix; complete `native_core` that survives system VLC removal; parallel libav backend; retire required system libvlc; meta/thumbs off ffmpeg CLI; wrap H.264/HEVC/AV1/Opus via FOSS/MediaCodec (**not** invent x264/x265) | **In progress** (matrix **1.100.0**) |
+| **7** | **Vox-owned FOSS decode** — independence matrix; complete `native_core` that survives system VLC removal; parallel libav backend; retire required system libvlc; meta/thumbs off ffmpeg CLI; wrap H.264/HEVC/AV1/Opus via FOSS/MediaCodec (**not** invent x264/x265) | **In progress** (matrix **1.100.0**, staged core **1.101.0**) |
 
 **Long-run stance:** Keep investing in Rust/C (and Zig where it helps packaging) for hot paths so memory and parallel work stay efficient while the desktop shell remains PyQt6. That is how the project stays robust as library size and features grow. **Decode independence** means shipping a Vox-controlled FOSS stack (libavcodec / dav1d / MediaCodec), not inventing greenfield H.264/H.265 codecs.
 
@@ -189,7 +189,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 74. **Popup / PiP player**: system Picture-in-Picture for local video while browsing (GrapheneOS-honest limits) (**Done 1.98.0**)
 75. **Desktop Vox-owned decode path**: expand native_core / engine so desktop playback does not require a third-party media-suite Python binding (**Done 1.99.0**)
 76. **Dependency independence matrix + e2e gates**: honest Desktop/Android/Quest matrix for removing VLC vs ffmpeg CLI; Help → Dependency independence; forbid python-vlc in e2e; document FOSS wrap policy (no in-tree x264/x265) (**Done 1.100.0**)
-77. **Complete native_core CI bundle**: ship/test a full libvlc+plugins (or successor) tree under `native_core/` so desktop e2e passes with system VLC packages removed
+77. **Complete native_core CI bundle**: ship/test a full libvlc+plugins (or successor) tree under `native_core/` so desktop e2e passes with system VLC packages removed (**Done 1.101.0** — `packaging/stage_native_core.py`, `scripts/e2e_native_core_bundle.py`, CI stage+isolation e2e)
 78. **Parallel FOSS decode backend**: feature-flagged libav / bundled FOSS path behind `PlaybackEngine` (parity: volume 0–200, mute, seek, embed) while libvlc remains default
 79. **Retire required system libvlc**: when bundled FOSS core is present, installers/preflight no longer require distro `vlc` package for playback
 80. **Meta/thumbs without ffmpeg CLI**: `vox_meta` / Python thumbs use linked FOSS decode for tags/posters

@@ -138,9 +138,15 @@ def build_independence_report() -> IndependenceReport:
     scan_ok, meta_ok = _native_libs()
 
     if bundled and ok:
-        remove_vlc = "Playback can survive if native_core ships full libvlc+plugins; incomplete bundle still fails decode"
+        remove_vlc = (
+            "Survivable when staged/bundled native_core is complete "
+            "(scripts/e2e_native_core_bundle.py); incomplete tree still fails decode"
+        )
     elif ok:
-        remove_vlc = "HARD FAIL — run.py / PlaybackEngine exit; no Qt fallback (this machine has no bundled native_core)"
+        remove_vlc = (
+            "HARD FAIL — run.py / PlaybackEngine exit; no Qt fallback "
+            "(stage with: python packaging/stage_native_core.py --force)"
+        )
     else:
         remove_vlc = "Already failing — install system libvlc or stage native_core/"
 

@@ -25,8 +25,24 @@ def _frozen_base() -> Optional[Path]:
     return None
 
 
+def _project_native_core() -> Optional[Path]:
+    """``<repo>/native_core`` when running from a source checkout."""
+    here = Path(__file__).resolve().parent  # voxplayer/
+    repo = here.parent
+    candidate = repo / BUNDLE_DIRNAME
+    if candidate.is_dir() and (
+        _find_lib_in_dir(candidate) is not None or _find_plugins(candidate) is not None
+    ):
+        return candidate
+    return None
+
+
 def candidate_bundle_roots() -> List[Path]:
     roots: List[Path] = []
+    # Explicit override always wins
+    env = os.environ.get("VOXPLAYER_NATIVE_CORE", "").strip()
+    if env:
+        roots.append(Path(env).expanduser())
     base = _frozen_base()
     if base is not None:
         roots.append(base / BUNDLE_DIRNAME)
@@ -35,11 +51,19 @@ def candidate_bundle_roots() -> List[Path]:
         exe_dir = Path(sys.executable).resolve().parent
         roots.append(exe_dir / BUNDLE_DIRNAME)
         roots.append(exe_dir / "_internal" / BUNDLE_DIRNAME)
-    # Dev override for testing a staged tree
-    env = os.environ.get("VOXPLAYER_NATIVE_CORE", "").strip()
-    if env:
-        roots.insert(0, Path(env).expanduser())
-    return roots
+    # Dev / CI staged tree next to the package
+    proj = _project_native_core()
+    if proj is not None:
+        roots.append(proj)
+    # De-dupe while preserving order
+    seen = set()
+    out: List[Path] = []
+    for r in roots:
+        key = str(r.resolve()) if r.exists() else str(r)
+        if key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
 
 
 def _find_lib_in_dir(directory: Path) -> Optional[Path]:
@@ -126,14 +150,20 @@ def configure_bundled_native_core() -> bool:
 
 
 def plugin_path_args() -> List[str]:
-    """Extra Instance argv so the C core loads bundled plugins."""
+    """Ensure ``VLC_PLUGIN_PATH`` points at bundled plugins; return Instance argv.
+
+    VLC 3.x no longer accepts ``--plugin-path`` (use the environment instead).
+    """
     _, plugins = resolve_bundled_native_core()
     if plugins is None:
         env = os.environ.get("VLC_PLUGIN_PATH") or os.environ.get("PYTHON_VLC_MODULE_PATH")
         if env and Path(env).is_dir():
-            return [f"--plugin-path={env}"]
+            os.environ.setdefault("VLC_PLUGIN_PATH", env)
         return []
-    return [f"--plugin-path={plugins}"]
+    path = str(plugins)
+    os.environ["VLC_PLUGIN_PATH"] = path
+    os.environ.setdefault("PYTHON_VLC_MODULE_PATH", path)
+    return []
 
 
 # --- packaging discovery (system install → copy into bundle) ---
@@ -335,3 +365,58 @@ def pyinstaller_binaries_and_datas() -> Tuple[list, list, str]:
     binaries = list(info["binaries"])  # type: ignore[arg-type]
     datas = list(info["datas"])  # type: ignore[arg-type]
     return binaries, datas, str(info["message"])
+
+
+# Minimum plugin categories for a usable desktop decode core
+_REQUIRED_PLUGIN_DIRS = ("codec", "demux", "audio_output")
+
+
+def validate_native_core(root: Path) -> Dict[str, object]:
+    """Return ``{ok, errors, lib, plugins, plugin_files}`` for a staged tree."""
+    errors: List[str] = []
+    root = Path(root)
+    if not root.is_dir():
+        return {
+            "ok": False,
+            "errors": [f"not a directory: {root}"],
+            "lib": None,
+            "plugins": None,
+            "plugin_files": 0,
+        }
+    lib = _find_lib_in_dir(root)
+    if lib is None:
+        errors.append("libvlc shared library missing (expected libvlc.so.5 / libvlc.dll / …)")
+    # libvlccore is required on Linux/macOS for a working CDLL load chain
+    if sys.platform.startswith("linux"):
+        core = None
+        for name in ("libvlccore.so.9", "libvlccore.so"):
+            p = root / name
+            if p.is_file() or p.is_symlink():
+                core = p
+                break
+        if core is None:
+            for p in root.glob("libvlccore.so*"):
+                if p.is_file() or p.is_symlink():
+                    core = p
+                    break
+        if core is None:
+            errors.append("libvlccore shared library missing beside libvlc")
+    plugins = _find_plugins(root)
+    plugin_files = 0
+    if plugins is None:
+        errors.append("plugins/ directory missing or empty")
+    else:
+        for dirpath, _dirnames, filenames in os.walk(plugins):
+            plugin_files += sum(1 for f in filenames if f.endswith((".so", ".dll", ".dylib")))
+        if plugin_files < 20:
+            errors.append(f"plugins look incomplete ({plugin_files} module files; expect dozens)")
+        for need in _REQUIRED_PLUGIN_DIRS:
+            if not (plugins / need).is_dir():
+                errors.append(f"missing plugin category directory: plugins/{need}")
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "lib": str(lib) if lib else None,
+        "plugins": str(plugins) if plugins else None,
+        "plugin_files": plugin_files,
+    }

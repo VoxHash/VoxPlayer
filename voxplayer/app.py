@@ -2430,6 +2430,10 @@ class VoxPlayerMainWindow(QMainWindow):
         codec_support_action.triggered.connect(self.show_codec_support)
         help_menu.addAction(codec_support_action)
 
+        independence_action = QAction("Dependency &independence…", self)
+        independence_action.triggered.connect(self.show_independence_matrix)
+        help_menu.addAction(independence_action)
+
         plugins_action = QAction("&Plugins…", self)
         plugins_action.triggered.connect(self.show_plugins_info)
         help_menu.addAction(plugins_action)
@@ -2759,6 +2763,16 @@ For more information, visit the project repository.
             "(default any)."
         )
         QMessageBox.information(self, "Codec support", body)
+
+    def show_independence_matrix(self):
+        """Honest desktop/Android dependency matrix (libvlc vs Media3; FOSS wrap policy)."""
+        try:
+            from .engine.independence import build_independence_report
+
+            body = build_independence_report().as_text()
+        except Exception as exc:
+            body = f"Could not build independence report:\n{exc}"
+        QMessageBox.information(self, "Dependency independence", body)
 
     def _setup_plugins(self) -> None:
         """Load optional shell plugins; never touches the native C core."""

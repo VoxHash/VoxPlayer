@@ -56,8 +56,8 @@ AUDIO_EXTENSIONS: Set[str] = {
 
 ALL_EXTENSIONS: Set[str] = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
-# Priority codecs called out on the roadmap
-FOCUS_CODECS = ("hevc", "av1", "opus")
+# Priority codecs (decode). Policy: wrap FOSS / platform MediaCodec — never invent x264/x265.
+FOCUS_CODECS = ("h264", "hevc", "av1", "opus")
 
 
 def is_supported_extension(path: str) -> bool:
@@ -130,13 +130,19 @@ class CodecProbeReport:
             lines.append(f"  • {key.upper()}: {status}" + (f" — {cap.notes}" if cap.notes else ""))
         lines.append("")
         lines.append(
-            "Playback uses system libvlc. If a file fails, install/update VLC "
-            "(or distro libvlc plugins) so HEVC/AV1/Opus demuxers are present."
+            "Desktop playback uses system/bundled libvlc today (Vox libvlc_ffi). "
+            "If a file fails, install/update VLC plugins or wait for Phase 7 FOSS core. "
+            "See Help → Dependency independence… / docs/independence_matrix.md."
+        )
+        lines.append(
+            "Codec policy: wrap FOSS decoders (libav/dav1d/MediaCodec) — "
+            "do not invent in-tree H.264/x264/H.265/x265."
         )
         return lines
 
 
 _DECODER_ALIASES = {
+    "h264": ("h264", "libopenh264", "avc"),
     "hevc": ("hevc", "libde265", "h265"),
     "av1": ("av1", "libdav1d", "libaom-av1"),
     "opus": ("opus", "libopus"),
@@ -186,8 +192,10 @@ def probe_system_codecs() -> CodecProbeReport:
         note = ""
         if key == "av1" and has_dec and "dav1d" in dec_lower:
             note = "dav1d present"
+        elif key == "h264" and has_dec:
+            note = "h264/avc decoder listed (wrap FOSS; not in-tree x264)"
         elif key == "hevc" and has_dec:
-            note = "hevc/h265 decoder listed"
+            note = "hevc/h265 decoder listed (wrap FOSS; not in-tree x265)"
         elif key == "opus" and has_dec:
             note = "opus decoder listed"
         report.capabilities[key] = CodecCapability(

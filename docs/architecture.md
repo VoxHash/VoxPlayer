@@ -29,6 +29,8 @@ QApplication
 | `voxplayer/ui/shell.py` | Shell widgets (rail, home, now playing, transport) |
 | `voxplayer/engine/playback.py` | native-C-core-only playback (volume 0–200, mute) |
 | `voxplayer/engine/libvlc_ffi.py` | Vox-owned ctypes binding to libvlc (no python-vlc) |
+| `voxplayer/engine/independence.py` | Dependency matrix probe (VLC/ffmpeg/Media3 honesty) |
+| `docs/independence_matrix.md` | Opsec/e2e matrix: what breaks if VLC/ffmpeg removed |
 | `voxplayer/native_scan.py` | ctypes loader for Rust `vox_scan` |
 | `voxplayer/native_workers.py` | ctypes loader + Qt bridge for Rust `vox_meta` worker pool |
 | `native/` | Cargo workspace (`vox_scan`, `vox_meta`) + Zig `vox_scan_zig` |

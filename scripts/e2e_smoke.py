@@ -52,6 +52,13 @@ def main() -> int:
     require_vlc_module()
     _ok("native C media core import")
 
+    from voxplayer.engine.independence import assert_e2e_independence_gates
+
+    gate_fails = assert_e2e_independence_gates()
+    if gate_fails:
+        _fail("independence gates: " + "; ".join(gate_fails))
+    _ok("independence gates (no python-vlc; libvlc present)")
+
     app = QApplication(sys.argv)
     win = VoxPlayerMainWindow()
     if win.current_version != __version__:

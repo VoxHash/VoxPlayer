@@ -7,7 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- (none — next milestones TBD)
+- Desktop Phase 7: complete `native_core` CI bundle; parallel FOSS (libav) decode backend; retire required system VLC; meta/thumbs off ffmpeg CLI; cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+
+## [1.100.0] - 2026-10-26
+
+### Added
+- Desktop: **Dependency independence matrix** — `docs/independence_matrix.md`, `voxplayer.engine.independence`, `scripts/independence_matrix.py`, Help → Dependency independence…; e2e gates forbid `python-vlc` and require libvlc (or honest fail)
+- ROADMAP **Phase 7** items **76–82** for Vox-owned FOSS decode (wrap libav/MediaCodec; explicit non-goal: inventing x264/x265)
+- Codec support probe includes **H.264** alongside HEVC/AV1/Opus with FOSS-wrap policy text
 
 ## [1.99.0] - 2026-10-26
 

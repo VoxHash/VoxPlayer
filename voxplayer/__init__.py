@@ -32,7 +32,7 @@ License: MIT
 Version: 1.91.0
 """
 
-__version__ = "1.93.0"
+__version__ = "1.94.0"
 __author__ = "VoxHash Technologies"
 __email__ = "contact@voxhash.dev"
 __license__ = "MIT"

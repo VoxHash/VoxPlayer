@@ -354,6 +354,9 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onExportPlaylistM3u = { id -> vm.exportPlaylistM3u(context, id) },
                                     onFilter = vm::setLocalFilter,
                                     onPinFilter = vm::setPreferredLocalFilter,
+                                    onAudioFacet = vm::setAudioFacet,
+                                    onPlayArtist = vm::playArtist,
+                                    onPlayAlbum = vm::playAlbum,
                                     onSearch = vm::setLocalSearchQuery,
                                     onHomeAzLetter = vm::setHomeAzLetter,
                                     onRefreshLibrary = vm::reloadLocalLibrary,
@@ -905,6 +908,9 @@ private fun LocalLibraryPane(
     onExportPlaylistM3u: (String) -> Unit,
     onFilter: (String) -> Unit,
     onPinFilter: (String) -> Unit,
+    onAudioFacet: (String) -> Unit,
+    onPlayArtist: (String) -> Unit,
+    onPlayAlbum: (String, String) -> Unit,
     onSearch: (String) -> Unit,
     onHomeAzLetter: (Char?) -> Unit,
     onRefreshLibrary: () -> Unit,
@@ -977,6 +983,40 @@ private fun LocalLibraryPane(
                 }
             }
             QuietButton("Open", onOpenFile)
+        }
+
+        if (state.localFilter == "audio") {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(
+                    "artists" to "Artists",
+                    "albums" to "Albums",
+                    "tracks" to "Tracks",
+                ).forEach { (k, label) ->
+                    FilterChip(
+                        selected = state.audioFacet == k,
+                        onClick = { onAudioFacet(k) },
+                        label = { Text(label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = VoxColors.AccentSoft,
+                            selectedLabelColor = VoxColors.Accent,
+                            containerColor = VoxColors.BgElevated,
+                            labelColor = VoxColors.Text,
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = state.audioFacet == k,
+                            borderColor = VoxColors.BorderSoft,
+                            selectedBorderColor = VoxColors.Accent,
+                        ),
+                    )
+                }
+            }
         }
 
         if (state.localFilter != "lists") {
@@ -1062,6 +1102,15 @@ private fun LocalLibraryPane(
                 }
             }
         }
+        val audioArtists = remember(filtered, state.localFilter, state.audioFacet) {
+            if (state.localFilter != "audio" || state.audioFacet != "artists") emptyList()
+            else groupAudioArtists(filtered)
+        }
+        val audioAlbums = remember(filtered, state.localFilter, state.audioFacet) {
+            if (state.localFilter != "audio" || state.audioFacet != "albums") emptyList()
+            else groupAudioAlbums(filtered)
+        }
+        val audioGrouped = state.localFilter == "audio" && state.audioFacet != "tracks"
 
         val homeTitle = when {
             state.localFilter == "recent" -> "Recently played"
@@ -1070,7 +1119,9 @@ private fun LocalLibraryPane(
             state.localFilter == "month" -> "This month"
             listsFacet && state.listsBrowseId != null -> "List"
             listsFacet -> "Lists"
-            state.localFilter == "audio" -> "Audio"
+            state.localFilter == "audio" && state.audioFacet == "artists" -> "Artists"
+            state.localFilter == "audio" && state.audioFacet == "albums" -> "Albums"
+            state.localFilter == "audio" -> "Tracks"
             state.localFilter == "video" -> "Video"
             else -> "Home"
         }
@@ -1078,11 +1129,15 @@ private fun LocalLibraryPane(
             historyFacet -> historyRows.size
             listsFacet && state.listsBrowseId != null -> 0
             listsFacet -> state.localPlaylists.size
+            state.localFilter == "audio" && state.audioFacet == "artists" -> audioArtists.size
+            state.localFilter == "audio" && state.audioFacet == "albums" -> audioAlbums.size
             else -> filtered.size
         }
         val homeCountLabel = when {
             listsFacet && state.listsBrowseId != null -> null
             listsFacet -> "$homeCount folders"
+            state.localFilter == "audio" && state.audioFacet == "artists" -> "$homeCount artists"
+            state.localFilter == "audio" && state.audioFacet == "albums" -> "$homeCount albums"
             historyFacet -> "$homeCount"
             q.isNotEmpty() && state.localItems.isNotEmpty() ->
                 "$homeCount / ${state.localItems.size}"
@@ -1207,6 +1262,46 @@ private fun LocalLibraryPane(
                         }
                     }
                 }
+            } else if (audioGrouped && state.audioFacet == "artists") {
+                if (audioArtists.isEmpty()) {
+                    LibraryEmptyTips(
+                        filter = state.localFilter,
+                        searchActive = q.isNotEmpty(),
+                        libraryTotal = state.localItems.size,
+                        onOpenFile = onOpenFile,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 24.dp),
+                    )
+                } else {
+                    AudioArtistGrid(
+                        artists = audioArtists,
+                        cols = cols,
+                        onPlayArtist = onPlayArtist,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            } else if (audioGrouped && state.audioFacet == "albums") {
+                if (audioAlbums.isEmpty()) {
+                    LibraryEmptyTips(
+                        filter = state.localFilter,
+                        searchActive = q.isNotEmpty(),
+                        libraryTotal = state.localItems.size,
+                        onOpenFile = onOpenFile,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 24.dp),
+                    )
+                } else {
+                    AudioAlbumGrid(
+                        albums = audioAlbums,
+                        cols = cols,
+                        onPlayAlbum = onPlayAlbum,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             } else if (filtered.isEmpty()) {
                 LibraryEmptyTips(
                     filter = state.localFilter,
@@ -1273,6 +1368,205 @@ private fun LibraryEmptyTips(
 private fun libraryIndexLetter(title: String): Char {
     val c = title.trim().firstOrNull()?.uppercaseChar()
     return if (c != null && c in 'A'..'Z') c else '#'
+}
+
+private const val UI_UNKNOWN_ARTIST = "Unknown artist"
+private const val UI_UNKNOWN_ALBUM = "Unknown album"
+
+private data class AudioArtistGroup(
+    val name: String,
+    val albumCount: Int,
+    val trackCount: Int,
+    val sample: LocalMediaItem,
+)
+
+private data class AudioAlbumGroup(
+    val album: String,
+    val artist: String,
+    val trackCount: Int,
+    val sample: LocalMediaItem,
+)
+
+private fun groupAudioArtists(items: List<LocalMediaItem>): List<AudioArtistGroup> =
+    items.groupBy { it.artist.trim().ifBlank { UI_UNKNOWN_ARTIST } }
+        .map { (name, tracks) ->
+            AudioArtistGroup(
+                name = name,
+                albumCount = tracks.map { it.album.trim().ifBlank { UI_UNKNOWN_ALBUM } }.distinct().size,
+                trackCount = tracks.size,
+                sample = tracks.first(),
+            )
+        }
+        .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+
+private fun groupAudioAlbums(items: List<LocalMediaItem>): List<AudioAlbumGroup> =
+    items.groupBy {
+        (it.album.trim().ifBlank { UI_UNKNOWN_ALBUM }) to
+            (it.artist.trim().ifBlank { UI_UNKNOWN_ARTIST })
+    }
+        .map { (key, tracks) ->
+            AudioAlbumGroup(
+                album = key.first,
+                artist = key.second,
+                trackCount = tracks.size,
+                sample = tracks.first(),
+            )
+        }
+        .sortedWith(
+            compareBy(
+                { it.album.lowercase() },
+                { it.artist.lowercase() },
+            ),
+        )
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AudioArtistGrid(
+    artists: List<AudioArtistGroup>,
+    cols: Int,
+    onPlayArtist: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val grouped = remember(artists) {
+        artists.groupBy { libraryIndexLetter(it.name) }
+            .toSortedMap(compareBy { if (it == '#') '@' else it })
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(cols),
+        contentPadding = PaddingValues(bottom = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier,
+    ) {
+        grouped.forEach { (letter, rows) ->
+            item(span = { GridItemSpan(cols) }, key = "a-letter-$letter") {
+                Text(
+                    letter.toString(),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = VoxColors.Accent,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            items(rows, key = { "artist-${it.name}" }) { row ->
+                AudioGroupCard(
+                    title = row.name,
+                    subtitle = when {
+                        row.albumCount == 1 -> "1 album · ${row.trackCount} tracks"
+                        else -> "${row.albumCount} albums · ${row.trackCount} tracks"
+                    },
+                    sample = row.sample,
+                    onPlay = { onPlayArtist(row.name) },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AudioAlbumGrid(
+    albums: List<AudioAlbumGroup>,
+    cols: Int,
+    onPlayAlbum: (String, String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val grouped = remember(albums) {
+        albums.groupBy { libraryIndexLetter(it.album) }
+            .toSortedMap(compareBy { if (it == '#') '@' else it })
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(cols),
+        contentPadding = PaddingValues(bottom = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier,
+    ) {
+        grouped.forEach { (letter, rows) ->
+            item(span = { GridItemSpan(cols) }, key = "alb-letter-$letter") {
+                Text(
+                    letter.toString(),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = VoxColors.Accent,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            items(rows, key = { "album-${it.artist}-${it.album}" }) { row ->
+                AudioGroupCard(
+                    title = row.album,
+                    subtitle = "${row.artist} · ${row.trackCount} tracks",
+                    sample = row.sample,
+                    onPlay = { onPlayAlbum(row.album, row.artist) },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AudioGroupCard(
+    title: String,
+    subtitle: String,
+    sample: LocalMediaItem,
+    onPlay: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(VoxShapes.card)
+            .background(VoxColors.BgElevated)
+            .combinedClickable(onClick = onPlay)
+            .semantics {
+                contentDescription = "$title. $subtitle. Double-tap to play."
+            }
+            .padding(8.dp),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(VoxShapes.art)
+                .background(VoxColors.BgPanel),
+        ) {
+            ArtworkThumb(
+                contentUri = sample.artworkContentUri(),
+                isVideo = sample.isVideo,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(VoxColors.Accent)
+                    .clickable(onClick = onPlay),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.PlayArrow,
+                    contentDescription = "Play $title",
+                    tint = VoxColors.BgApp,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = VoxColors.Text,
+        )
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = VoxColors.TextMuted,
+        )
+    }
 }
 
 @Composable

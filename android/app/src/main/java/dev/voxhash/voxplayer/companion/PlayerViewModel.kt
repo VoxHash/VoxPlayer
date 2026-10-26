@@ -54,6 +54,8 @@ data class PlayerUiState(
     val tab: AppTab = AppTab.Local,
     val localItems: List<LocalMediaItem> = emptyList(),
     val localFilter: String = "all", // all|audio|video|recent|top|week|month|lists
+    /** When filter=audio: artists | albums | tracks (MediaStore-grouped). */
+    val audioFacet: String = "artists",
     /** Sticky preferred Home filter; empty = none (cold start uses preferred when set). */
     val localFilterPreferred: String = "",
     /** Case-insensitive title / artist / album substring (Home library + history facets). */
@@ -183,6 +185,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 remoteHost = prefs.getString("host", "192.168.1.1") ?: "192.168.1.1",
                 remotePort = prefs.getString("port", "17890") ?: "17890",
                 localFilter = loadBootHomeFilter(),
+                audioFacet = prefs.getString(PREF_AUDIO_FACET, "artists")
+                    ?.takeIf { it in AUDIO_FACETS }
+                    ?: "artists",
                 localFilterPreferred = prefs.getString(PREF_HOME_FILTER_PREFERRED, null)
                     ?.takeIf { it in HOME_FILTERS }
                     .orEmpty(),
@@ -412,6 +417,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             PrimaryDest.Audio -> {
                 setTab(AppTab.Local)
                 setLocalFilter("audio")
+                // Keep last Artists/Albums/Tracks facet (defaults to artists).
             }
             PrimaryDest.Browse -> {
                 setTab(AppTab.Local)
@@ -644,6 +650,12 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(homeAzLetter = normalized) }
     }
 
+    fun setAudioFacet(facet: String) {
+        val f = if (facet in AUDIO_FACETS) facet else "tracks"
+        prefs.edit().putString(PREF_AUDIO_FACET, f).apply()
+        _state.update { it.copy(audioFacet = f) }
+    }
+
     fun playLocal(item: LocalMediaItem) {
         // Gapless queue: filtered library as Media3 playlist, start at the tapped item.
         // Same-kind continuity when filter is "all" (audio→audio / video→video from tap).
@@ -653,13 +665,46 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val start = pool.indexOfFirst { it.id == item.id && it.isVideo == item.isVideo }
             .let { if (it >= 0) it else 0 }
         val queue = if (pool.isEmpty()) listOf(item) else pool
-        val startIndex = start.coerceIn(0, queue.lastIndex)
-        val current = queue[startIndex]
+        playLocalQueue(queue, start.coerceIn(0, queue.lastIndex))
+    }
+
+    /** Play every on-device audio track for an artist (Artists facet). */
+    fun playArtist(artistKey: String) {
+        val key = artistKey.ifBlank { UNKNOWN_ARTIST }
+        val queue = _state.value.localItems
+            .filter { !it.isVideo && artistKeyOf(it) == key }
+            .sortedWith(
+                compareBy(
+                    { it.album.ifBlank { UNKNOWN_ALBUM }.lowercase() },
+                    { it.title.lowercase() },
+                ),
+            )
+        if (queue.isEmpty()) return
+        playLocalQueue(queue, 0)
+    }
+
+    /** Play every on-device audio track for an album (Albums facet). */
+    fun playAlbum(albumKey: String, artistKey: String) {
+        val alb = albumKey.ifBlank { UNKNOWN_ALBUM }
+        val art = artistKey.ifBlank { UNKNOWN_ARTIST }
+        val queue = _state.value.localItems
+            .filter {
+                !it.isVideo && albumKeyOf(it) == alb && artistKeyOf(it) == art
+            }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+        if (queue.isEmpty()) return
+        playLocalQueue(queue, 0)
+    }
+
+    private fun playLocalQueue(queue: List<LocalMediaItem>, startIndex: Int) {
+        if (queue.isEmpty()) return
+        val idx = startIndex.coerceIn(0, queue.lastIndex)
+        val current = queue[idx]
         val resumeMs = resumeStore.resumePositionMs(current.uri.toString(), current.durationMs)
         withPlayer { p ->
             p.setMediaItems(
                 queue.map { mediaItemFromLocal(it) },
-                startIndex,
+                idx,
                 resumeMs,
             )
             p.prepare()
@@ -674,7 +719,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         isVideo = it.isVideo,
                     )
                 },
-                startIndex,
+                idx,
                 resumeMs,
             )
         }
@@ -683,7 +728,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 localTitle = current.title,
                 localArtist = current.artist,
                 localAlbum = current.album,
-                localQueueIndex = startIndex,
+                localQueueIndex = idx,
                 localQueueSize = queue.size,
                 localIsVideo = current.isVideo,
                 localPlaying = true,
@@ -696,6 +741,12 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun sFilterIsAll(): Boolean = _state.value.localFilter == "all"
+
+    private fun artistKeyOf(item: LocalMediaItem): String =
+        item.artist.trim().ifBlank { UNKNOWN_ARTIST }
+
+    private fun albumKeyOf(item: LocalMediaItem): String =
+        item.album.trim().ifBlank { UNKNOWN_ALBUM }
 
     fun playUri(uri: Uri, title: String = uri.lastPathSegment ?: "Media", isVideo: Boolean = true) {
         val match = _state.value.localItems.find { it.uri == uri }
@@ -2888,9 +2939,13 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         private const val PREF_HOME_FILTER_PREFERRED = "home_filter_preferred"
         private const val PREF_HOME_SEARCH = "home_search"
         private const val PREF_HOME_AZ = "home_az_letter"
+        private const val PREF_AUDIO_FACET = "audio_facet"
         private val HOME_FILTERS = setOf(
             "all", "audio", "video", "recent", "top", "week", "month", "lists",
         )
+        private val AUDIO_FACETS = setOf("artists", "albums", "tracks")
+        private const val UNKNOWN_ARTIST = "Unknown artist"
+        private const val UNKNOWN_ALBUM = "Unknown album"
         /** Soft duck when preferred headset unplugs while loud playback continues on speaker. */
         private const val ROUTE_FALLBACK_VOLUME_CAP = 40
     }

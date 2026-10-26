@@ -12,8 +12,8 @@ android {
         applicationId = "dev.voxhash.voxplayer.companion"
         minSdk = 26
         targetSdk = 35
-        versionCode = 71
-        versionName = "1.93.0"
+        versionCode = 72
+        versionName = "1.94.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -140,6 +140,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Primary destinations:** Phone / short panel bottom bar — Video / Audio / Browse / Lists / More (tablet / wide left rail matches). Video·Audio·Lists set library filters; Browse is All; More is Desktop remote.
 
+**Audio facets:** Under Audio — Artists / Albums / Tracks. Artists and Albums are MediaStore-grouped A–Z grids (tap plays that queue); Tracks is the flat title list.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

@@ -7,8 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Android companion: Artists / Albums / Tracks audio facets; Favorites file browse; 10-band EQ; video gestures; popup / PiP player
+- Android companion: Favorites file browse; 10-band EQ; video gestures; popup / PiP player
 - Desktop: grow Vox native decode / scan surface so the shell does not depend on a third-party media-suite binding
+
+## [1.94.0] - 2026-10-26
+
+### Added
+- Android / GrapheneOS / Quest: **Audio Artists / Albums / Tracks** — under Audio, MediaStore-grouped facets with A–Z grids; tap artist/album plays that queue; Tracks keeps the flat list
 
 ## [1.93.0] - 2026-10-26
 

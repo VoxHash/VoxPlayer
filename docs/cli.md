@@ -144,6 +144,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Browse favorites:** Browse destination — Download / Movies / Music / Podcasts MediaStore shortcuts, Internal storage, Add folder… (SAF persistable grant). Long-press a SAF favorite to remove.
 
+**10-band EQ:** Now Playing → 10-band — Enable, presets, preamp (−12…+12 dB), 31Hz–16kHz vertical gains, Snap bands (neighbors follow). Custom curve persists on-device; maps onto the AOSP Equalizer session effect (GrapheneOS may omit it).
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

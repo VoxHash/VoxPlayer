@@ -98,6 +98,11 @@ data class PlayerUiState(
     val eqPreset: String = EqualizerControl.PRESET_OFF,
     /** Sticky preferred EQ preset id (empty = none). */
     val eqPreferredId: String = "",
+    /** Custom 10-band gains in dB (−12…+12). */
+    val eqBandsDb: List<Float> = List(EqualizerControl.BAND_COUNT) { 0f },
+    val eqPreampDb: Float = 0f,
+    val eqSnapBands: Boolean = true,
+    val eqSheetOpen: Boolean = false,
     val sleepEndEpochMs: Long = 0L,
     val sleepRemainingLabel: String = "Off",
     /** Sticky preferred sleep duration minutes; 0 = none. */
@@ -210,6 +215,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 audioPinName = audioPin?.name.orEmpty(),
                 eqPreset = EqualizerControl.loadBootPreset(app),
                 eqPreferredId = EqualizerControl.loadPreferred(app).orEmpty(),
+                eqBandsDb = EqualizerControl.loadBandsDb(app).toList(),
+                eqPreampDb = EqualizerControl.loadPreampDb(app),
+                eqSnapBands = EqualizerControl.loadSnap(app),
                 sleepEndEpochMs = SleepTimer.loadEndEpochMs(app),
                 sleepRemainingLabel = SleepTimer.remainingLabel(SleepTimer.loadEndEpochMs(app)),
                 sleepPreferredMinutes = SleepTimer.loadPreferredMinutes(app) ?: 0,
@@ -1565,14 +1573,97 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setEqPreset(preset: String) {
         val id = EqualizerControl.normalize(preset)
-        _state.update { it.copy(eqPreset = id) }
-        EqualizerControl.savePreset(getApplication(), id)
+        val app = getApplication<Application>()
+        val bands = when (id) {
+            EqualizerControl.PRESET_CUSTOM -> EqualizerControl.loadBandsDb(app)
+            EqualizerControl.PRESET_OFF, EqualizerControl.PRESET_FLAT -> EqualizerControl.zeroBands()
+            else -> EqualizerControl.bandsForPreset(id)
+        }
+        if (id != EqualizerControl.PRESET_CUSTOM && id != EqualizerControl.PRESET_OFF) {
+            EqualizerControl.saveBandsDb(app, bands)
+        }
+        EqualizerControl.savePreset(app, id)
+        _state.update {
+            it.copy(
+                eqPreset = id,
+                eqBandsDb = bands.toList(),
+            )
+        }
         val controller = player as? MediaController ?: return
         val args = Bundle().apply { putString(EqualizerControl.EXTRA_PRESET, id) }
         try {
             controller.sendCustomCommand(EqualizerControl.CMD_SET, args)
         } catch (e: Exception) {
             Log.w(TAG, "SET_EQ_PRESET failed", e)
+        }
+    }
+
+    fun openEqSheet(open: Boolean) {
+        _state.update { it.copy(eqSheetOpen = open) }
+    }
+
+    fun setEqBandDb(index: Int, valueDb: Float) {
+        if (index !in 0 until EqualizerControl.BAND_COUNT) return
+        val current = eqBandsArray()
+        val snap = _state.value.eqSnapBands
+        val next = if (snap) {
+            EqualizerControl.withSnap(current, index, valueDb)
+        } else {
+            current.copyOf().also { it[index] = EqualizerControl.clampDb(valueDb) }
+        }
+        pushEqCustom(next, _state.value.eqPreampDb, snap)
+    }
+
+    fun setEqPreampDb(db: Float) {
+        pushEqCustom(eqBandsArray(), db, _state.value.eqSnapBands)
+    }
+
+    fun setEqSnapBands(snap: Boolean) {
+        val app = getApplication<Application>()
+        EqualizerControl.saveSnap(app, snap)
+        _state.update { it.copy(eqSnapBands = snap) }
+        if (_state.value.eqPreset != EqualizerControl.PRESET_OFF) {
+            pushEqCustom(eqBandsArray(), _state.value.eqPreampDb, snap)
+        }
+    }
+
+    private fun eqBandsArray(): FloatArray =
+        FloatArray(EqualizerControl.BAND_COUNT) { i ->
+            _state.value.eqBandsDb.getOrElse(i) { 0f }
+        }
+
+    fun resetEqBands() {
+        pushEqCustom(EqualizerControl.zeroBands(), 0f, _state.value.eqSnapBands)
+    }
+
+    private fun pushEqCustom(bands: FloatArray, preampDb: Float, snap: Boolean) {
+        val app = getApplication<Application>()
+        val pre = EqualizerControl.clampPreamp(preampDb)
+        val safe = FloatArray(EqualizerControl.BAND_COUNT) { i ->
+            EqualizerControl.clampDb(bands.getOrElse(i) { 0f })
+        }
+        EqualizerControl.savePreset(app, EqualizerControl.PRESET_CUSTOM)
+        EqualizerControl.saveBandsDb(app, safe)
+        EqualizerControl.savePreampDb(app, pre)
+        EqualizerControl.saveSnap(app, snap)
+        _state.update {
+            it.copy(
+                eqPreset = EqualizerControl.PRESET_CUSTOM,
+                eqBandsDb = safe.toList(),
+                eqPreampDb = pre,
+                eqSnapBands = snap,
+            )
+        }
+        val controller = player as? MediaController ?: return
+        val args = Bundle().apply {
+            putFloatArray(EqualizerControl.EXTRA_BANDS, safe)
+            putFloat(EqualizerControl.EXTRA_PREAMP, pre)
+            putBoolean(EqualizerControl.EXTRA_SNAP, snap)
+        }
+        try {
+            controller.sendCustomCommand(EqualizerControl.CMD_SET_CUSTOM, args)
+        } catch (e: Exception) {
+            Log.w(TAG, "SET_EQ_CUSTOM failed", e)
         }
     }
 

@@ -7,8 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Android companion: 10-band EQ; video gestures; popup / PiP player
+- Android companion: video gestures; popup / PiP player
 - Desktop: grow Vox native decode / scan surface so the shell does not depend on a third-party media-suite binding
+
+## [1.96.0] - 2026-10-26
+
+### Added
+- Android / GrapheneOS / Quest: **10-band equalizer sheet** — Now Playing → 10-band opens Enable, presets, preamp, 31Hz–16kHz gains, Snap bands; maps onto AOSP Equalizer (no GMS); Custom persists on-device
 
 ## [1.95.0] - 2026-10-26
 

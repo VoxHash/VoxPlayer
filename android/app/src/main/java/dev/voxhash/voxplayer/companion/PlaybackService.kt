@@ -141,6 +141,7 @@ class PlaybackService : MediaSessionService() {
                 .add(LocalVolume.CMD_SET)
                 .add(AudioRoute.CMD_SET)
                 .add(EqualizerControl.CMD_SET)
+                .add(EqualizerControl.CMD_SET_CUSTOM)
                 .add(AudioRoute.CMD_REAPPLY)
                 .add(SleepTimer.CMD_SET)
                 .add(CrossfadeControl.CMD_SET)
@@ -183,7 +184,29 @@ class PlaybackService : MediaSessionService() {
                     eqPreset = args.getString(EqualizerControl.EXTRA_PRESET, eqPreset)
                         ?: EqualizerControl.PRESET_OFF
                     EqualizerControl.savePreset(this@PlaybackService, eqPreset)
-                    equalizerApplier.setPreset(eqPreset)
+                    if (eqPreset == EqualizerControl.PRESET_CUSTOM) {
+                        equalizerApplier.setCustom(
+                            EqualizerControl.loadBandsDb(this@PlaybackService),
+                            EqualizerControl.loadPreampDb(this@PlaybackService),
+                            EqualizerControl.loadSnap(this@PlaybackService),
+                        )
+                    } else {
+                        equalizerApplier.setPreset(eqPreset)
+                    }
+                    applyAudioChain()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                EqualizerControl.ACTION_SET_CUSTOM -> {
+                    eqPreset = EqualizerControl.PRESET_CUSTOM
+                    val bands = args.getFloatArray(EqualizerControl.EXTRA_BANDS)
+                        ?: EqualizerControl.zeroBands()
+                    val preamp = args.getFloat(EqualizerControl.EXTRA_PREAMP, 0f)
+                    val snap = args.getBoolean(EqualizerControl.EXTRA_SNAP, true)
+                    EqualizerControl.savePreset(this@PlaybackService, eqPreset)
+                    EqualizerControl.saveBandsDb(this@PlaybackService, bands)
+                    EqualizerControl.savePreampDb(this@PlaybackService, preamp)
+                    EqualizerControl.saveSnap(this@PlaybackService, snap)
+                    equalizerApplier.setCustom(bands, preamp, snap)
                     applyAudioChain()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
@@ -200,7 +223,7 @@ class PlaybackService : MediaSessionService() {
                     } else {
                         eqPreset = EqualizerControl.loadPreset(this@PlaybackService)
                     }
-                    equalizerApplier.setPreset(eqPreset)
+                    equalizerApplier.loadFromPrefs(this@PlaybackService)
                     val preferredSpeed = PlaybackSpeed.loadPreferred(this@PlaybackService)
                     if (preferredSpeed != null) {
                         playbackSpeed = preferredSpeed
@@ -299,7 +322,7 @@ class PlaybackService : MediaSessionService() {
         restorePinnedPreferredIfPresent()
         eqPreset = EqualizerControl.loadBootPreset(this)
         EqualizerControl.savePreset(this, eqPreset)
-        equalizerApplier.setPreset(eqPreset)
+        equalizerApplier.loadFromPrefs(this)
         crossfadeEnabled = CrossfadeControl.loadCrossfade(this)
         skipSilence = CrossfadeControl.loadSkipSilence(this)
         fadeMs = CrossfadeControl.loadBootFadeMs(this)
@@ -481,7 +504,7 @@ class PlaybackService : MediaSessionService() {
             if (preferredEq != null && preferredEq != eqPreset) {
                 eqPreset = preferredEq
                 EqualizerControl.savePreset(this, eqPreset)
-                equalizerApplier.setPreset(eqPreset)
+                equalizerApplier.loadFromPrefs(this)
             }
             val preferredSpeed = PlaybackSpeed.loadPreferred(this)
             if (preferredSpeed != null && !PlaybackSpeed.isSame(preferredSpeed, playbackSpeed)) {

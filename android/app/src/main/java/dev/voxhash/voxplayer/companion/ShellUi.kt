@@ -92,10 +92,13 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -423,6 +426,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onPinDevice = vm::setPinnedAudioDevice,
                                 onEqPreset = vm::setEqPreset,
                                 onPinEqPreset = vm::setPreferredEqPreset,
+                                onOpenEqSheet = { vm.openEqSheet(true) },
                                 onSleepMinutes = vm::setSleepTimerMinutes,
                                 onPinSleepMinutes = vm::setPreferredSleepMinutes,
                                 onStartPreferredSleep = vm::startPreferredSleepTimer,
@@ -508,6 +512,33 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                 onPick = vm::addPendingToPlaylist,
                 onCreateNew = vm::createPlaylistAndAddPending,
                 onDismiss = vm::dismissAddToList,
+            )
+        }
+    }
+
+    if (state.eqSheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { vm.openEqSheet(false) },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = VoxColors.BgElevated,
+        ) {
+            EqualizerSheet(
+                state = state,
+                onDismiss = { vm.openEqSheet(false) },
+                onEnable = { on ->
+                    if (on) {
+                        if (state.eqPreset == EqualizerControl.PRESET_OFF) {
+                            vm.setEqPreset(EqualizerControl.PRESET_CUSTOM)
+                        }
+                    } else {
+                        vm.setEqPreset(EqualizerControl.PRESET_OFF)
+                    }
+                },
+                onPreset = vm::setEqPreset,
+                onBand = vm::setEqBandDb,
+                onPreamp = vm::setEqPreampDb,
+                onSnap = vm::setEqSnapBands,
+                onReset = vm::resetEqBands,
             )
         }
     }
@@ -2315,6 +2346,7 @@ private fun NowPlayingPane(
     onPinDevice: (Int) -> Unit,
     onEqPreset: (String) -> Unit,
     onPinEqPreset: (String) -> Unit,
+    onOpenEqSheet: () -> Unit,
     onSleepMinutes: (Int) -> Unit,
     onPinSleepMinutes: (Int) -> Unit,
     onStartPreferredSleep: () -> Unit,
@@ -2598,14 +2630,23 @@ private fun NowPlayingPane(
                     )
                 }
             }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .then(markSection("eq")),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "Equalizer",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = VoxColors.Accent,
+                    modifier = Modifier.weight(1f),
+                )
+                QuietButton("10-band", onOpenEqSheet)
+            }
             Text(
-                "Equalizer",
-                style = MaterialTheme.typography.titleMedium,
-                color = VoxColors.Accent,
-                modifier = markSection("eq"),
-            )
-            Text(
-                "Tap to apply. Long-press to pin preferred (restored on start / reapply).",
+                "Tap preset to apply · long-press pin preferred. Open 10-band for preamp, bands, and snap.",
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
@@ -2632,6 +2673,10 @@ private fun NowPlayingPane(
             Text(
                 buildString {
                     append(EqualizerControl.describe(state.eqPreset))
+                    if (state.eqPreset == EqualizerControl.PRESET_CUSTOM) {
+                        append(" · Preamp ")
+                        append(EqualizerControl.formatDb(state.eqPreampDb))
+                    }
                     if (state.eqPreferredId.isNotEmpty()) {
                         append(" · Preferred ")
                         append(EqualizerControl.label(state.eqPreferredId))
@@ -3338,6 +3383,176 @@ private fun SpeedPresetChip(
         color = if (preferred || selected) VoxColors.Accent else VoxColors.Text,
         maxLines = 1,
     )
+}
+
+@Composable
+private fun EqualizerSheet(
+    state: PlayerUiState,
+    onDismiss: () -> Unit,
+    onEnable: (Boolean) -> Unit,
+    onPreset: (String) -> Unit,
+    onBand: (Int, Float) -> Unit,
+    onPreamp: (Float) -> Unit,
+    onSnap: (Boolean) -> Unit,
+    onReset: () -> Unit,
+) {
+    val enabled = state.eqPreset != EqualizerControl.PRESET_OFF
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, bottom = 36.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "Equalizer",
+                style = MaterialTheme.typography.titleLarge,
+                color = VoxColors.Accent,
+                modifier = Modifier.weight(1f),
+            )
+            QuietButton("Reset", onReset)
+            QuietButton("Done", onDismiss)
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Enable", style = MaterialTheme.typography.titleSmall, color = VoxColors.Text)
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnable,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = VoxColors.BgApp,
+                    checkedTrackColor = VoxColors.Accent,
+                    uncheckedThumbColor = VoxColors.TextMuted,
+                    uncheckedTrackColor = VoxColors.BgPanel,
+                ),
+            )
+        }
+        Text(
+            "AOSP Equalizer on this device — GrapheneOS may omit the effect. No GMS.",
+            style = MaterialTheme.typography.bodySmall,
+            color = VoxColors.TextMuted,
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            EqualizerControl.PRESETS.forEach { (id, label) ->
+                EqPresetChip(
+                    label = label,
+                    selected = state.eqPreset == id,
+                    preferred = state.eqPreferredId == id,
+                    onSelect = { onPreset(id) },
+                    onPin = { },
+                )
+            }
+        }
+        Text(
+            "Preamp ${EqualizerControl.formatDb(state.eqPreampDb)}",
+            style = MaterialTheme.typography.titleSmall,
+            color = VoxColors.Text,
+        )
+        Slider(
+            value = state.eqPreampDb,
+            onValueChange = onPreamp,
+            valueRange = EqualizerControl.PREAMP_MIN_DB..EqualizerControl.PREAMP_MAX_DB,
+            enabled = enabled,
+            colors = SliderDefaults.colors(
+                thumbColor = VoxColors.Accent,
+                activeTrackColor = VoxColors.Accent,
+                inactiveTrackColor = VoxColors.BorderSoft,
+            ),
+        )
+        Text("Bands", style = MaterialTheme.typography.titleSmall, color = VoxColors.Text)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(200.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            EqualizerControl.BAND_LABELS.forEachIndexed { index, label ->
+                val gain = state.eqBandsDb.getOrElse(index) { 0f }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        EqualizerControl.formatDb(gain),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = VoxColors.Accent,
+                        maxLines = 1,
+                    )
+                    Box(
+                        Modifier
+                            .height(140.dp)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Slider(
+                            value = gain,
+                            onValueChange = { onBand(index, it) },
+                            valueRange = EqualizerControl.GAIN_MIN_DB..EqualizerControl.GAIN_MAX_DB,
+                            enabled = enabled,
+                            modifier = Modifier
+                                .width(140.dp)
+                                .graphicsLayer { rotationZ = -90f },
+                            colors = SliderDefaults.colors(
+                                thumbColor = VoxColors.Accent,
+                                activeTrackColor = VoxColors.Accent,
+                                inactiveTrackColor = VoxColors.BorderSoft,
+                            ),
+                        )
+                    }
+                    Text(
+                        if (label.endsWith("kHz")) {
+                            label.removeSuffix("kHz") + "k"
+                        } else {
+                            label.removeSuffix("Hz")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = VoxColors.TextMuted,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Snap bands", style = MaterialTheme.typography.titleSmall, color = VoxColors.Text)
+                Text(
+                    "Neighbor bands follow when you drag",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.TextMuted,
+                )
+            }
+            Switch(
+                checked = state.eqSnapBands,
+                onCheckedChange = onSnap,
+                enabled = enabled,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = VoxColors.BgApp,
+                    checkedTrackColor = VoxColors.Accent,
+                    uncheckedThumbColor = VoxColors.TextMuted,
+                    uncheckedTrackColor = VoxColors.BgPanel,
+                ),
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -43,19 +43,22 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
@@ -66,6 +69,9 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.media3.common.Player as Media3Player
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -205,40 +211,51 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         Scaffold(
             containerColor = VoxColors.BgApp,
             bottomBar = {
-                if (!carMode) TransportBar(
-                    state = state,
-                    wide = wide && !panelCompact,
-                    onConnect = { vm.openConnect(true) },
-                    onPlayPause = {
-                        if (state.activeOutput.startsWith("Desktop")) vm.remotePlayPause()
-                        else vm.localPlayPause()
-                    },
-                    onPrev = {
-                        if (state.activeOutput.startsWith("Desktop")) vm.remotePrev()
-                        else vm.localPrev()
-                    },
-                    onNext = {
-                        if (state.activeOutput.startsWith("Desktop")) vm.remoteNext()
-                        else vm.localNext()
-                    },
-                    onStop = {
-                        if (state.activeOutput.startsWith("Desktop")) vm.remoteStop()
-                        else vm.localStop()
-                    },
-                    onShuffle = { if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalShuffle() },
-                    onRepeat = { if (!state.activeOutput.startsWith("Desktop")) vm.cycleLocalRepeat() },
-                    onVolDown = {
-                        if (state.activeOutput.startsWith("Desktop")) vm.remoteVolDown()
-                        else vm.localVolDown()
-                    },
-                    onVolUp = {
-                        if (state.activeOutput.startsWith("Desktop")) vm.remoteVolUp()
-                        else vm.localVolUp()
-                    },
-                    onMute = {
-                        if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalMute()
-                    },
-                )
+                if (!carMode) {
+                    Column(Modifier.fillMaxWidth()) {
+                        // Phone / short panel: primary destinations above transport (tablet uses left rail).
+                        if (panelCompact || !wide) {
+                            PrimaryDestBar(
+                                selected = state.primaryDest(),
+                                onSelect = vm::setPrimaryDest,
+                            )
+                        }
+                        TransportBar(
+                            state = state,
+                            wide = wide && !panelCompact,
+                            onConnect = { vm.openConnect(true) },
+                            onPlayPause = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remotePlayPause()
+                                else vm.localPlayPause()
+                            },
+                            onPrev = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remotePrev()
+                                else vm.localPrev()
+                            },
+                            onNext = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remoteNext()
+                                else vm.localNext()
+                            },
+                            onStop = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remoteStop()
+                                else vm.localStop()
+                            },
+                            onShuffle = { if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalShuffle() },
+                            onRepeat = { if (!state.activeOutput.startsWith("Desktop")) vm.cycleLocalRepeat() },
+                            onVolDown = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remoteVolDown()
+                                else vm.localVolDown()
+                            },
+                            onVolUp = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remoteVolUp()
+                                else vm.localVolUp()
+                            },
+                            onMute = {
+                                if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalMute()
+                            },
+                        )
+                    }
+                }
             },
         ) { pad ->
             Row(
@@ -250,8 +267,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                 if (!panelCompact) {
                     LeftRail(
                         state = state,
-                        onHome = { vm.setTab(AppTab.Local) },
-                        onDesktop = { vm.setTab(AppTab.Connect) },
+                        onSelectDest = vm::setPrimaryDest,
                         onOpen = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                         onConnect = { vm.openConnect(true) },
                     )
@@ -269,8 +285,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                     if (panelCompact) {
                         CompactPanelChrome(
                             state = state,
-                            onHome = { vm.setTab(AppTab.Local) },
-                            onDesktop = { vm.setTab(AppTab.Connect) },
+                            onSelectDest = vm::setPrimaryDest,
                             onConnect = { vm.openConnect(true) },
                         )
                     }
@@ -530,30 +545,43 @@ private fun AddToListSheet(
     }
 }
 
+private fun PlayerUiState.primaryDest(): PrimaryDest = when {
+    tab == AppTab.Connect -> PrimaryDest.More
+    localFilter == "video" -> PrimaryDest.Video
+    localFilter == "audio" -> PrimaryDest.Audio
+    localFilter == "lists" -> PrimaryDest.Lists
+    else -> PrimaryDest.Browse
+}
+
 @Composable
 private fun CompactPanelChrome(
     state: PlayerUiState,
-    onHome: () -> Unit,
-    onDesktop: () -> Unit,
+    onSelectDest: (PrimaryDest) -> Unit,
     onConnect: () -> Unit,
 ) {
+    val selected = state.primaryDest()
     Row(
         Modifier
             .fillMaxWidth()
             .background(VoxColors.BgPanel)
+            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text("VX", color = VoxColors.Accent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-        QuietButton(
-            if (state.tab == AppTab.Local) "· Home" else "Home",
-            onHome,
-        )
-        QuietButton(
-            if (state.tab == AppTab.Connect) "· Desktop" else "Desktop",
-            onDesktop,
-        )
+        listOf(
+            PrimaryDest.Video to "Video",
+            PrimaryDest.Audio to "Audio",
+            PrimaryDest.Browse to "Browse",
+            PrimaryDest.Lists to "Lists",
+            PrimaryDest.More to "More",
+        ).forEach { (dest, label) ->
+            QuietButton(
+                if (selected == dest) "· $label" else label,
+                { onSelectDest(dest) },
+            )
+        }
         Spacer(Modifier.weight(1f))
         Text(
             when {
@@ -671,11 +699,11 @@ private fun CarDrivingPane(
 @Composable
 private fun LeftRail(
     state: PlayerUiState,
-    onHome: () -> Unit,
-    onDesktop: () -> Unit,
+    onSelectDest: (PrimaryDest) -> Unit,
     onOpen: () -> Unit,
     onConnect: () -> Unit,
 ) {
+    val selected = state.primaryDest()
     Column(
         Modifier
             .width(64.dp)
@@ -695,9 +723,22 @@ private fun LeftRail(
             Text("VX", color = VoxColors.Accent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
         Spacer(Modifier.height(8.dp))
-        RailBtn(Icons.Default.Home, "Home", state.tab == AppTab.Local, onHome)
-        RailBtn(Icons.Default.Computer, "Desktop", state.tab == AppTab.Connect, onDesktop)
-        RailBtn(Icons.Default.FolderOpen, "Open file", false, onOpen)
+        RailBtn(Icons.Default.Movie, "Video", selected == PrimaryDest.Video) {
+            onSelectDest(PrimaryDest.Video)
+        }
+        RailBtn(Icons.Default.AudioFile, "Audio", selected == PrimaryDest.Audio) {
+            onSelectDest(PrimaryDest.Audio)
+        }
+        RailBtn(Icons.Default.FolderOpen, "Browse", selected == PrimaryDest.Browse) {
+            onSelectDest(PrimaryDest.Browse)
+        }
+        RailBtn(Icons.Default.QueueMusic, "Lists", selected == PrimaryDest.Lists) {
+            onSelectDest(PrimaryDest.Lists)
+        }
+        RailBtn(Icons.Default.MoreHoriz, "More", selected == PrimaryDest.More) {
+            onSelectDest(PrimaryDest.More)
+        }
+        RailBtn(Icons.Default.PlayArrow, "Open file", false, onOpen)
         Spacer(Modifier.weight(1f))
         RailBtn(
             Icons.Default.Devices,
@@ -705,6 +746,54 @@ private fun LeftRail(
             state.activeOutput.startsWith("Desktop"),
             onConnect,
         )
+    }
+}
+
+@Composable
+private fun PrimaryDestBar(
+    selected: PrimaryDest,
+    onSelect: (PrimaryDest) -> Unit,
+) {
+    val items = listOf(
+        Triple(PrimaryDest.Video, "Video", Icons.Default.Movie),
+        Triple(PrimaryDest.Audio, "Audio", Icons.Default.AudioFile),
+        Triple(PrimaryDest.Browse, "Browse", Icons.Default.FolderOpen),
+        Triple(PrimaryDest.Lists, "Lists", Icons.Default.QueueMusic),
+        Triple(PrimaryDest.More, "More", Icons.Default.MoreHoriz),
+    )
+    NavigationBar(
+        containerColor = VoxColors.BgPanel,
+        contentColor = VoxColors.Text,
+        tonalElevation = 0.dp,
+    ) {
+        items.forEach { (dest, label, icon) ->
+            val active = selected == dest
+            NavigationBarItem(
+                selected = active,
+                onClick = { onSelect(dest) },
+                icon = {
+                    Icon(
+                        icon,
+                        contentDescription = label,
+                        modifier = Modifier.size(22.dp),
+                    )
+                },
+                label = {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                    )
+                },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = VoxColors.Accent,
+                    selectedTextColor = VoxColors.Accent,
+                    indicatorColor = VoxColors.AccentSoft,
+                    unselectedIconColor = VoxColors.TextSecondary,
+                    unselectedTextColor = VoxColors.TextMuted,
+                ),
+            )
+        }
     }
 }
 
@@ -717,7 +806,8 @@ private fun RailBtn(icon: ImageVector, tip: String, active: Boolean, onClick: ()
             .size(44.dp)
             .clip(CircleShape)
             .background(if (active) VoxColors.AccentSoft else androidx.compose.ui.graphics.Color.Transparent)
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = tip },
         contentAlignment = Alignment.Center,
     ) {
         Icon(

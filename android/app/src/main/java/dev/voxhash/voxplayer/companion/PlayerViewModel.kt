@@ -37,6 +37,9 @@ import java.io.File
 
 enum class AppTab { Local, Connect }
 
+/** Primary shell destinations (phone bottom bar / tablet rail) — Video · Audio · Browse · Lists · More. */
+enum class PrimaryDest { Video, Audio, Browse, Lists, More }
+
 enum class RemoteLink { None, Wifi, Bluetooth }
 
 data class QueueRow(
@@ -398,6 +401,29 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setTab(tab: AppTab) = _state.update { it.copy(tab = tab) }
+
+    /** Bottom / rail primary destinations (GrapheneOS-friendly Material nav; no GMS). */
+    fun setPrimaryDest(dest: PrimaryDest) {
+        when (dest) {
+            PrimaryDest.Video -> {
+                setTab(AppTab.Local)
+                setLocalFilter("video")
+            }
+            PrimaryDest.Audio -> {
+                setTab(AppTab.Local)
+                setLocalFilter("audio")
+            }
+            PrimaryDest.Browse -> {
+                setTab(AppTab.Local)
+                setLocalFilter("all")
+            }
+            PrimaryDest.Lists -> {
+                setTab(AppTab.Local)
+                setLocalFilter("lists")
+            }
+            PrimaryDest.More -> setTab(AppTab.Connect)
+        }
+    }
 
     fun openConnect(open: Boolean) {
         _state.update { it.copy(connectOpen = open) }

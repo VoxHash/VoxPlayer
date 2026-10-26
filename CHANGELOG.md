@@ -7,7 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Further Android companion polish
+- Android companion: Artists / Albums / Tracks audio facets; Favorites file browse; 10-band EQ; video gestures; popup / PiP player
+- Desktop: grow Vox native decode / scan surface so the shell does not depend on a third-party media-suite binding
+
+## [1.93.0] - 2026-10-26
+
+### Added
+- Android / GrapheneOS / Quest: **Primary destinations** — Video / Audio / Browse / Lists / More bottom bar (phone / short panel) and matching left rail (tablet / Quest wide); maps to library filters + Desktop remote under More
 
 ## [1.92.0] - 2026-10-25
 

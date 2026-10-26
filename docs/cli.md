@@ -138,6 +138,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Clear preferred pins:** Now Playing → Settings → Clear preferred pins removes every sticky pin (Home filter, theme, shuffle, repeat, sink, EQ, speed, fade, sleep, DLNA default).
 
+**Primary destinations:** Phone / short panel bottom bar — Video / Audio / Browse / Lists / More (tablet / wide left rail matches). Video·Audio·Lists set library filters; Browse is All; More is Desktop remote.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

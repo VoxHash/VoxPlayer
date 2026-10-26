@@ -142,6 +142,8 @@ On Meta Quest, the companion launches in the common Horizon OS 2D panel size (**
 
 **Audio facets:** Under Audio — Artists / Albums / Tracks. Artists and Albums are MediaStore-grouped A–Z grids (tap plays that queue); Tracks is the flat title list.
 
+**Browse favorites:** Browse destination — Download / Movies / Music / Podcasts MediaStore shortcuts, Internal storage, Add folder… (SAF persistable grant). Long-press a SAF favorite to remove.
+
 **Lyrics:** Place `Song.lrc` (or `.srt` / `.vtt` / `.txt`) beside `Song.mp3`; Now Playing shows timed or plain lines. No online lyrics fetch.
 
 **Lists:** Home Lists chip — smart lists (New / Recent / Top / Short ≤3 min) and manual folders; Add Now Playing into a folder. Local JSON only.

@@ -43,12 +43,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -58,6 +61,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
@@ -66,6 +70,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
@@ -164,6 +169,19 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri != null) vm.importM3u(uri)
+    }
+
+    val openBrowseTree = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val label = uri.lastPathSegment
+                ?.substringAfterLast(':')
+                ?.replace("%2F", "/")
+                ?.substringAfterLast('/')
+                ?: "Folder"
+            vm.addBrowseFavorite(uri, label)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -357,6 +375,12 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onAudioFacet = vm::setAudioFacet,
                                     onPlayArtist = vm::playArtist,
                                     onPlayAlbum = vm::playAlbum,
+                                    onBrowseShortcut = vm::openBrowseShortcut,
+                                    onBrowseFavorite = vm::openBrowseFavorite,
+                                    onBrowseInternal = vm::openBrowseInternalStorage,
+                                    onBrowseBack = vm::closeBrowseFolder,
+                                    onAddBrowseFolder = { openBrowseTree.launch(null) },
+                                    onRemoveBrowseFavorite = vm::removeBrowseFavorite,
                                     onSearch = vm::setLocalSearchQuery,
                                     onHomeAzLetter = vm::setHomeAzLetter,
                                     onRefreshLibrary = vm::reloadLocalLibrary,
@@ -553,6 +577,7 @@ private fun PlayerUiState.primaryDest(): PrimaryDest = when {
     localFilter == "video" -> PrimaryDest.Video
     localFilter == "audio" -> PrimaryDest.Audio
     localFilter == "lists" -> PrimaryDest.Lists
+    localFilter == "browse" -> PrimaryDest.Browse
     else -> PrimaryDest.Browse
 }
 
@@ -911,6 +936,12 @@ private fun LocalLibraryPane(
     onAudioFacet: (String) -> Unit,
     onPlayArtist: (String) -> Unit,
     onPlayAlbum: (String, String) -> Unit,
+    onBrowseShortcut: (String, String) -> Unit,
+    onBrowseFavorite: (BrowseStore.FavoriteFolder) -> Unit,
+    onBrowseInternal: () -> Unit,
+    onBrowseBack: () -> Unit,
+    onAddBrowseFolder: () -> Unit,
+    onRemoveBrowseFavorite: (String) -> Unit,
     onSearch: (String) -> Unit,
     onHomeAzLetter: (Char?) -> Unit,
     onRefreshLibrary: () -> Unit,
@@ -967,6 +998,7 @@ private fun LocalLibraryPane(
                     "all" to "All",
                     "audio" to "Audio",
                     "video" to "Video",
+                    "browse" to "Browse",
                     "recent" to "Recent",
                     "top" to "Top",
                     "week" to "Week",
@@ -983,6 +1015,26 @@ private fun LocalLibraryPane(
                 }
             }
             QuietButton("Open", onOpenFile)
+        }
+
+        if (state.localFilter == "browse") {
+            BrowsePane(
+                state = state,
+                onShortcut = onBrowseShortcut,
+                onFavorite = onBrowseFavorite,
+                onInternal = onBrowseInternal,
+                onBack = onBrowseBack,
+                onAddFolder = onAddBrowseFolder,
+                onRemoveFavorite = onRemoveBrowseFavorite,
+                onPlay = onPlay,
+                onAddToList = onAddToList,
+                onOpenFile = onOpenFile,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+            )
+            return
         }
 
         if (state.localFilter == "audio") {
@@ -1328,6 +1380,205 @@ private fun LocalLibraryPane(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BrowsePane(
+    state: PlayerUiState,
+    onShortcut: (String, String) -> Unit,
+    onFavorite: (BrowseStore.FavoriteFolder) -> Unit,
+    onInternal: () -> Unit,
+    onBack: () -> Unit,
+    onAddFolder: () -> Unit,
+    onRemoveFavorite: (String) -> Unit,
+    onPlay: (LocalMediaItem) -> Unit,
+    onAddToList: (LocalMediaItem) -> Unit,
+    onOpenFile: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val inFolder = state.browseFolderTitle.isNotBlank()
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                if (inFolder) state.browseFolderTitle else "Browse",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.weight(1f),
+            )
+            if (inFolder) {
+                Text(
+                    "${state.browseFolderItems.size}",
+                    Modifier
+                        .clip(VoxShapes.pill)
+                        .background(VoxColors.AccentSoft)
+                        .border(1.dp, VoxColors.Accent, VoxShapes.pill)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = VoxColors.Accent,
+                )
+                QuietButton("Back", onBack)
+            } else {
+                QuietButton("Add folder…", onAddFolder)
+                QuietButton("Open file", onOpenFile)
+            }
+        }
+        if (!inFolder) {
+            Text(
+                "Favorites & storages stay on-device. Add folder uses the system picker (SAF) — GrapheneOS Storage Scopes friendly; no cloud.",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("Favorites", style = MaterialTheme.typography.titleSmall, color = VoxColors.Accent)
+                val shortcutCards = listOf(
+                    Triple("Download", "Download", Icons.Default.Download),
+                    Triple("Movies", "Movies", Icons.Default.Movie),
+                    Triple("Music", "Music", Icons.Default.LibraryMusic),
+                    Triple("Podcasts", "Podcasts", Icons.Default.Podcasts),
+                )
+                shortcutCards.chunked(2).forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        row.forEach { (label, hint, icon) ->
+                            BrowseFolderCard(
+                                title = label,
+                                subtitle = "MediaStore · $hint/",
+                                icon = icon,
+                                onClick = { onShortcut(label, hint) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+                state.browseFavorites.chunked(2).forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        row.forEach { fav ->
+                            BrowseFolderCard(
+                                title = fav.label,
+                                subtitle = "SAF favorite · long-press remove",
+                                icon = Icons.Default.Folder,
+                                onClick = { onFavorite(fav) },
+                                onLongClick = { onRemoveFavorite(fav.id) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+                BrowseFolderCard(
+                    title = "Add folder…",
+                    subtitle = "Persist SAF grant",
+                    icon = Icons.Default.Add,
+                    onClick = onAddFolder,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Storages",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = VoxColors.Accent,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                BrowseFolderCard(
+                    title = "Internal storage",
+                    subtitle = "${state.localItems.size} MediaStore items",
+                    icon = Icons.Default.Storage,
+                    onClick = onInternal,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else if (state.browseFolderItems.isEmpty()) {
+            LibraryEmptyTips(
+                filter = "browse",
+                searchActive = false,
+                libraryTotal = state.localItems.size,
+                onOpenFile = onOpenFile,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 12.dp),
+            )
+        } else {
+            AzLibraryGrid(
+                items = state.browseFolderItems,
+                cols = 2,
+                initialLetter = null,
+                onLetterChanged = {},
+                onPlay = onPlay,
+                onAddToList = onAddToList,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BrowseFolderCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+) {
+    val haptics = LocalHapticFeedback.current
+    Column(
+        modifier
+            .clip(VoxShapes.card)
+            .background(VoxColors.BgElevated)
+            .border(1.dp, VoxColors.BorderSoft, VoxShapes.card)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick?.let {
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        it()
+                    }
+                },
+            )
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(VoxShapes.art)
+                .background(VoxColors.AccentSoft),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = VoxColors.Accent, modifier = Modifier.size(22.dp))
+        }
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = VoxColors.Text,
+        )
+        Text(
+            subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            color = VoxColors.TextMuted,
+        )
+    }
+}
+
 @Composable
 private fun LibraryEmptyTips(
     filter: String,
@@ -1344,6 +1595,7 @@ private fun LibraryEmptyTips(
         filter == "month" -> "Quiet month so far" to "Month stats use local listen events from the last 30 days. Play tracks on-device to fill this view."
         filter == "audio" && libraryTotal > 0 -> "No audio in library" to "MediaStore found media, but nothing tagged as audio. Try All, or Open a file from storage / SAF."
         filter == "video" && libraryTotal > 0 -> "No video in library" to "MediaStore found media, but nothing tagged as video. Try All, or Open a file from storage / SAF."
+        filter == "browse" -> "Nothing in this folder" to "MediaStore may not index this path yet, or the SAF folder has no audio/video. Use Add folder… or Open file (GrapheneOS Storage Scopes friendly)."
         libraryTotal == 0 -> "Library is empty" to "Grant media access if prompted, or use Open to pick files via the system picker (GrapheneOS Storage Scopes friendly). No Google account required."
         else -> "Nothing here" to "Switch filters or Open a file. Playback stays on-device with Media3 — no GMS."
     }

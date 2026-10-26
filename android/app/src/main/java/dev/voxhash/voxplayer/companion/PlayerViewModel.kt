@@ -56,6 +56,11 @@ data class PlayerUiState(
     val localFilter: String = "all", // all|audio|video|recent|top|week|month|lists
     /** When filter=audio: artists | albums | tracks (MediaStore-grouped). */
     val audioFacet: String = "artists",
+    /** Browse destination: SAF favorites + open folder listing. */
+    val browseFavorites: List<BrowseStore.FavoriteFolder> = emptyList(),
+    /** When set, Browse shows this folder's media rows (null = favorites index). */
+    val browseFolderTitle: String = "",
+    val browseFolderItems: List<LocalMediaItem> = emptyList(),
     /** Sticky preferred Home filter; empty = none (cold start uses preferred when set). */
     val localFilterPreferred: String = "",
     /** Case-insensitive title / artist / album substring (Home library + history facets). */
@@ -188,6 +193,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 audioFacet = prefs.getString(PREF_AUDIO_FACET, "artists")
                     ?.takeIf { it in AUDIO_FACETS }
                     ?: "artists",
+                browseFavorites = BrowseStore.loadFavorites(app),
                 localFilterPreferred = prefs.getString(PREF_HOME_FILTER_PREFERRED, null)
                     ?.takeIf { it in HOME_FILTERS }
                     .orEmpty(),
@@ -421,7 +427,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
             PrimaryDest.Browse -> {
                 setTab(AppTab.Local)
-                setLocalFilter("all")
+                setLocalFilter("browse")
+                closeBrowseFolder()
             }
             PrimaryDest.Lists -> {
                 setTab(AppTab.Local)
@@ -582,7 +589,12 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val filter = if (f in HOME_FILTERS) f else "all"
         prefs.edit().putString(PREF_HOME_FILTER, filter).apply()
         _state.update {
-            it.copy(localFilter = filter, listsBrowseId = if (filter == "lists") it.listsBrowseId else null)
+            it.copy(
+                localFilter = filter,
+                listsBrowseId = if (filter == "lists") it.listsBrowseId else null,
+                browseFolderTitle = if (filter == "browse") it.browseFolderTitle else "",
+                browseFolderItems = if (filter == "browse") it.browseFolderItems else emptyList(),
+            )
         }
     }
 
@@ -626,7 +638,158 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         "week" -> "Week"
         "month" -> "Month"
         "lists" -> "Lists"
+        "browse" -> "Browse"
         else -> filter
+    }
+
+    fun closeBrowseFolder() {
+        _state.update { it.copy(browseFolderTitle = "", browseFolderItems = emptyList()) }
+    }
+
+    /** Built-in MediaStore path shortcut (Download / Music / Movies / Podcasts). */
+    fun openBrowseShortcut(label: String, pathHint: String) {
+        val needle = pathHint.trim().trim('/').lowercase()
+        val items = _state.value.localItems.filter { item ->
+            val path = item.relativePath.replace('\\', '/').lowercase()
+            path.startsWith("$needle/") || path == needle || path.contains("/$needle/")
+        }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+        _state.update {
+            it.copy(
+                localFilter = "browse",
+                browseFolderTitle = label,
+                browseFolderItems = items,
+                statusToast = if (items.isEmpty()) {
+                    "No MediaStore items in $label — Add folder… or Open file"
+                } else {
+                    ""
+                },
+            )
+        }
+        if (items.isEmpty()) clearStatusToastLater()
+        prefs.edit().putString(PREF_HOME_FILTER, "browse").apply()
+    }
+
+    /** Open a persisted SAF tree favorite and list audio/video children. */
+    fun openBrowseFavorite(folder: BrowseStore.FavoriteFolder) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val items = listSafMedia(Uri.parse(folder.treeUri))
+            withContext(Dispatchers.Main) {
+                _state.update {
+                    it.copy(
+                        localFilter = "browse",
+                        browseFolderTitle = folder.label,
+                        browseFolderItems = items,
+                        statusToast = if (items.isEmpty()) {
+                            "No media in ${folder.label}"
+                        } else {
+                            ""
+                        },
+                    )
+                }
+                if (items.isEmpty()) clearStatusToastLater()
+                prefs.edit().putString(PREF_HOME_FILTER, "browse").apply()
+            }
+        }
+    }
+
+    /** Internal / primary volume: show all on-device MediaStore items as a storage listing. */
+    fun openBrowseInternalStorage() {
+        val items = _state.value.localItems
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+        _state.update {
+            it.copy(
+                localFilter = "browse",
+                browseFolderTitle = "Internal storage",
+                browseFolderItems = items,
+            )
+        }
+        prefs.edit().putString(PREF_HOME_FILTER, "browse").apply()
+    }
+
+    fun addBrowseFavorite(treeUri: Uri, label: String) {
+        val app = getApplication<Application>()
+        try {
+            app.contentResolver.takePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        } catch (_: Exception) {
+        }
+        val display = label.ifBlank {
+            treeUri.lastPathSegment?.substringAfterLast(':')?.replace("%2F", "/")?.substringAfterLast('/')
+                ?: "Folder"
+        }
+        val next = BrowseStore.addFavorite(app, treeUri, display)
+        _state.update {
+            it.copy(
+                browseFavorites = next,
+                statusToast = "Favorite · $display",
+            )
+        }
+        clearStatusToastLater()
+        openBrowseFavorite(next.first { it.treeUri == treeUri.toString() })
+    }
+
+    fun removeBrowseFavorite(id: String) {
+        val app = getApplication<Application>()
+        val removed = _state.value.browseFavorites.find { it.id == id }
+        if (removed != null) {
+            try {
+                app.contentResolver.releasePersistableUriPermission(
+                    Uri.parse(removed.treeUri),
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            } catch (_: Exception) {
+            }
+        }
+        val next = BrowseStore.removeFavorite(app, id)
+        _state.update {
+            it.copy(
+                browseFavorites = next,
+                statusToast = "Favorite removed",
+                browseFolderTitle = if (it.browseFolderTitle == removed?.label) "" else it.browseFolderTitle,
+                browseFolderItems = if (it.browseFolderTitle == removed?.label) emptyList() else it.browseFolderItems,
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    private fun listSafMedia(treeUri: Uri): List<LocalMediaItem> {
+        val root = androidx.documentfile.provider.DocumentFile.fromTreeUri(getApplication(), treeUri)
+            ?: return emptyList()
+        val out = ArrayList<LocalMediaItem>()
+        fun walk(dir: androidx.documentfile.provider.DocumentFile, depth: Int) {
+            if (depth > 4 || out.size >= 400) return
+            dir.listFiles().forEach { child ->
+                if (out.size >= 400) return
+                when {
+                    child.isDirectory -> walk(child, depth + 1)
+                    child.isFile -> {
+                        val name = child.name ?: return@forEach
+                        val mime = child.type.orEmpty()
+                        val isVideo = mime.startsWith("video/") ||
+                            name.substringAfterLast('.', "").lowercase() in VIDEO_EXTS
+                        val isAudio = mime.startsWith("audio/") ||
+                            name.substringAfterLast('.', "").lowercase() in AUDIO_EXTS
+                        if (!isVideo && !isAudio) return@forEach
+                        val uri = child.uri
+                        out.add(
+                            LocalMediaItem(
+                                id = uri.hashCode().toLong(),
+                                uri = uri,
+                                title = name.substringBeforeLast('.').ifBlank { name },
+                                artist = "",
+                                album = dir.name.orEmpty(),
+                                durationMs = 0L,
+                                isVideo = isVideo,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        walk(root, 0)
+        return out.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
     }
 
     fun setLocalSearchQuery(q: String) {
@@ -2941,11 +3104,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         private const val PREF_HOME_AZ = "home_az_letter"
         private const val PREF_AUDIO_FACET = "audio_facet"
         private val HOME_FILTERS = setOf(
-            "all", "audio", "video", "recent", "top", "week", "month", "lists",
+            "all", "audio", "video", "recent", "top", "week", "month", "lists", "browse",
         )
         private val AUDIO_FACETS = setOf("artists", "albums", "tracks")
         private const val UNKNOWN_ARTIST = "Unknown artist"
         private const val UNKNOWN_ALBUM = "Unknown album"
+        private val AUDIO_EXTS = setOf(
+            "mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "wma", "aiff", "aif",
+        )
+        private val VIDEO_EXTS = setOf(
+            "mp4", "mkv", "webm", "avi", "mov", "m4v", "wmv", "flv", "ts", "m2ts",
+        )
         /** Soft duck when preferred headset unplugs while loud playback continues on speaker. */
         private const val ROUTE_FALLBACK_VOLUME_CAP = 40
     }

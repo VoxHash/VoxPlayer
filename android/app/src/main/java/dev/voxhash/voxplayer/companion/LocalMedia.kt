@@ -16,6 +16,8 @@ data class LocalMediaItem(
     val isVideo: Boolean,
     /** MediaStore album id for AVRCP artwork URI (audio only; 0 if unknown). */
     val albumId: Long = 0L,
+    /** MediaStore relative path (e.g. Music/, Download/) for Browse shortcuts. */
+    val relativePath: String = "",
 ) {
     /** URI for MediaStore thumbnail / album art (offline, no cloud). */
     fun artworkContentUri(): Uri =
@@ -36,14 +38,18 @@ object LocalMediaStore {
         } else {
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         }
-        val projection = arrayOf(
+        val projection = mutableListOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.ALBUM_ID,
-        )
+        ).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.Audio.Media.RELATIVE_PATH)
+            }
+        }.toTypedArray()
         val out = ArrayList<LocalMediaItem>()
         context.contentResolver.query(
             collection,
@@ -58,6 +64,11 @@ object LocalMediaStore {
             val albumCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
             val durCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val albumIdCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+            val pathCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                c.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+            } else {
+                -1
+            }
             while (c.moveToNext() && out.size < limit) {
                 val id = c.getLong(idCol)
                 out.add(
@@ -70,6 +81,7 @@ object LocalMediaStore {
                         durationMs = c.getLong(durCol).coerceAtLeast(0L),
                         isVideo = false,
                         albumId = c.getLong(albumIdCol).coerceAtLeast(0L),
+                        relativePath = if (pathCol >= 0) c.getString(pathCol).orEmpty() else "",
                     ),
                 )
             }
@@ -93,6 +105,9 @@ object LocalMediaStore {
                 add(MediaStore.Video.Media.ARTIST)
                 add(MediaStore.Video.Media.ALBUM)
             }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.Video.Media.RELATIVE_PATH)
+            }
         }.toTypedArray()
         val out = ArrayList<LocalMediaItem>()
         context.contentResolver.query(
@@ -107,6 +122,11 @@ object LocalMediaStore {
             val artistCol = c.getColumnIndex(MediaStore.Video.Media.ARTIST)
             val albumCol = c.getColumnIndex(MediaStore.Video.Media.ALBUM)
             val durCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+            val pathCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                c.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH)
+            } else {
+                -1
+            }
             while (c.moveToNext() && out.size < limit) {
                 val id = c.getLong(idCol)
                 out.add(
@@ -126,6 +146,7 @@ object LocalMediaStore {
                         },
                         durationMs = c.getLong(durCol).coerceAtLeast(0L),
                         isVideo = true,
+                        relativePath = if (pathCol >= 0) c.getString(pathCol).orEmpty() else "",
                     ),
                 )
             }

@@ -7,8 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Android companion: Favorites file browse; 10-band EQ; video gestures; popup / PiP player
+- Android companion: 10-band EQ; video gestures; popup / PiP player
 - Desktop: grow Vox native decode / scan surface so the shell does not depend on a third-party media-suite binding
+
+## [1.95.0] - 2026-10-26
+
+### Added
+- Android / GrapheneOS / Quest: **Favorites / storages Browse** — Browse destination with Download/Movies/Music/Podcasts MediaStore shortcuts, Internal storage, SAF Add folder favorites (persistable grants), folder listings + Open file
 
 ## [1.94.0] - 2026-10-26
 

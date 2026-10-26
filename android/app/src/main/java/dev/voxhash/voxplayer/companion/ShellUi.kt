@@ -219,6 +219,40 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         )
     }
 
+    val enterPip: () -> Unit = {
+        (context.findActivity() as? MainActivity)?.enterPip()
+    }
+
+    // System PiP: video-only chrome so the OS window stays usable.
+    if (state.pipActive) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(androidx.compose.ui.graphics.Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (player != null && state.localIsVideo) {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            this.player = player
+                            useController = false
+                        }
+                    },
+                    update = { it.player = player },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(
+                    state.localTitle.ifBlank { "VoxPlayer" },
+                    color = VoxColors.Accent,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+        }
+        return
+    }
+
     BoxWithConstraints(Modifier.fillMaxSize().background(VoxColors.BgApp)) {
         val wide = maxWidth >= WIDE_SHELL_MIN_DP.dp
         // Quest short panel / multi-window strip: keep transport usable, skip tall chrome.
@@ -391,6 +425,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onAddHistoryToList = vm::openAddToListFromHistory,
                                     onSeekLocal = vm::seekLocal,
                                     onSetVolume = vm::setLocalVolume,
+                                    onEnterPip = enterPip,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
                                         val perms = if (Build.VERSION.SDK_INT >= 33) {
@@ -458,6 +493,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onClearTrackResume = vm::clearTrackResume,
                                 onSeekLocal = vm::seekLocal,
                                 onSetVolume = vm::setLocalVolume,
+                                onEnterPip = enterPip,
                                 onPlayQueueIndex = vm::playQueueIndex,
                                 onMoveQueue = vm::moveQueueItem,
                                 onRemoveQueue = vm::removeQueueItem,
@@ -983,6 +1019,7 @@ private fun LocalLibraryPane(
     onAddHistoryToList: (PlayHistoryStore.Entry) -> Unit,
     onSeekLocal: (Long) -> Unit,
     onSetVolume: (Int) -> Unit,
+    onEnterPip: () -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
 ) {
@@ -1026,6 +1063,10 @@ private fun LocalLibraryPane(
                     update = { it.player = player },
                     modifier = Modifier.fillMaxSize(),
                 )
+            }
+            if (state.pipAvailable) {
+                Spacer(Modifier.height(8.dp))
+                QuietButton("Picture-in-picture", onEnterPip, Modifier.fillMaxWidth())
             }
             Spacer(Modifier.height(12.dp))
         }
@@ -2390,6 +2431,7 @@ private fun NowPlayingPane(
     onClearTrackResume: () -> Unit,
     onSeekLocal: (Long) -> Unit,
     onSetVolume: (Int) -> Unit,
+    onEnterPip: () -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (Int, Int) -> Unit,
     onRemoveQueue: (Int) -> Unit,
@@ -2527,6 +2569,9 @@ private fun NowPlayingPane(
             onPlayPause,
             modifier = Modifier.fillMaxWidth(),
         )
+        if (!desktop && state.pipAvailable && state.localIsVideo && title != "(nothing loaded)") {
+            QuietButton("Picture-in-picture", onEnterPip, Modifier.fillMaxWidth())
+        }
         if (!desktop) {
             QuietButton("Share card", onShareNowPlaying, Modifier.fillMaxWidth())
             if (!desktop && state.localQueueSize > 0) {

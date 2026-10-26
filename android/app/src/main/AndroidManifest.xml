@@ -44,7 +44,7 @@
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|density|fontScale|uiMode"
             android:resizeableActivity="true"
-            android:supportsPictureInPicture="false"
+            android:supportsPictureInPicture="true"
             android:screenOrientation="fullUser"
             android:windowSoftInputMode="adjustResize">
             <!-- Meta recommended default panel frame for Quest 2D apps -->

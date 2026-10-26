@@ -7,8 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Android companion: popup / PiP player
 - Desktop: grow Vox native decode / scan surface so the shell does not depend on a third-party media-suite binding
+
+## [1.98.0] - 2026-10-26
+
+### Added
+- Android / GrapheneOS / Quest: **Picture-in-Picture** — system PiP for local video (button + home/auto-enter where supported); compact video-only chrome in PiP; Play/Pause remote action; hidden when device lacks `FEATURE_PICTURE_IN_PICTURE` (no GMS)
 
 ## [1.97.0] - 2026-10-26
 

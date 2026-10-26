@@ -135,6 +135,9 @@ data class PlayerUiState(
     /** Multi-window / Quest panel / fold — for UI chrome (playback stays in service). */
     val multiWindow: Boolean = false,
     val foldSeparating: Boolean = false,
+    /** System Picture-in-Picture (local video); false on devices without the feature. */
+    val pipAvailable: Boolean = false,
+    val pipActive: Boolean = false,
     /** Opt-in DLNA/UPnP cast (no GMS Cast). */
     val dlnaEnabled: Boolean = false,
     val dlnaBusy: Boolean = false,
@@ -1708,6 +1711,30 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun updateFoldLayout(foldSeparating: Boolean) {
         if (_state.value.foldSeparating == foldSeparating) return
         _state.update { it.copy(foldSeparating = foldSeparating) }
+    }
+
+    fun setPipAvailable(available: Boolean) {
+        if (_state.value.pipAvailable == available) return
+        _state.update { it.copy(pipAvailable = available) }
+    }
+
+    fun setPipActive(active: Boolean) {
+        if (_state.value.pipActive == active) return
+        _state.update { it.copy(pipActive = active) }
+    }
+
+    /** Local video currently loaded and eligible for system PiP. */
+    fun canEnterPip(): Boolean {
+        val s = _state.value
+        return s.pipAvailable &&
+            s.localIsVideo &&
+            s.localTitle.isNotBlank() &&
+            s.localTitle != "(nothing loaded)"
+    }
+
+    fun flashStatus(message: String) {
+        _state.update { it.copy(statusToast = message) }
+        clearStatusToastLater()
     }
 
     /** Quest panel refocus / activity resume: refresh sinks and re-bind audio chain. */

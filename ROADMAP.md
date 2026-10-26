@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.97.0**). Stack: **PyQt6 shell** + **native C media core** for desktop playback (system codec runtime). Android companion uses Media3 (no GMS). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.98.0**). Stack: **PyQt6 shell** + **native C media core** for desktop playback (system codec runtime). Android companion uses Media3 (no GMS). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -185,13 +185,13 @@ A **separate Android app phase** (not a thin WebView wrapper):
 71. **Favorites / storages browse**: Browse destination with on-device favorites folders + SAF open (no cloud) (**Done 1.95.0**)
 72. **10-band equalizer sheet**: AOSP Equalizer band gains + preamp + snap; presets remain; no GMS (**Done 1.96.0**)
 73. **Video gesture scrub / brightness / volume**: overlay gestures on local video surface (Media3) (**Done 1.97.0**)
-74. **Popup / PiP player**: system Picture-in-Picture for local video while browsing (GrapheneOS-honest limits)
+74. **Popup / PiP player**: system Picture-in-Picture for local video while browsing (GrapheneOS-honest limits) (**Done 1.98.0**)
 75. **Desktop Vox-owned decode path**: expand native_core / engine so desktop playback does not require a third-party media-suite Python binding
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.
 
-**Background / battery (honest limits):** Local playback uses a standard Android `mediaPlayback` foreground service and a media-style notification (no proprietary keep-alive or analytics SDKs). Force-stop, denying notifications (on Android 13+), or aggressive battery restrictions can still end playback. Quest / Horizon OS may suspend or resize the 2D panel when unfocused; audio continues while the session service remains running. Gapless queues use the Media3 playlist API (encoder delay/padding honored when present). Resumption after process death relies on the last URI still being readable (scoped storage / SAF grants); force-stop may block automatic resume until the user opens the app again.
+**Background / battery (honest limits):** Local playback uses a standard Android `mediaPlayback` foreground service and a media-style notification (no proprietary keep-alive or analytics SDKs). Force-stop, denying notifications (on Android 13+), or aggressive battery restrictions can still end playback. Quest / Horizon OS may suspend or resize the 2D panel when unfocused; audio continues while the session service remains running. System Picture-in-Picture is offered only when the device reports `FEATURE_PICTURE_IN_PICTURE` (often absent on Quest / some custom builds); GrapheneOS follows AOSP PiP when the feature is present — no GMS overlay. Gapless queues use the Media3 playlist API (encoder delay/padding honored when present). Resumption after process death relies on the last URI still being readable (scoped storage / SAF grants); force-stop may block automatic resume until the user opens the app again.
 
 ---
 

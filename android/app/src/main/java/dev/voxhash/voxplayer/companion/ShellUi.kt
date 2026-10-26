@@ -389,6 +389,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onRefreshLibrary = vm::reloadLocalLibrary,
                                     onAddToList = vm::openAddToList,
                                     onAddHistoryToList = vm::openAddToListFromHistory,
+                                    onSeekLocal = vm::seekLocal,
+                                    onSetVolume = vm::setLocalVolume,
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
                                         val perms = if (Build.VERSION.SDK_INT >= 33) {
@@ -455,6 +457,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onClearPreferredPins = vm::clearAllPreferredPins,
                                 onClearTrackResume = vm::clearTrackResume,
                                 onSeekLocal = vm::seekLocal,
+                                onSetVolume = vm::setLocalVolume,
                                 onPlayQueueIndex = vm::playQueueIndex,
                                 onMoveQueue = vm::moveQueueItem,
                                 onRemoveQueue = vm::removeQueueItem,
@@ -978,6 +981,8 @@ private fun LocalLibraryPane(
     onRefreshLibrary: () -> Unit,
     onAddToList: (LocalMediaItem) -> Unit,
     onAddHistoryToList: (PlayHistoryStore.Entry) -> Unit,
+    onSeekLocal: (Long) -> Unit,
+    onSetVolume: (Int) -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
 ) {
@@ -999,20 +1004,29 @@ private fun LocalLibraryPane(
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         if (player != null && state.localIsVideo && (state.localPlaying || state.localTitle != "(nothing loaded)")) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        this.player = player
-                        useController = false
-                    }
-                },
-                update = { it.player = player },
+            VideoGestureSurface(
+                positionMs = state.localPositionMs,
+                durationMs = state.localDurationMs,
+                volumePercent = state.localVolume,
+                onSeek = onSeekLocal,
+                onVolumePercent = onSetVolume,
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(if (wide) 21f / 9f else 16f / 9f)
                     .clip(VoxShapes.art)
                     .background(androidx.compose.ui.graphics.Color.Black),
-            )
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            this.player = player
+                            useController = false
+                        }
+                    },
+                    update = { it.player = player },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             Spacer(Modifier.height(12.dp))
         }
 
@@ -2375,6 +2389,7 @@ private fun NowPlayingPane(
     onClearPreferredPins: () -> Unit,
     onClearTrackResume: () -> Unit,
     onSeekLocal: (Long) -> Unit,
+    onSetVolume: (Int) -> Unit,
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (Int, Int) -> Unit,
     onRemoveQueue: (Int) -> Unit,
@@ -2418,16 +2433,25 @@ private fun NowPlayingPane(
             contentAlignment = Alignment.Center,
         ) {
             if (player != null && !desktop && state.localIsVideo && title != "(nothing loaded)") {
-                AndroidView(
-                    factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            this.player = player
-                            useController = false
-                        }
-                    },
-                    update = { it.player = player },
+                VideoGestureSurface(
+                    positionMs = state.localPositionMs,
+                    durationMs = state.localDurationMs,
+                    volumePercent = state.localVolume,
+                    onSeek = onSeekLocal,
+                    onVolumePercent = onSetVolume,
                     modifier = Modifier.fillMaxSize(),
-                )
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PlayerView(ctx).apply {
+                                this.player = player
+                                useController = false
+                            }
+                        },
+                        update = { it.player = player },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             } else {
                 Text("VoxPlayer", color = VoxColors.Accent, fontWeight = FontWeight.Bold, fontSize = 22.sp)
             }

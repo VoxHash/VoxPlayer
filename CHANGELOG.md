@@ -7,8 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Android companion: video gestures; popup / PiP player
+- Android companion: popup / PiP player
 - Desktop: grow Vox native decode / scan surface so the shell does not depend on a third-party media-suite binding
+
+## [1.97.0] - 2026-10-26
+
+### Added
+- Android / GrapheneOS / Quest: **Video gestures** — on local video surface: horizontal scrub, left-edge brightness, right-edge volume (0–200%) with HUD; Media3 seek + window brightness (no GMS)
 
 ## [1.96.0] - 2026-10-26
 

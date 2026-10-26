@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.98.0**). Stack: **PyQt6 shell** + **native C media core** for desktop playback (system codec runtime). Android companion uses Media3 (no GMS). No Qt Multimedia playback path.
+Status as of October 2026 (**v1.99.0**). Stack: **PyQt6 shell** + **native C media core** for desktop playback (Vox `libvlc_ffi` + system/bundled libvlc). Android companion uses Media3 (no GMS). No Qt Multimedia playback path.
 
 ## Shipped in 1.3.0
 
@@ -186,7 +186,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 72. **10-band equalizer sheet**: AOSP Equalizer band gains + preamp + snap; presets remain; no GMS (**Done 1.96.0**)
 73. **Video gesture scrub / brightness / volume**: overlay gestures on local video surface (Media3) (**Done 1.97.0**)
 74. **Popup / PiP player**: system Picture-in-Picture for local video while browsing (GrapheneOS-honest limits) (**Done 1.98.0**)
-75. **Desktop Vox-owned decode path**: expand native_core / engine so desktop playback does not require a third-party media-suite Python binding
+75. **Desktop Vox-owned decode path**: expand native_core / engine so desktop playback does not require a third-party media-suite Python binding (**Done 1.99.0**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

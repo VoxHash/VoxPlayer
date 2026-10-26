@@ -7,7 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Desktop: grow Vox native decode / scan surface so the shell does not depend on a third-party media-suite binding
+- (none — next milestones TBD)
+
+## [1.99.0] - 2026-10-26
+
+### Changed
+- Desktop: **Vox-owned libvlc binding** — `voxplayer.engine.libvlc_ffi` (ctypes) talks to system/bundled libvlc; **`python-vlc` removed** from install deps; `run.py` / installers / docs updated; decode still uses the native C media core (no Qt Multimedia)
 
 ## [1.98.0] - 2026-10-26
 

@@ -50,7 +50,7 @@ Never commit `.env` files or real Web UI passwords. `.gitignore` already exclude
 
 ## Playback engine
 
-**Native C media core is the only playback engine** (`python-vlc` + system libvlc). Volume 0–200% and mute use native-engine properties. There is no Qt Multimedia playback path — missing native C media core exits with install instructions.
+**Native C media core is the only playback engine** (Vox `libvlc_ffi` + system/bundled libvlc). Volume 0–200% and mute use native-engine properties. There is no Qt Multimedia playback path and no third-party Python media-suite binding — missing libvlc exits with install instructions.
 
 Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video embed. On pure Wayland without a libvlc Wayland surface API, audio volume still works; embed may be limited.
 

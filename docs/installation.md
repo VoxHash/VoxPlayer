@@ -15,7 +15,7 @@ Package: [https://pypi.org/project/voxplayer/](https://pypi.org/project/voxplaye
 |------------|-----------|---------|
 | Python 3.8+ (3.10–3.12 recommended) | Yes | Runtime |
 | PyQt6 | Yes (via pip) | Desktop UI shell |
-| **python-vlc** + **system libvlc** | **Yes** | **Only** playback engine (volume 0–200%, mute) |
+| **system / bundled libvlc** (Vox `libvlc_ffi`) | **Yes** | **Only** playback engine (volume 0–200%, mute) — no python-vlc |
 | `ffmpeg` | Recommended | Thumbnails / media inspection |
 | qBittorrent + Web UI | Optional | Torrent streaming |
 | Rust toolchain | Optional | Build `native/vox_scan` for faster folder scans |
@@ -101,6 +101,6 @@ voxplayer
 ## Verify
 
 ```bash
-.venv/bin/python -c "import vlc; print('libvlc ok', vlc.libvlc_get_version())"
+.venv/bin/python -c "from voxplayer.engine import libvlc_ffi; print('libvlc ok', libvlc_ffi.probe())"
 QT_QPA_PLATFORM=offscreen .venv/bin/python -c "from voxplayer.engine.playback import require_vlc_module; require_vlc_module(); print('engine import ok')"
 ```

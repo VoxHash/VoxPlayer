@@ -9,7 +9,7 @@ QApplication
     │   └── Stage (QVideoWidget embed surface)
     ├── NowPlayingPanel (+ Up next)           ← drop = play immediately
     ├── TransportBar (seek, volume, mute)     ← drop = play immediately
-    ├── PlaybackEngine → native C media core only (python-vlc + system libvlc)
+    ├── PlaybackEngine → native C media core only (Vox libvlc_ffi + system/bundled libvlc)
     ├── PlaylistWidget (internal Up next model)
     ├── native_scan / native_workers (optional Rust vox_scan + vox_meta)
     ├── Settings (QSettings wrapper)
@@ -28,6 +28,7 @@ QApplication
 | `voxplayer/library_index.py` | Fingerprints + play stats; incremental re-scan / watch-folder support |
 | `voxplayer/ui/shell.py` | Shell widgets (rail, home, now playing, transport) |
 | `voxplayer/engine/playback.py` | native-C-core-only playback (volume 0–200, mute) |
+| `voxplayer/engine/libvlc_ffi.py` | Vox-owned ctypes binding to libvlc (no python-vlc) |
 | `voxplayer/native_scan.py` | ctypes loader for Rust `vox_scan` |
 | `voxplayer/native_workers.py` | ctypes loader + Qt bridge for Rust `vox_meta` worker pool |
 | `native/` | Cargo workspace (`vox_scan`, `vox_meta`) + Zig `vox_scan_zig` |
@@ -40,7 +41,7 @@ QApplication
 ## Design notes
 
 - UI language: **Python + PyQt6** (shell only — not a second playback engine)
-- Decode / volume path: **native C media core only**. Missing python-vlc or system libvlc → clear install error (no silent Qt Multimedia playback)
+- Decode / volume path: **native C media core only** via Vox `libvlc_ffi`. Missing system/bundled libvlc → clear install error (no silent Qt Multimedia playback; no third-party Python media binding)
 - Prefer **X11 / XWayland** for WID video embed (force `QT_QPA_PLATFORM=xcb` when `DISPLAY` is set); soft rebind on show/resize, hard rebind only when the native window is recreated
 - Probe future libvlc Wayland surface bind when present; skip XID bind on pure Wayland without that API (no second media stack)
 - Seeks are coalesced and non-blocking (scrub vs exact); on pure Wayland audio volume still works when embed is limited

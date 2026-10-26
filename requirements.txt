@@ -2,8 +2,7 @@
 PyQt6>=6.0.0
 requests>=2.25.0
 qbittorrent-api>=2024.1.0
-python-vlc>=3.0.0
-# REQUIRED system libvlc — native C media core (no Qt Multimedia playback fallback):
+# REQUIRED system / bundled libvlc — Vox ctypes binding (no python-vlc; no Qt Multimedia playback):
 #   Arch: pacman -S vlc | Debian/Ubuntu: apt install vlc | macOS: brew install vlc
 # Optional faster folder scan: cargo build --release --manifest-path native/Cargo.toml
 # Optional metadata: mutagen, pyacoustid — pip install "voxplayer[metadata]"

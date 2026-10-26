@@ -172,15 +172,15 @@ def embed_status_message(hint: Optional[str] = None) -> str:
 def native_engine_install_hint() -> str:
     """Cross-platform install guidance for the native C media core."""
     lines = [
-        "VoxPlayer requires the native C media core (python-vlc + system libvlc).",
+        "VoxPlayer requires the native C media core (system / bundled libvlc).",
+        "The shell uses VoxPlayer’s own ctypes binding — no third-party Python media-suite package.",
         "Qt Multimedia is not used for playback.",
         "",
         "Desktop bundles: prefer a release that ships the native core under native_core/,",
         "  or run the clear per-OS installer: packaging/install_native_core_*.{sh,ps1}",
         "",
         "Install steps (dev / pip):",
-        "  • Python binding:  pip install python-vlc",
-        "  • Or project venv: .venv/bin/pip install -r requirements.txt",
+        "  • Python deps:     .venv/bin/pip install -r requirements.txt",
         "  • Then launch:     python run.py   (or: .venv/bin/python run.py)",
         "",
         "System libvlc:",
@@ -200,7 +200,10 @@ def native_engine_install_hint() -> str:
 
 
 def require_vlc_module():
-    """Import python-vlc or raise NativeEngineError with install text."""
+    """Load Vox-owned libvlc FFI (ctypes) or raise NativeEngineError with install text.
+
+    Kept name for call-site compatibility; no longer imports python-vlc.
+    """
     try:
         from ..native_core_paths import configure_bundled_native_core
 
@@ -208,10 +211,11 @@ def require_vlc_module():
     except Exception:
         pass
     try:
-        import vlc  # noqa: WPS433
+        from . import libvlc_ffi
 
-        return vlc
-    except ImportError as exc:
+        libvlc_ffi.load_libvlc()
+        return libvlc_ffi
+    except OSError as exc:
         raise NativeEngineError(native_engine_install_hint()) from exc
 
 
@@ -614,7 +618,7 @@ class PlaybackEngine(QObject):
             fn = lib.libvlc_media_player_set_wayland_surface
             fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
             fn.restype = None
-            # python-vlc MediaPlayer wraps a C pointer at ._as_parameter_ / .value
+            # MediaPlayer wraps a C pointer at ._as_parameter_
             player_ptr = getattr(self._player, "_as_parameter_", None) or int(self._player)
             fn(ctypes.c_void_p(int(player_ptr)), ctypes.c_void_p(int(display)), ctypes.c_void_p(int(surface)))
             self._embed_hint = "wayland-native"

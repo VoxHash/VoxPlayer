@@ -22,7 +22,7 @@ if (-not $found) {
     Write-Host "libvlc.dll not found."
     Write-Host "1. Install the desktop media suite (VideoLAN VLC) for Windows."
     Write-Host "2. Re-run this script, or set VLC_HOME to the install folder."
-    Write-Host "3. pip install python-vlc"
+    Write-Host "3. Re-launch VoxPlayer (Vox ctypes binding loads libvlc.dll — no python-vlc)"
     exit 1
 }
 
@@ -36,5 +36,5 @@ if ($path -notlike "*$found*") {
     Write-Host "Added to user PATH: $found"
 }
 
-Write-Host "Also ensure: pip install python-vlc"
+Write-Host "VoxPlayer loads libvlc via its own ctypes binding (no python-vlc package)."
 Write-Host "Native C media core setup finished."

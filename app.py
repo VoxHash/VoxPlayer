@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Thin launcher — implementation lives in the voxplayer package.
 
-Prefer the project .venv so python-vlc resolves when users run
-``python app.py`` with the system interpreter.
+Prefer the project .venv so PyQt6 and other deps resolve when users run
+``python app.py`` with the system interpreter. Playback uses Vox libvlc_ffi.
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voxplayer"
-version = "1.98.0"
+version = "1.99.0"
 description = "A modern multimedia player built with PyQt6"
 readme = "README.md"
 license = {text = "MIT"}
@@ -44,7 +44,6 @@ dependencies = [
     "PyQt6>=6.0.0",
     "requests>=2.25.0",
     "qbittorrent-api>=2024.1.0",
-    "python-vlc>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -58,7 +57,7 @@ torrent = [
     "qbittorrent-api>=2024.1.0",
 ]
 native = [
-    "python-vlc>=3.0.0",
+    # System / bundled libvlc via voxplayer.engine.libvlc_ffi (no PyPI media binding).
 ]
 metadata = [
     "mutagen>=1.45.0",

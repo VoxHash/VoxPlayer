@@ -21,12 +21,13 @@ else
 fi
 
 python3 - <<'PY' || true
+import sys
+sys.path.insert(0, ".")
 try:
-    import vlc
-    print("OK: libvlc", vlc.libvlc_get_version())
+    from voxplayer.engine import libvlc_ffi
+    print("OK: libvlc", libvlc_ffi.probe())
 except Exception as exc:
-    print("Core present; python-vlc binding:", exc)
-    print("If needed: pip install python-vlc")
+    print("Core may be present; Vox ctypes load failed:", exc)
 PY
 
 echo ""

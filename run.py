@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 VoxPlayer Launcher
-Prefer the project .venv interpreter so deps (python-vlc, qbittorrent-api) resolve.
-Requires system libvlc — there is no Qt Multimedia playback fallback.
+Prefer the project .venv interpreter so deps (PyQt6, qbittorrent-api) resolve.
+Requires system / bundled libvlc via Vox ctypes binding — no Qt Multimedia playback fallback.
 """
 
 import os
@@ -33,7 +33,7 @@ def _reexec_with_venv_if_needed() -> None:
 
 
 def _preflight_native_engine() -> None:
-    """Fail fast with install guidance if python-vlc / libvlc are missing."""
+    """Fail fast with install guidance if libvlc cannot be loaded via Vox FFI."""
     try:
         from voxplayer.native_core_paths import configure_bundled_native_core
 
@@ -41,27 +41,21 @@ def _preflight_native_engine() -> None:
     except Exception:
         pass
     try:
-        import vlc
-    except ImportError:
-        print(
-            "VoxPlayer requires python-vlc and system libvlc (no Qt playback fallback).\n"
-            "  .venv/bin/pip install -r requirements.txt\n"
-            "  Arch:   sudo pacman -S vlc\n"
-            "  Debian: sudo apt install vlc libvlc-dev\n"
-            "  macOS:  brew install vlc\n"
-            "  Windows: install the desktop media suite so libvlc is on PATH\n"
-            "Then: python run.py",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    try:
-        ver = vlc.libvlc_get_version()
+        from voxplayer.engine import libvlc_ffi
+
+        ver = libvlc_ffi.probe()
         if not ver:
             raise RuntimeError("libvlc version unavailable")
     except Exception as exc:
         print(f"libvlc load failed: {exc}", file=sys.stderr)
         print(
-            "Install system libvlc (e.g. pacman -S vlc / apt install vlc / brew install vlc).",
+            "VoxPlayer needs system or bundled libvlc (Vox ctypes binding; no python-vlc).\n"
+            "  Arch:   sudo pacman -S vlc\n"
+            "  Debian: sudo apt install vlc libvlc-dev\n"
+            "  macOS:  brew install vlc\n"
+            "  Windows: install the desktop media suite so libvlc is on PATH\n"
+            "  Or: packaging/install_native_core_*.{sh,ps1}\n"
+            "Then: python run.py",
             file=sys.stderr,
         )
         sys.exit(1)

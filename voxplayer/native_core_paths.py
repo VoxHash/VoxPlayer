@@ -90,7 +90,7 @@ def resolve_bundled_native_core() -> Tuple[Optional[Path], Optional[Path]]:
 
 
 def configure_bundled_native_core() -> bool:
-    """Point python-vlc / the loader at a bundled core. Safe to call repeatedly.
+    """Point the Vox libvlc FFI / loader at a bundled core. Safe to call repeatedly.
 
     Returns True when a bundled lib and/or plugins directory was activated.
     """
@@ -98,11 +98,12 @@ def configure_bundled_native_core() -> bool:
     activated = False
     if plugins is not None:
         path = str(plugins)
-        os.environ.setdefault("PYTHON_VLC_MODULE_PATH", path)
+        os.environ.setdefault("PYTHON_VLC_MODULE_PATH", path)  # legacy env some plugins honor
         os.environ.setdefault("VLC_PLUGIN_PATH", path)
         activated = True
     if lib is not None:
-        os.environ.setdefault("PYTHON_VLC_LIB_PATH", str(lib))
+        os.environ.setdefault("PYTHON_VLC_LIB_PATH", str(lib))  # also read by libvlc_ffi
+        os.environ.setdefault("VOXPLAYER_LIBVLC", str(lib))
         lib_dir = str(lib.parent)
         if sys.platform == "win32":
             try:

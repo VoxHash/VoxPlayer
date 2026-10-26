@@ -70,7 +70,7 @@ setup(
             "qbittorrent-api>=2024.1.0",
         ],
         "native": [
-            "python-vlc>=3.0.0",
+            # System / bundled libvlc via voxplayer.engine.libvlc_ffi
         ],
         "metadata": [
             "mutagen>=1.45.0",

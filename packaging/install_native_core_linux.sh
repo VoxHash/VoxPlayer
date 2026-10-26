@@ -28,12 +28,14 @@ else
 fi
 
 python3 - <<'PY' || true
+import sys
+sys.path.insert(0, ".")
 try:
-    import vlc
-    print("OK: libvlc", vlc.libvlc_get_version())
+    from voxplayer.engine import libvlc_ffi
+    print("OK: libvlc", libvlc_ffi.probe())
 except Exception as exc:
-    print("libvlc installed; python-vlc binding:", exc)
-    print("If needed: pip install python-vlc")
+    print("libvlc package may be installed; Vox ctypes load failed:", exc)
+    print("Ensure libvlc.so is on the linker path, then re-run from the VoxPlayer tree.")
 PY
 
 echo ""

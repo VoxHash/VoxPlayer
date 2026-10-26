@@ -19,7 +19,7 @@ voxplayer
 
 - **Modern shell**: Left library rail, responsive grid/list library, now-playing panel, bottom transport — video stage only when needed
 - **Universal format support**: MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MP3, FLAC, WAV, OGG, M4A, AAC, WMA
-- **native C media core only**: Native 0–200% volume and mute; clear install error if libvlc/python-vlc is missing (no Qt playback fallback)
+- **native C media core only**: Vox ctypes binding to libvlc; native 0–200% volume and mute; clear install error if libvlc is missing (no python-vlc; no Qt playback fallback)
 - **Zone drag-and-drop**: Library grid indexes; Now Playing / Up next / transport play immediately
 - **Native scan (optional)**: Rust/Zig `vox_scan` with parallel meta + quick ids (`cargo build --release --manifest-path native/Cargo.toml`)
 - **Thumbnails & live preview**: Smart ffmpeg posters (skips black frames); live frame grabs in Now Playing / transport

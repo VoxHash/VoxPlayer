@@ -4069,6 +4069,8 @@ private fun DesktopRemotePane(state: PlayerUiState, vm: PlayerViewModel, wide: B
         RemoteLink.Wifi -> "Wi‑Fi"
         RemoteLink.None -> ""
     }
+    var showCodecMatrix by remember { mutableStateOf(false) }
+    val codecReport = remember { CodecFixtureMatrix.probe() }
     Column(
         Modifier
             .fillMaxSize()
@@ -4110,12 +4112,34 @@ private fun DesktopRemotePane(state: PlayerUiState, vm: PlayerViewModel, wide: B
         if (state.syncMessage.isNotBlank()) {
             Text(state.syncMessage, style = MaterialTheme.typography.bodySmall)
         }
+        QuietButton(
+            if (showCodecMatrix) "Hide codec matrix" else "Codec fixture matrix",
+            { showCodecMatrix = !showCodecMatrix },
+            Modifier.fillMaxWidth(),
+        )
 
         LazyColumn(
             Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(bottom = 12.dp),
         ) {
+            if (showCodecMatrix) {
+                item {
+                    Text("On-device MediaCodec", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+                }
+                item {
+                    Text(
+                        codecReport.asText(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VoxColors.TextSecondary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(VoxShapes.card)
+                            .background(VoxColors.BgElevated)
+                            .padding(10.dp),
+                    )
+                }
+            }
             if (state.syncedPlaylists.isNotEmpty()) {
                 item { Text("Synced playlists", style = MaterialTheme.typography.titleMedium) }
                 state.syncedPlaylists.forEach { pl ->

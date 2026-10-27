@@ -104,6 +104,8 @@ jobs:
         python scripts/e2e_no_system_vlc.py
         # #80: meta/thumbs/viz without ffmpeg CLI
         python scripts/e2e_no_ffmpeg_cli.py
+        # #81: H.264 / HEVC / AV1 / Opus FOSS decode fixtures
+        python scripts/e2e_codec_fixtures.py
     
     - name: Run tests
       env:

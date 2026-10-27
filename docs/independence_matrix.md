@@ -1,6 +1,6 @@
 # Dependency independence matrix
 
-Honest status through **1.104.0** (system libvlc optional when FOSS libav works; ffmpeg CLI optional for meta/thumbs when PyAV is present).
+Honest status through **1.105.0** (system libvlc optional when FOSS libav works; ffmpeg CLI optional for meta/thumbs when PyAV is present; codec fixture matrix for H.264/HEVC/AV1/Opus).
 
 **Binding ≠ decode.** Removing `python-vlc` did not remove libvlc. Desktop playback still demuxes/decodes through **system or bundled libvlc plugins** (or FOSS libav).
 

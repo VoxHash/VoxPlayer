@@ -1,8 +1,9 @@
-"""Supported formats and system codec capability probe (HEVC / AV1 / Opus).
+"""Supported formats and system codec capability probe (H.264 / HEVC / AV1 / Opus).
 
-Playback remains the native C media core (libvlc). This module only:
+Playback uses libvlc and/or FOSS libav. This module:
   • centralizes extension lists (including HEVC/AV1/Opus containers)
-  • probes what ffmpeg/ffprobe on the machine can decode (honest capability report)
+  • probes what ffmpeg/ffprobe / PyAV on the machine can decode
+  • summarizes the Desktop codec fixture matrix (see ``codec_fixtures``)
 """
 
 from __future__ import annotations
@@ -130,9 +131,9 @@ class CodecProbeReport:
             lines.append(f"  • {key.upper()}: {status}" + (f" — {cap.notes}" if cap.notes else ""))
         lines.append("")
         lines.append(
-            "Desktop playback uses system/bundled libvlc today (Vox libvlc_ffi). "
-            "If a file fails, install/update VLC plugins or wait for Phase 7 FOSS core. "
-            "See Help → Dependency independence… / docs/independence_matrix.md."
+            "Desktop playback: libvlc (default) or FOSS libav (PyAV). "
+            "Fixture decode matrix: Help → Codec support… / "
+            "scripts/e2e_codec_fixtures.py / docs/codec_fixture_matrix.md."
         )
         lines.append(
             "Codec policy: wrap FOSS decoders (libav/dav1d/MediaCodec) — "

@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.104.0**). Stack: **PyQt6 shell** + decode via **libvlc when present** or **FOSS libav (PyAV)** auto-fallback — system VLC not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Android companion uses Media3 (no GMS). No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
+Status as of October 2026 (**v1.105.0**). Stack: **PyQt6 shell** + decode via **libvlc when present** or **FOSS libav (PyAV)** auto-fallback — system VLC not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix for H.264/HEVC/AV1/Opus (Desktop FOSS + Android MediaCodec). Android companion uses Media3 (no GMS). No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
 
 ## Shipped in 1.3.0
 
@@ -75,7 +75,7 @@ Industry desktop players keep demux → decode → output in C/native code and r
 | **4** | Keep PyQt6 as the product surface; avoid second playback engines | Ongoing |
 | **5** | Harden in-app video WID embed + non-blocking seeks on all desktop targets | **Done (1.7.0)** |
 | **6** | Grow scan/metadata hot paths: parallel ``vox_scan_dir_meta`` + blake3 ``vox_scan_quick_ids``; library index uses native stats | **Done (1.24.0)** |
-| **7** | **Vox-owned FOSS decode** — independence matrix; complete `native_core` that survives system VLC removal; parallel libav backend; retire required system libvlc; meta/thumbs off ffmpeg CLI; wrap H.264/HEVC/AV1/Opus via FOSS/MediaCodec (**not** invent x264/x265) | **In progress** (through **1.104.0** meta/thumbs off ffmpeg CLI) |
+| **7** | **Vox-owned FOSS decode** — independence matrix; complete `native_core` that survives system VLC removal; parallel libav backend; retire required system libvlc; meta/thumbs off ffmpeg CLI; wrap H.264/HEVC/AV1/Opus via FOSS/MediaCodec (**not** invent x264/x265) | **In progress** (through **1.105.0** codec fixture matrix; #82 policy remains) |
 
 **Long-run stance:** Keep investing in Rust/C (and Zig where it helps packaging) for hot paths so memory and parallel work stay efficient while the desktop shell remains PyQt6. That is how the project stays robust as library size and features grow. **Decode independence** means shipping a Vox-controlled FOSS stack (libavcodec / dav1d / MediaCodec), not inventing greenfield H.264/H.265 codecs.
 
@@ -193,8 +193,8 @@ A **separate Android app phase** (not a thin WebView wrapper):
 78. **Parallel FOSS decode backend**: feature-flagged libav / bundled FOSS path behind `PlaybackEngine` (parity: volume 0–200, mute, seek, embed) while libvlc remains default (**Done 1.102.0** — `VOXPLAYER_DECODE=libav`, PyAV optional extra, RGB paint embed + QAudioSink PCM)
 79. **Retire required system libvlc**: when bundled FOSS core is present, installers/preflight no longer require distro `vlc` package for playback (**Done 1.103.0** — `decode_preflight` auto-fallback to libav; `run.py` accepts either core; `e2e_no_system_vlc.py`)
 80. **Meta/thumbs without ffmpeg CLI**: `vox_meta` / Python thumbs use linked FOSS decode for tags/posters (**Done 1.104.0** — `libav_io` + ThumbnailCache/metadata/audio_viz PyAV-first; workers prefer libav; `e2e_no_ffmpeg_cli.py`)
-81. **Cross-platform codec fixture matrix**: automated H.264 / H.265 / AV1 / Opus decode fixtures on Desktop (FOSS core) + Android/Quest (Media3/MediaCodec) — GrapheneOS-honest
-82. **Non-goal (policy)**: do **not** invent in-tree H.264/x264/H.265/x265; wrap maintained FOSS + platform MediaCodec only
+81. **Cross-platform codec fixture matrix**: automated H.264 / H.265 / AV1 / Opus decode fixtures on Desktop (FOSS core) + Android/Quest (Media3/MediaCodec) — GrapheneOS-honest (**Done 1.105.0** — `codec_fixtures` + `e2e_codec_fixtures.py`; Android `CodecFixtureMatrix`; `docs/codec_fixture_matrix.md`)
+82. **Non-goal (policy)**: do **not** invent in-tree H.264/x264/H.265/x265; wrap maintained FOSS + platform MediaCodec only (**documented** — independence matrix + codec fixture docs; remains standing policy)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

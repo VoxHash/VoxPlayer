@@ -2758,12 +2758,20 @@ For more information, visit the project repository.
         QMessageBox.information(self, "VoxPlayer Help", help_text)
 
     def show_codec_support(self) -> None:
-        """Honest probe of local ffmpeg/libvlc focus codecs (HEVC / AV1 / Opus)."""
+        """Honest probe + FOSS fixture matrix (H.264 / HEVC / AV1 / Opus)."""
         report = probe_system_codecs()
         body = "\n".join(report.summary_lines())
+        try:
+            from .codec_fixtures import run_fixture_matrix
+
+            fx = run_fixture_matrix()
+            body += "\n\n" + "\n".join(fx.summary_lines())
+        except Exception as exc:
+            body += f"\n\nFixture matrix unavailable: {exc}"
         body += (
             "\n\nHardware decode: VOXPLAYER_AVCODEC_HW=any|vaapi|none "
-            "(default any)."
+            "(default any).\n"
+            "Android/Quest: More → Codec fixture matrix (MediaCodec, per-device)."
         )
         QMessageBox.information(self, "Codec support", body)
 

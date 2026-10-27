@@ -445,3 +445,7 @@ android/.idea/
 # Staged native C media core (binaries/plugins; README tracked)
 native_core/*
 !native_core/README.md
+
+# Generated codec fixtures (regenerate via scripts/generate_codec_fixtures.py)
+fixtures/codecs/*
+!fixtures/codecs/.gitkeep

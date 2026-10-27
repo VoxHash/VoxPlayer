@@ -7,7 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Desktop Phase 7: cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+- Continue Phase 7 polish; #82 codec policy remains standing (wrap FOSS only)
+
+## [1.105.0] - 2026-10-26
+
+### Added
+- Desktop: **codec fixture matrix** — generate + FOSS-decode tiny H.264 / HEVC / AV1 / Opus samples (`voxplayer.codec_fixtures`, `scripts/e2e_codec_fixtures.py`, Help → Codec support…)
+- Android / Quest: **MediaCodec probe** (`CodecFixtureMatrix`) on More → Codec fixture matrix — GrapheneOS-honest per-device notes
+- `docs/codec_fixture_matrix.md`
 
 ## [1.104.0] - 2026-10-26
 

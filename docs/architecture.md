@@ -33,6 +33,7 @@ QApplication
 | `voxplayer/engine/decode_preflight.py` | libvlc vs libav probe; system VLC optional when libav works |
 | `voxplayer/media/libav_io.py` | Linked FOSS tags / posters / PCM (PyAV); ffmpeg CLI optional |
 | `voxplayer/codec_fixtures.py` | H.264 / HEVC / AV1 / Opus FOSS encode→decode fixture matrix |
+| `voxplayer/engine/codec_policy.py` | Standing #82 policy + forbid in-tree x264/x265 source trees |
 | Android `CodecFixtureMatrix.kt` | Per-device MediaCodec probe (GrapheneOS-honest) |
 | `voxplayer/engine/independence.py` | Dependency matrix probe (VLC/ffmpeg/Media3 honesty) |
 | `docs/independence_matrix.md` | Opsec/e2e matrix: what breaks if VLC/ffmpeg removed |

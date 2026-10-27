@@ -2,7 +2,7 @@
 
 Automated **H.264 / H.265 (HEVC) / AV1 / Opus** decode coverage for Phase 7.
 
-**Policy:** wrap maintained FOSS + platform MediaCodec — **do not** invent in-tree x264/x265.
+**Policy:** wrap maintained FOSS + platform MediaCodec — **do not** invent in-tree x264/x265. Canonical: [`codec_policy.md`](codec_policy.md) (CI-enforced).
 
 ## Desktop (FOSS libav)
 
@@ -41,4 +41,4 @@ Missing AV1/HEVC on a given device is a **platform limit**, not a VoxPlayer regr
 ## Related
 
 - `docs/independence_matrix.md` — VLC / ffmpeg CLI removal outcomes
-- ROADMAP #81 / #82 — fixture matrix + non-goal codec policy
+- ROADMAP #81 / #82 — fixture matrix + standing codec policy (`e2e_codec_policy.py`)

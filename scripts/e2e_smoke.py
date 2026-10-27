@@ -59,7 +59,7 @@ def main() -> int:
     gate_fails = assert_e2e_independence_gates()
     if gate_fails:
         _fail("independence gates: " + "; ".join(gate_fails))
-    _ok("independence gates (no python-vlc; libvlc or libav)")
+    _ok("independence gates (no python-vlc; libvlc or libav; codec policy)")
 
     app = QApplication(sys.argv)
     win = VoxPlayerMainWindow()

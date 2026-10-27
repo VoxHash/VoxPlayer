@@ -201,11 +201,14 @@ def build_independence_report() -> IndependenceReport:
         ),
     ]
 
+    from .codec_policy import POLICY_ID, POLICY_VERSION, POLICY_LINES
+
     policy = [
         "Opsec: no GMS / proprietary cast / analytics SDKs on companion.",
-        "Do not invent greenfield H.264/x264/H.265/x265 — wrap FOSS + platform MediaCodec.",
+        f"Codec policy {POLICY_ID} v{POLICY_VERSION} (docs/codec_policy.md):",
+        *[f"  — {line}" for line in POLICY_LINES],
         "System libvlc is optional when FOSS libav (PyAV) is installed — auto-fallback via decode_preflight.",
-        "e2e must assert python-vlc absent; require libvlc OR libav OR staged native_core.",
+        "e2e must assert python-vlc absent; require libvlc OR libav OR staged native_core; codec_policy scan clean.",
         "VOXPLAYER_DECODE=libvlc|libav|auto — unset/auto prefers libvlc then libav.",
     ]
 
@@ -247,4 +250,10 @@ def assert_e2e_independence_gates() -> List[str]:
         )
     if not report.android_vlc_free:
         fails.append("Android path must remain VLC-free")
+    try:
+        from .codec_policy import assert_codec_policy
+
+        fails.extend(assert_codec_policy())
+    except Exception as exc:
+        fails.append(f"codec policy scan error: {exc}")
     return fails

@@ -2431,6 +2431,10 @@ class VoxPlayerMainWindow(QMainWindow):
         codec_support_action.triggered.connect(self.show_codec_support)
         help_menu.addAction(codec_support_action)
 
+        codec_policy_action = QAction("Codec &policy…", self)
+        codec_policy_action.triggered.connect(self.show_codec_policy)
+        help_menu.addAction(codec_policy_action)
+
         independence_action = QAction("Dependency &independence…", self)
         independence_action.triggered.connect(self.show_independence_matrix)
         help_menu.addAction(independence_action)
@@ -2771,9 +2775,20 @@ For more information, visit the project repository.
         body += (
             "\n\nHardware decode: VOXPLAYER_AVCODEC_HW=any|vaapi|none "
             "(default any).\n"
-            "Android/Quest: More → Codec fixture matrix (MediaCodec, per-device)."
+            "Android/Quest: More → Codec fixture matrix (MediaCodec, per-device).\n"
+            "Standing non-goal: Help → Codec policy… (no in-tree x264/x265)."
         )
         QMessageBox.information(self, "Codec support", body)
+
+    def show_codec_policy(self) -> None:
+        """Standing ROADMAP #82 policy — wrap FOSS/MediaCodec only."""
+        try:
+            from .engine.codec_policy import scan_forbidden_codec_trees
+
+            body = scan_forbidden_codec_trees().as_text()
+        except Exception as exc:
+            body = f"Could not load codec policy:\n{exc}"
+        QMessageBox.information(self, "Codec policy", body)
 
     def show_independence_matrix(self):
         """Honest desktop/Android dependency matrix (libvlc vs Media3; FOSS wrap policy)."""

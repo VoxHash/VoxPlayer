@@ -7,7 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Continue Phase 7 polish; #82 codec policy remains standing (wrap FOSS only)
+- Post–Phase 7 shell / companion polish as new ROADMAP items appear
+
+## [1.106.0] - 2026-10-26
+
+### Added
+- Standing **codec policy #82** — `docs/codec_policy.md`, `voxplayer.engine.codec_policy` tree scan, `scripts/e2e_codec_policy.py`, Help → Codec policy…
+- e2e / CI refuse vendored in-tree `x264` / `x265` / `openh264` source directories under watched roots
+- Phase 7 (#76–#82) marked **Done** on the ROADMAP
 
 ## [1.105.0] - 2026-10-26
 

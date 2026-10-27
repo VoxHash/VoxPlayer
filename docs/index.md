@@ -14,6 +14,9 @@ VoxPlayer is a cross-platform desktop media player built with Python and PyQt6. 
 | [CLI](cli.md) | Command-line launch options |
 | [API](api.md) | Package entry points for integrators |
 | [Architecture](architecture.md) | High-level component layout |
+| [Codec policy](codec_policy.md) | Standing #82 — wrap FOSS/MediaCodec only |
+| [Codec fixtures](codec_fixture_matrix.md) | H.264 / HEVC / AV1 / Opus matrix |
+| [Independence matrix](independence_matrix.md) | VLC / ffmpeg CLI removal outcomes |
 | [Troubleshooting](troubleshooting.md) | Common failures and fixes |
 | [FAQ](faq.md) | Short answers to frequent questions |
 

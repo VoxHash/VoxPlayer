@@ -17,7 +17,7 @@ Honest status after **1.99.0** (Vox `libvlc_ffi`), **1.100.0** (matrix + e2e gat
 
 | Surface | Capability | Today | If system VLC / libvlc removed | If ffmpeg/ffprobe CLI removed | FOSS target |
 |---------|------------|-------|--------------------------------|-------------------------------|-------------|
-| **Desktop** | A/V decode, volume 0–200, WID embed | libvlc via `libvlc_ffi` | **Hard fail** without staged/bundled `native_core/`; **survives** with complete staged tree (`e2e_native_core_bundle.py`) | Playback OK | Phase 7: bundled libavcodec + demux + HW; retire system VLC |
+| **Desktop** | A/V decode, volume 0–200, WID embed | libvlc via `libvlc_ffi` (default); optional `VOXPLAYER_DECODE=libav` (PyAV) | **Hard fail** without staged/bundled `native_core/` on libvlc path; **survives** with complete staged tree; libav path needs FFmpeg libs + `voxplayer[libav]` (no libvlc) | Playback OK | Phase 7: make libav default-capable; retire required system VLC |
 | **Desktop** | python-vlc | **Absent** (1.99.0) | N/A | N/A | Keep absent |
 | **Desktop** | Scan / meta / thumbs / spectrum | `vox_scan` + ffmpeg CLI / `vox_meta` | Unaffected | Meta/thumbs/viz degrade | Linked libav in workers |
 | **Android / GrapheneOS** | On-device A/V | Media3 → MediaCodec | Unaffected (never used VLC) | Unaffected | Stay Media3; no GMS |

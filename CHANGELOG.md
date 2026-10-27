@@ -7,7 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Desktop Phase 7: parallel FOSS (libav) decode backend; retire required system VLC when FOSS core ships; meta/thumbs off ffmpeg CLI; cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+- Desktop Phase 7: retire required system VLC when FOSS/libav core is default-capable; meta/thumbs off ffmpeg CLI; cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+
+## [1.102.0] - 2026-10-26
+
+### Added
+- Desktop: **parallel FOSS libav decode backend** — `VOXPLAYER_DECODE=libav` (aliases `ffmpeg`/`foss`/`av`) selects PyAV → libavcodec path; libvlc remains default
+- `LibavPlaybackEngine`: play/pause/stop/seek, volume 0–200% + mute (PCM gain), RGB frame paint embed on the Qt surface; optional extra `pip install "voxplayer[libav]"`
+- `create_playback_engine()` factory; e2e `scripts/e2e_libav_backend.py`
 
 ## [1.101.0] - 2026-10-26
 

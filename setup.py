@@ -72,6 +72,9 @@ setup(
         "native": [
             # System / bundled libvlc via voxplayer.engine.libvlc_ffi
         ],
+        "libav": [
+            "av>=12.0.0",
+        ],
         "metadata": [
             "mutagen>=1.45.0",
             "pyacoustid>=1.2.0",

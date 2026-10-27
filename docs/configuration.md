@@ -56,7 +56,8 @@ Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VOXPLAYER_EMBED` | `auto` | `auto` / `xcb` / `wayland` — embed preference |
+| `VOXPLAYER_DECODE` | `libvlc` | `libvlc` (default) or `libav` / `ffmpeg` / `foss` — FOSS PyAV backend (`pip install "voxplayer[libav]"`) |
+| `VOXPLAYER_EMBED` | `auto` | `auto` / `xcb` / `wayland` — embed preference (libvlc WID path) |
 | `VOXPLAYER_FORCE_WAYLAND` | unset | Set to `1` to skip X11 preference under Wayland |
 | `VOXPLAYER_KEEP_QPA` | unset | Set to `1` to leave `QT_QPA_PLATFORM` unchanged |
 | `VOXPLAYER_TORRENT_BUFFER_MB` | unset | Override torrent startup buffer (MiB) |

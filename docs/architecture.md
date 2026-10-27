@@ -29,6 +29,7 @@ QApplication
 | `voxplayer/ui/shell.py` | Shell widgets (rail, home, now playing, transport) |
 | `voxplayer/engine/playback.py` | native-C-core-only playback (volume 0–200, mute) |
 | `voxplayer/engine/libvlc_ffi.py` | Vox-owned ctypes binding to libvlc (no python-vlc) |
+| `voxplayer/engine/libav_engine.py` | Optional FOSS libav backend (PyAV); `VOXPLAYER_DECODE=libav` |
 | `voxplayer/engine/independence.py` | Dependency matrix probe (VLC/ffmpeg/Media3 honesty) |
 | `docs/independence_matrix.md` | Opsec/e2e matrix: what breaks if VLC/ffmpeg removed |
 | `voxplayer/native_scan.py` | ctypes loader for Rust `vox_scan` |

@@ -90,6 +90,15 @@ jobs:
         python packaging/stage_native_core.py --force
         python scripts/e2e_native_core_bundle.py
         python scripts/independence_matrix.py
+
+    - name: E2E FOSS libav backend (Linux)
+      if: runner.os == 'Linux'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        VOXPLAYER_DECODE: libav
+      run: |
+        pip install "av>=12"
+        python scripts/e2e_libav_backend.py
     
     - name: Run tests
       env:

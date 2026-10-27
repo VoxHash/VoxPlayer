@@ -154,10 +154,10 @@ def build_independence_report() -> IndependenceReport:
         SurfaceRow(
             surface="Desktop",
             capability="A/V decode + volume 0–200 + WID embed",
-            today="libvlc via Vox libvlc_ffi (system or native_core)",
-            if_remove_vlc=remove_vlc,
-            if_remove_ffmpeg_cli="Playback OK; thumbs / spectrum / Help codec probe degrade",
-            target="Phase 7: Vox-owned FOSS stack (bundled libavcodec + demux + HW); retire system VLC",
+            today="libvlc via Vox libvlc_ffi (default); optional VOXPLAYER_DECODE=libav (PyAV)",
+            if_remove_vlc=remove_vlc + " — or set VOXPLAYER_DECODE=libav with voxplayer[libav]",
+            if_remove_ffmpeg_cli="libvlc playback OK; libav backend / thumbs / spectrum degrade without FFmpeg libs",
+            target="Phase 7: strengthen libav path; retire required system VLC when FOSS core is default-capable",
         ),
         SurfaceRow(
             surface="Desktop",

@@ -39,6 +39,7 @@ from .theme import (
 from .ui.shell import LeftRail, HomeView, NowPlayingPanel, TransportBar, AboutDialog
 from .engine.playback import (
     PlaybackEngine,
+    create_playback_engine,
     prefer_xcb_for_mpv_embed,
     NativeEngineError,
     show_native_engine_failure,
@@ -2470,12 +2471,12 @@ class VoxPlayerMainWindow(QMainWindow):
         self.video_widget.winId()
 
         try:
-            self.engine = PlaybackEngine(self.video_widget, self)
+            self.engine = create_playback_engine(self.video_widget, self)
         except NativeEngineError as exc:
             show_native_engine_failure(str(exc))
             raise
 
-        # Legacy aliases — playback is native C media core only; these stay None.
+        # Legacy aliases — decode is libvlc or FOSS libav; these stay None.
         self.media_player = None
         self.audio_output = None
 
@@ -2500,13 +2501,15 @@ class VoxPlayerMainWindow(QMainWindow):
             self.engine.refresh_embed_hint()
         embed = getattr(self.engine, "has_embedded_video", False)
         hint = embed_platform_hint()
-        if embed:
+        if name == "libav":
+            label = "FOSS libav (PyAV)" + (" · video paint" if embed else " · audio")
+        elif embed:
             label = "native C core (embedded)"
         elif hint == "wayland-limited":
             label = "native C core (audio; Wayland embed limited)"
         else:
             label = "native C core (audio)"
-        if name not in ("native", "mpv"):
+        if name not in ("native", "mpv", "libav"):
             label = "native C core"
         if hasattr(self, "now_playing"):
             self.now_playing.engine_label.setText(f"Engine: {label}")

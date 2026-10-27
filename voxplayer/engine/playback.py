@@ -20,11 +20,29 @@ from PyQt6.QtWidgets import QWidget, QMessageBox
 
 
 class BackendKind(str, Enum):
-    NATIVE = "native"  # C libvlc media core
+    NATIVE = "native"  # C libvlc media core (default)
+    LIBAV = "libav"  # FOSS PyAV → libavcodec (VOXPLAYER_DECODE=libav)
 
 
 class NativeEngineError(RuntimeError):
     """Raised when the native C media core cannot be initialized."""
+
+
+def resolve_decode_backend() -> str:
+    """Return ``libvlc`` (default) or ``libav`` from ``VOXPLAYER_DECODE``."""
+    raw = (os.getenv("VOXPLAYER_DECODE") or "libvlc").strip().lower()
+    if raw in {"libav", "ffmpeg", "foss", "av"}:
+        return "libav"
+    return "libvlc"
+
+
+def create_playback_engine(video_widget: QWidget, parent=None):
+    """Construct libvlc or libav engine per ``VOXPLAYER_DECODE`` (libvlc default)."""
+    if resolve_decode_backend() == "libav":
+        from .libav_engine import LibavPlaybackEngine
+
+        return LibavPlaybackEngine(video_widget, parent)
+    return PlaybackEngine(video_widget, parent)
 
 
 def _x_init_threads() -> None:

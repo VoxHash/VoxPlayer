@@ -13,6 +13,8 @@ from .playback import (
     embed_platform_hint,
     embed_status_message,
     libvlc_has_wayland_surface_api,
+    resolve_decode_backend,
+    create_playback_engine,
 )
 from .independence import (
     IndependenceReport,
@@ -33,6 +35,8 @@ __all__ = [
     "embed_platform_hint",
     "embed_status_message",
     "libvlc_has_wayland_surface_api",
+    "resolve_decode_backend",
+    "create_playback_engine",
     "IndependenceReport",
     "assert_e2e_independence_gates",
     "build_independence_report",

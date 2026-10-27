@@ -24,7 +24,7 @@ voxplayer
 - **FOSS libav decode**: `pip install "voxplayer[libav]"` — used when `VOXPLAYER_DECODE=libav` or automatically if libvlc is missing (system VLC not required)
 - **Zone drag-and-drop**: Library grid indexes; Now Playing / Up next / transport play immediately
 - **Native scan (optional)**: Rust/Zig `vox_scan` with parallel meta + quick ids (`cargo build --release --manifest-path native/Cargo.toml`)
-- **Thumbnails & live preview**: Smart ffmpeg posters (skips black frames); live frame grabs in Now Playing / transport
+- **Thumbnails & live preview**: Smart FOSS libav (PyAV) posters with ffmpeg CLI fallback (skips black frames); live frame grabs in Now Playing / transport
 - **Metadata enrichment**: Offline-first local tags; Audio browse by year / genre / artist; Video browse by movies / TV seasons
 - **Up next & playlists**: Click Up next to play; icon clear-and-stop; Favorites chips plus named local playlists by file path
 - **Torrent streaming**: qBittorrent API client included in main install deps, with media-library gating
@@ -114,7 +114,7 @@ voxplayer
 |------------|-----------|-------|
 | Python 3.8+ (3.10–3.12 recommended) | Yes | Runtime |
 | PyQt6 | Yes | Installed via `requirements.txt` |
-| FFmpeg (Qt backend / system) | Recommended | Playback codecs; `ffmpeg` CLI useful for debugging |
+| FFmpeg libs / `voxplayer[libav]` | Recommended | FOSS decode + meta/thumbs/viz without ffmpeg CLI; CLI still useful for debugging |
 | qBittorrent Web UI | Optional | Torrent streaming only |
 | Alternate media client | Optional | Useful to compare problem files |
 

@@ -85,7 +85,7 @@ Playback, library load, and the UI never depend on the network.
 
 | Mode | Behavior |
 |------|----------|
-| Offline | Local tags / ffprobe / filename / embedded or generated thumbnails only. No error dialogs. |
+| Offline | Local tags (PyAV / mutagen / ffprobe) / filename / embedded or generated thumbnails only. No error dialogs. |
 | Online | Remote lookup at most **once per file** (identity = path + size + mtime). Results cached under `~/.cache/voxplayer/metadata/`. |
 | Refresh | **View → Refresh Metadata** (current item) or **Refresh Metadata for Library** re-fetches when online. |
 

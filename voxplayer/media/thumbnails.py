@@ -1,12 +1,13 @@
-"""Generate and cache media thumbnails (ffmpeg frame extract / embedded art)."""
+"""Generate and cache media thumbnails (FOSS libav / ffmpeg frame extract / embedded art)."""
 
 from __future__ import annotations
 
 import hashlib
 import os
 import subprocess
-import tempfile
 from typing import List, Optional
+
+from . import libav_io
 
 VIDEO_EXT = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg"}
 AUDIO_EXT = {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac", ".wma", ".opus"}
@@ -65,6 +66,9 @@ def _is_mostly_black_file(path: str, sample: int = 20, threshold: int = 16) -> b
 
 
 def _probe_duration(media_path: str) -> float:
+    dur = libav_io.probe_duration(media_path)
+    if dur > 0:
+        return dur
     try:
         proc = subprocess.run(
             [
@@ -113,13 +117,13 @@ class ThumbnailCache:
         ext = os.path.splitext(media_path)[1].lower()
         try:
             if ext in VIDEO_EXT:
-                if self._ffmpeg_frame_smart(media_path, out, seek_seconds):
+                if self._frame_smart(media_path, out, seek_seconds):
                     return out
             elif ext in AUDIO_EXT:
-                if self._embedded_or_ffmpeg_cover(media_path, out):
+                if self._embedded_or_cover(media_path, out):
                     return out
             else:
-                if self._ffmpeg_frame_smart(media_path, out, seek_seconds):
+                if self._frame_smart(media_path, out, seek_seconds):
                     return out
         except Exception:
             return None
@@ -151,9 +155,9 @@ class ThumbnailCache:
             ordered.append(s)
         return ordered
 
-    def _ffmpeg_frame_smart(self, media_path: str, out_path: str, seek: float) -> bool:
+    def _frame_smart(self, media_path: str, out_path: str, seek: float) -> bool:
         for s in self._seek_candidates(media_path, seek):
-            if self._ffmpeg_frame(media_path, out_path, s):
+            if self._extract_frame(media_path, out_path, s):
                 if not _is_mostly_black_file(out_path):
                     return True
                 try:
@@ -161,6 +165,11 @@ class ThumbnailCache:
                 except OSError:
                     pass
         return False
+
+    def _extract_frame(self, media_path: str, out_path: str, seek: float) -> bool:
+        if libav_io.extract_frame(media_path, out_path, seek):
+            return True
+        return self._ffmpeg_frame(media_path, out_path, seek)
 
     def _ffmpeg_frame(self, media_path: str, out_path: str, seek: float) -> bool:
         cmd = [
@@ -191,7 +200,7 @@ class ThumbnailCache:
         except (OSError, subprocess.TimeoutExpired):
             return False
 
-    def _embedded_or_ffmpeg_cover(self, media_path: str, out_path: str) -> bool:
+    def _embedded_or_cover(self, media_path: str, out_path: str) -> bool:
         try:
             from mutagen import File as MutagenFile  # type: ignore
 
@@ -214,6 +223,9 @@ class ThumbnailCache:
                                 return True
         except Exception:
             pass
+
+        if libav_io.extract_cover(media_path, out_path):
+            return True
 
         cmd = [
             "ffmpeg",

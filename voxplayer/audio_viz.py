@@ -1,8 +1,8 @@
 """Real PCM-based waveform / spectrum helpers for transport chrome.
 
-Decodes a short mono float stream via ``ffmpeg`` (same toolchain as thumbnails).
-No second playback engine — libvlc keeps outputting audio; viz is offline analysis
-of the current file, sampled around the playhead for live spectrum bars.
+Decodes a short mono float stream via linked FOSS libav (PyAV), with ``ffmpeg``
+CLI as fallback — same toolchain preference as thumbnails. No second playback
+engine; viz is offline analysis of the current file around the playhead.
 """
 
 from __future__ import annotations
@@ -13,7 +13,9 @@ import struct
 import subprocess
 import threading
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
+
+from voxplayer.media import libav_io
 
 
 @dataclass
@@ -31,6 +33,9 @@ _inflight: Dict[str, threading.Thread] = {}
 
 
 def _ffmpeg_pcm(path: str, sample_rate: int = 8000, max_seconds: float = 900.0) -> bytes:
+    linked = libav_io.decode_pcm_mono_f32(path, sample_rate=sample_rate, max_seconds=max_seconds)
+    if linked:
+        return linked
     cmd = [
         "ffmpeg",
         "-v",

@@ -10,7 +10,7 @@ Windows, macOS, and Linux. Source installs work wherever Python + PyQt6 run; pac
 
 ## Do I need FFmpeg / the native media library installed separately?
 
-**The native C media core (libvlc) is required** for playback (and for 0–200% volume / mute). Install via your OS package manager (`vlc` / libvlc). A system `ffmpeg` binary is useful for thumbnails and debugging but is not the playback engine.
+**Playback** needs either system/bundled **libvlc** or FOSS **libav** (`pip install "voxplayer[libav]"` — auto-fallback when libvlc is missing). A system `ffmpeg` binary is optional for debugging; thumbnails / tags / spectrum use linked PyAV when installed.
 
 ## Why did the app refuse to start?
 

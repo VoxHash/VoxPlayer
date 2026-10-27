@@ -1,12 +1,16 @@
 """
-Load the optional Rust ``vox_meta`` worker pool (tags + thumbnails).
+Metadata + thumbnail worker pool for the desktop shell.
 
-Build::
+Prefers **linked FOSS libav (PyAV)** so tags/thumbs work without an ``ffmpeg`` /
+``ffprobe`` binary on PATH. Falls back to the optional Rust ``vox_meta`` pool
+(which still shells to the CLI when present).
+
+Build Rust pool::
 
     cargo build --release --manifest-path native/Cargo.toml
 
-Python queues jobs; results arrive via a C callback into a thread-safe queue
-that the Qt shell drains on the UI thread (never touch widgets from workers).
+Python queues jobs; results arrive via a thread-safe queue that the Qt shell
+drains on the UI thread (never touch widgets from workers).
 """
 
 from __future__ import annotations
@@ -17,12 +21,14 @@ import os
 import sys
 import threading
 from collections import deque
-from typing import Callable, Deque, Dict, List, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 KIND_TAGS = 0
 KIND_THUMB = 1
+_NEXT_JOB_ID = 1
+_JOB_LOCK = threading.Lock()
 
 _Callback = ctypes.CFUNCTYPE(
     None,
@@ -122,8 +128,16 @@ def load_error() -> Optional[str]:
     return _LOAD_ERROR
 
 
+def _alloc_job_id() -> int:
+    global _NEXT_JOB_ID
+    with _JOB_LOCK:
+        jid = _NEXT_JOB_ID
+        _NEXT_JOB_ID += 1
+        return jid
+
+
 class NativeMediaWorkers(QObject):
-    """Queue tags/thumbnail jobs into the Rust pool; emit results on the UI thread."""
+    """Queue tags/thumbnail jobs (FOSS libav preferred; Rust CLI fallback)."""
 
     tags_ready = pyqtSignal(str, dict)  # path, tag dict
     thumb_ready = pyqtSignal(str, str)  # path, jpeg path
@@ -133,6 +147,7 @@ class NativeMediaWorkers(QObject):
         super().__init__(parent)
         self._pool = None
         self._cb = None
+        self._backend = ""  # "libav" | "rust"
         self._pending: Deque[Tuple] = deque()
         self._lock = threading.Lock()
         self._inflight_thumbs: Dict[str, bool] = {}
@@ -140,6 +155,15 @@ class NativeMediaWorkers(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(50)
         self._timer.timeout.connect(self._drain)
+
+        from voxplayer.media import libav_io
+
+        libav_ok, _ = libav_io.available()
+        if libav_ok:
+            self._backend = "libav"
+            self._timer.start()
+            return
+
         lib = load_library()
         if lib is None:
             return
@@ -148,15 +172,26 @@ class NativeMediaWorkers(QObject):
             return
         # Keep callback alive for the lifetime of the pool.
         self._cb = _Callback(self._on_native_done)
+        self._backend = "rust"
         self._timer.start()
 
     @property
     def available(self) -> bool:
+        if self._backend == "libav":
+            return True
         return self._pool is not None and self._cb is not None
+
+    @property
+    def backend(self) -> str:
+        return self._backend
 
     def _on_native_done(self, _user, job_id, kind, path_b, result_b, status):
         path = (path_b or b"").decode("utf-8", errors="replace")
         result = (result_b or b"").decode("utf-8", errors="replace")
+        with self._lock:
+            self._pending.append((int(job_id), int(kind), path, result, int(status)))
+
+    def _enqueue_done(self, job_id: int, kind: int, path: str, result: str, status: int) -> None:
         with self._lock:
             self._pending.append((int(job_id), int(kind), path, result, int(status)))
 
@@ -189,6 +224,8 @@ class NativeMediaWorkers(QObject):
             return 0
         if self._inflight_tags.get(path):
             return 0
+        if self._backend == "libav":
+            return self._submit_tags_libav(path)
         lib = load_library()
         if lib is None:
             return 0
@@ -206,11 +243,41 @@ class NativeMediaWorkers(QObject):
             self._inflight_tags.pop(path, None)
         return int(jid or 0)
 
+    def _submit_tags_libav(self, path: str) -> int:
+        from voxplayer.media import libav_io
+
+        jid = _alloc_job_id()
+        self._inflight_tags[path] = True
+
+        def _run() -> None:
+            try:
+                tags = libav_io.read_tags(path)
+                # Shape matches Rust vox_meta JSON (title/artist/…)
+                payload = {
+                    "title": tags.get("title") or tags.get("track") or "",
+                    "artist": tags.get("artist")
+                    or tags.get("album_artist")
+                    or tags.get("albumartist")
+                    or "",
+                    "album": tags.get("album") or "",
+                    "year": (tags.get("date") or tags.get("year") or "")[:4],
+                    "genre": tags.get("genre") or "",
+                    "duration": float(tags.get("duration") or 0) or 0.0,
+                }
+                self._enqueue_done(jid, KIND_TAGS, path, json.dumps(payload), 0)
+            except Exception as exc:
+                self._enqueue_done(jid, KIND_TAGS, path, str(exc), 1)
+
+        threading.Thread(target=_run, name="vox-meta-libav-tags", daemon=True).start()
+        return jid
+
     def submit_thumb(self, path: str, cache_dir: str, seek: float = 3.0) -> int:
         if not self.available or not path or not os.path.isfile(path):
             return 0
         if self._inflight_thumbs.get(path):
             return 0
+        if self._backend == "libav":
+            return self._submit_thumb_libav(path, cache_dir, seek)
         lib = load_library()
         if lib is None:
             return 0
@@ -229,6 +296,27 @@ class NativeMediaWorkers(QObject):
             self._inflight_thumbs.pop(path, None)
         return int(jid or 0)
 
+    def _submit_thumb_libav(self, path: str, cache_dir: str, seek: float) -> int:
+        jid = _alloc_job_id()
+        os.makedirs(cache_dir, exist_ok=True)
+        self._inflight_thumbs[path] = True
+
+        def _run() -> None:
+            try:
+                from voxplayer.media.thumbnails import ThumbnailCache
+
+                # ThumbnailCache writes under its own cache root; ensure() is FOSS-first.
+                out = ThumbnailCache().ensure(path, seek_seconds=float(seek))
+                if out and os.path.isfile(out):
+                    self._enqueue_done(jid, KIND_THUMB, path, out, 0)
+                else:
+                    self._enqueue_done(jid, KIND_THUMB, path, "libav thumb failed", 1)
+            except Exception as exc:
+                self._enqueue_done(jid, KIND_THUMB, path, str(exc), 1)
+
+        threading.Thread(target=_run, name="vox-meta-libav-thumb", daemon=True).start()
+        return jid
+
     def shutdown(self) -> None:
         self._timer.stop()
         lib = load_library()
@@ -236,3 +324,4 @@ class NativeMediaWorkers(QObject):
             lib.vox_meta_pool_destroy(self._pool)
         self._pool = None
         self._cb = None
+        self._backend = ""

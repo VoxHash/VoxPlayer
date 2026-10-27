@@ -102,6 +102,8 @@ jobs:
         # #79: auto-fallback when system libvlc is unavailable
         unset VOXPLAYER_DECODE || true
         python scripts/e2e_no_system_vlc.py
+        # #80: meta/thumbs/viz without ffmpeg CLI
+        python scripts/e2e_no_ffmpeg_cli.py
     
     - name: Run tests
       env:

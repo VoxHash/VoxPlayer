@@ -2,7 +2,7 @@
 Offline-first metadata enrichment.
 
 Policy:
-1. Local tags / ffprobe / filename heuristics always work with no network.
+1. Local tags / linked FOSS libav (PyAV) / ffprobe / filename heuristics always work with no network.
 2. Remote lookups run only when connectivity is available.
 3. Remote results are fetched at most once per file identity (path + size + mtime)
    and persisted under ~/.cache/voxplayer/metadata/.
@@ -165,7 +165,22 @@ def _session() -> requests.Session:
     return s
 
 
+def _libav_tags(path: str) -> Dict[str, str]:
+    """Linked FOSS tags via PyAV (preferred over ffprobe CLI)."""
+    try:
+        from . import libav_io
+
+        return libav_io.read_tags(path)
+    except Exception:
+        return {}
+
+
 def _ffprobe_tags(path: str) -> Dict[str, str]:
+    # Prefer linked libav so meta works without an ffmpeg CLI on PATH.
+    linked = _libav_tags(path)
+    if linked:
+        return linked
+
     cmd = [
         "ffprobe",
         "-v",

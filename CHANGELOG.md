@@ -7,7 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Desktop Phase 7: meta/thumbs off ffmpeg CLI; cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+- Desktop Phase 7: cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+
+## [1.104.0] - 2026-10-26
+
+### Changed
+- Desktop: **meta / thumbnails / spectrum PCM prefer linked FOSS libav (PyAV)** — `ffmpeg` / `ffprobe` CLI no longer required when `voxplayer[libav]` is installed
+- Library workers (`NativeMediaWorkers`) prefer PyAV thread pool; Rust `vox_meta` remains CLI fallback when PyAV is absent
+
+### Added
+- `voxplayer.media.libav_io` — duration, tags, poster frames, covers, mono float PCM via PyAV
+- `scripts/e2e_no_ffmpeg_cli.py` — proves tags/thumbs/viz with ffmpeg CLI blocked on PATH
 
 ## [1.103.0] - 2026-10-26
 

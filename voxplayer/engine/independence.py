@@ -170,10 +170,10 @@ def build_independence_report() -> IndependenceReport:
         SurfaceRow(
             surface="Desktop",
             capability="Library scan / meta workers",
-            today="Rust/Zig vox_scan; vox_meta shells to ffprobe/ffmpeg",
+            today="Rust/Zig vox_scan; Python FOSS libav (PyAV) for tags/thumbs; Rust vox_meta CLI fallback",
             if_remove_vlc="Unaffected",
-            if_remove_ffmpeg_cli="Meta/thumbs workers degrade until linked FOSS replace CLI",
-            target="Phase 7D: linked libav in vox_meta (no external ffmpeg binary)",
+            if_remove_ffmpeg_cli="OK when PyAV/libav present; Rust CLI path degrades without ffmpeg binary",
+            target="Done (1.104.0): linked libav via PyAV for meta/thumbs/viz; CLI optional",
         ),
         SurfaceRow(
             surface="Android / GrapheneOS",

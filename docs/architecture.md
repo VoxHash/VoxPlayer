@@ -31,6 +31,7 @@ QApplication
 | `voxplayer/engine/libvlc_ffi.py` | Vox-owned ctypes binding to libvlc (no python-vlc) |
 | `voxplayer/engine/libav_engine.py` | FOSS libav backend (PyAV); `VOXPLAYER_DECODE=libav` or auto-fallback |
 | `voxplayer/engine/decode_preflight.py` | libvlc vs libav probe; system VLC optional when libav works |
+| `voxplayer/media/libav_io.py` | Linked FOSS tags / posters / PCM (PyAV); ffmpeg CLI optional |
 | `voxplayer/engine/independence.py` | Dependency matrix probe (VLC/ffmpeg/Media3 honesty) |
 | `docs/independence_matrix.md` | Opsec/e2e matrix: what breaks if VLC/ffmpeg removed |
 | `voxplayer/native_scan.py` | ctypes loader for Rust `vox_scan` |

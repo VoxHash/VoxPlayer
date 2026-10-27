@@ -21,6 +21,12 @@ from .independence import (
     assert_e2e_independence_gates,
     build_independence_report,
 )
+from .decode_preflight import (
+    DecodeAvailability,
+    decode_install_hint,
+    ensure_decode_backend,
+    probe_decode_backends,
+)
 
 __all__ = [
     "PlaybackEngine",
@@ -40,4 +46,8 @@ __all__ = [
     "IndependenceReport",
     "assert_e2e_independence_gates",
     "build_independence_report",
+    "DecodeAvailability",
+    "decode_install_hint",
+    "ensure_decode_backend",
+    "probe_decode_backends",
 ]

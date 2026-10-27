@@ -4,6 +4,8 @@
 set -euo pipefail
 
 echo "VoxPlayer — install native C media core (Linux)"
+echo "Note: system VLC is optional if you use FOSS libav:"
+echo "  pip install \"voxplayer[libav]\"   # then VOXPLAYER_DECODE=libav or leave unset for auto-fallback"
 echo ""
 
 if [[ "$(id -u)" -ne 0 ]]; then

@@ -15,8 +15,8 @@ Package: [https://pypi.org/project/voxplayer/](https://pypi.org/project/voxplaye
 |------------|-----------|---------|
 | Python 3.8+ (3.10–3.12 recommended) | Yes | Runtime |
 | PyQt6 | Yes (via pip) | Desktop UI shell |
-| **system / bundled libvlc** (Vox `libvlc_ffi`) | **Yes** (default) | Default playback engine (volume 0–200%, mute) — no python-vlc |
-| **PyAV** (`voxplayer[libav]`) + FFmpeg libs | Optional | FOSS libav backend when `VOXPLAYER_DECODE=libav` |
+| **system / bundled libvlc** (Vox `libvlc_ffi`) | One of libvlc **or** libav | Preferred when present (volume 0–200%, mute) — no python-vlc |
+| **PyAV** (`voxplayer[libav]`) + FFmpeg libs | One of libvlc **or** libav | FOSS path; auto-used if libvlc missing (`VOXPLAYER_DECODE=auto`) |
 | `ffmpeg` | Recommended | Thumbnails / media inspection |
 | qBittorrent + Web UI | Optional | Torrent streaming |
 | Rust toolchain | Optional | Build `native/vox_scan` for faster folder scans |

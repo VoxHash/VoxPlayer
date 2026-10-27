@@ -204,9 +204,9 @@ def build_independence_report() -> IndependenceReport:
     policy = [
         "Opsec: no GMS / proprietary cast / analytics SDKs on companion.",
         "Do not invent greenfield H.264/x264/H.265/x265 — wrap FOSS + platform MediaCodec.",
-        "Vox-owned binding (libvlc_ffi) ≠ Vox-owned decode until Phase 7 ships bundled FOSS core.",
-        "e2e must assert python-vlc absent and report libvlc/ffmpeg honestly.",
-        "Removing system VLC without a complete native_core bundle is expected to stop desktop playback today.",
+        "System libvlc is optional when FOSS libav (PyAV) is installed — auto-fallback via decode_preflight.",
+        "e2e must assert python-vlc absent; require libvlc OR libav OR staged native_core.",
+        "VOXPLAYER_DECODE=libvlc|libav|auto — unset/auto prefers libvlc then libav.",
     ]
 
     return IndependenceReport(
@@ -232,11 +232,18 @@ def assert_e2e_independence_gates() -> List[str]:
     fails: List[str] = []
     if report.python_vlc_installed:
         fails.append(
-            "python-vlc is installed — uninstall it; desktop must use libvlc_ffi only"
+            "python-vlc is installed — uninstall it; desktop must use libvlc_ffi / libav only"
         )
-    if not report.libvlc_ok and not report.bundled_native_core:
+    libav_ok = False
+    try:
+        from .libav_engine import libav_available
+
+        libav_ok, _ = libav_available()
+    except Exception:
+        pass
+    if not report.libvlc_ok and not report.bundled_native_core and not libav_ok:
         fails.append(
-            "libvlc missing and no bundled native_core — desktop playback cannot start"
+            "no decode core — need libvlc, staged native_core/, or voxplayer[libav]"
         )
     if not report.android_vlc_free:
         fails.append("Android path must remain VLC-free")

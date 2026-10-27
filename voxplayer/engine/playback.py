@@ -29,16 +29,30 @@ class NativeEngineError(RuntimeError):
 
 
 def resolve_decode_backend() -> str:
-    """Return ``libvlc`` (default) or ``libav`` from ``VOXPLAYER_DECODE``."""
-    raw = (os.getenv("VOXPLAYER_DECODE") or "libvlc").strip().lower()
+    """Return ``libvlc`` or ``libav``.
+
+    Honors ``VOXPLAYER_DECODE``. When unset/``auto``, prefers libvlc if loadable,
+    otherwise FOSS libav (sets env via ``ensure_decode_backend``).
+    """
+    from .decode_preflight import ensure_decode_backend
+
+    info = ensure_decode_backend(write_env=True)
+    if info.selected in {"libvlc", "libav"}:
+        return info.selected
+    raw = (os.getenv("VOXPLAYER_DECODE") or "").strip().lower()
     if raw in {"libav", "ffmpeg", "foss", "av"}:
         return "libav"
     return "libvlc"
 
 
 def create_playback_engine(video_widget: QWidget, parent=None):
-    """Construct libvlc or libav engine per ``VOXPLAYER_DECODE`` (libvlc default)."""
-    if resolve_decode_backend() == "libav":
+    """Construct libvlc or libav engine; auto-falls back to libav if libvlc missing."""
+    from .decode_preflight import decode_install_hint, ensure_decode_backend
+
+    info = ensure_decode_backend(write_env=True)
+    if not info.ok:
+        raise NativeEngineError(decode_install_hint(info))
+    if info.selected == "libav":
         from .libav_engine import LibavPlaybackEngine
 
         return LibavPlaybackEngine(video_widget, parent)
@@ -188,31 +202,18 @@ def embed_status_message(hint: Optional[str] = None) -> str:
 
 
 def native_engine_install_hint() -> str:
-    """Cross-platform install guidance for the native C media core."""
+    """Cross-platform install guidance for desktop decode cores."""
+    try:
+        from .decode_preflight import decode_install_hint
+
+        return decode_install_hint()
+    except Exception:
+        pass
     lines = [
-        "VoxPlayer requires the native C media core (system / bundled libvlc).",
-        "The shell uses VoxPlayer’s own ctypes binding — no third-party Python media-suite package.",
-        "Qt Multimedia is not used for playback.",
-        "",
-        "Desktop bundles: prefer a release that ships the native core under native_core/,",
-        "  or run the clear per-OS installer: packaging/install_native_core_*.{sh,ps1}",
-        "",
-        "Install steps (dev / pip):",
-        "  • Python deps:     .venv/bin/pip install -r requirements.txt",
-        "  • Then launch:     python run.py   (or: .venv/bin/python run.py)",
-        "",
-        "System libvlc:",
-        "  • Arch / Manjaro:     sudo pacman -S vlc",
-        "  • Debian / Ubuntu:    sudo apt install vlc libvlc-dev",
-        "  • Fedora:             sudo dnf install vlc",
-        "  • macOS (Homebrew):   brew install vlc",
-        "  • Windows:            install the desktop media suite; ensure libvlc.dll is on PATH",
-        "                        or set VLC_HOME to that install folder",
-        "",
-        "Wayland / embed:",
-        "  • Default: force X11/XWayland when DISPLAY is set (reliable in-app video).",
-        "  • Pure Wayland without libvlc Wayland surface API: audio works; video embed is limited.",
-        "  • VOXPLAYER_EMBED=xcb|wayland|auto   VOXPLAYER_FORCE_WAYLAND=1   VOXPLAYER_KEEP_QPA=1",
+        "VoxPlayer needs libvlc (system/bundled) or FOSS libav (PyAV) — system VLC is optional when libav works.",
+        "  .venv/bin/pip install \"voxplayer[libav]\"   # FOSS path",
+        "  python packaging/stage_native_core.py --force   # or install distro vlc",
+        "Wayland: VOXPLAYER_EMBED=xcb|wayland|auto",
     ]
     return "\n".join(lines)
 

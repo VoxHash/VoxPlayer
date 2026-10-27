@@ -46,18 +46,20 @@ def main() -> int:
         scan_media_dir_meta,
         backend_name,
     )
-    from voxplayer.engine.playback import require_vlc_module
+    from voxplayer.engine.decode_preflight import ensure_decode_backend
     from voxplayer import plugins as plugins_mod
 
-    require_vlc_module()
-    _ok("native C media core import")
+    decode = ensure_decode_backend(write_env=True)
+    if not decode.ok:
+        _fail(f"decode preflight: {decode.error}")
+    _ok(f"decode core ready ({decode.selected})")
 
     from voxplayer.engine.independence import assert_e2e_independence_gates
 
     gate_fails = assert_e2e_independence_gates()
     if gate_fails:
         _fail("independence gates: " + "; ".join(gate_fails))
-    _ok("independence gates (no python-vlc; libvlc present)")
+    _ok("independence gates (no python-vlc; libvlc or libav)")
 
     app = QApplication(sys.argv)
     win = VoxPlayerMainWindow()

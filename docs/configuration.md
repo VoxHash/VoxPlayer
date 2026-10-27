@@ -56,7 +56,7 @@ Prefer X11/XWayland (`QT_QPA_PLATFORM=xcb` when `DISPLAY` is set) for WID video 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VOXPLAYER_DECODE` | `libvlc` | `libvlc` (default) or `libav` / `ffmpeg` / `foss` — FOSS PyAV backend (`pip install "voxplayer[libav]"`) |
+| `VOXPLAYER_DECODE` | unset / `auto` | `libvlc` · `libav` / `ffmpeg` / `foss` · `auto` — prefers libvlc when present, else FOSS PyAV (`pip install "voxplayer[libav]"`). System VLC is optional when libav works. |
 | `VOXPLAYER_EMBED` | `auto` | `auto` / `xcb` / `wayland` — embed preference (libvlc WID path) |
 | `VOXPLAYER_FORCE_WAYLAND` | unset | Set to `1` to skip X11 preference under Wayland |
 | `VOXPLAYER_KEEP_QPA` | unset | Set to `1` to leave `QT_QPA_PLATFORM` unchanged |

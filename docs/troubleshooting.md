@@ -12,11 +12,16 @@ On Linux CI-like hosts, install OpenGL/EGL packages listed in `.github/workflows
 ## App exits: native engine / native C media core required
 
 ```bash
+# FOSS path (no distro VLC required):
+.venv/bin/pip install "voxplayer[libav]"
+VOXPLAYER_DECODE=libav python run.py
+# Or leave VOXPLAYER_DECODE unset — auto-falls back to libav if libvlc is missing
+
+# libvlc path:
 # Arch: sudo pacman -S vlc
 # Debian/Ubuntu: sudo apt install vlc libvlc-dev
-# macOS: brew install vlc
-# Or: packaging/install_native_core_*.{sh,ps1}
-.venv/bin/python -c "from voxplayer.engine import libvlc_ffi; print(libvlc_ffi.probe())"
+# Or: python packaging/stage_native_core.py --force
+.venv/bin/python -c "from voxplayer.engine.decode_preflight import ensure_decode_backend; print(ensure_decode_backend())"
 python run.py
 ```
 

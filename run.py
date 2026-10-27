@@ -2,7 +2,9 @@
 """
 VoxPlayer Launcher
 Prefer the project .venv interpreter so deps (PyQt6, qbittorrent-api) resolve.
-Requires system / bundled libvlc via Vox ctypes binding — no Qt Multimedia playback fallback.
+
+Decode core: system/bundled libvlc (default when present) OR FOSS libav via PyAV.
+System VLC packages are not required when ``voxplayer[libav]`` works.
 """
 
 import os
@@ -32,8 +34,8 @@ def _reexec_with_venv_if_needed() -> None:
     os.execv(venv_python, [venv_python, os.path.abspath(__file__), *sys.argv[1:]])
 
 
-def _preflight_native_engine() -> None:
-    """Fail fast with install guidance if libvlc cannot be loaded via Vox FFI."""
+def _preflight_decode_core() -> None:
+    """Fail fast only when neither libvlc nor FOSS libav can run."""
     try:
         from voxplayer.native_core_paths import configure_bundled_native_core
 
@@ -41,37 +43,38 @@ def _preflight_native_engine() -> None:
     except Exception:
         pass
     try:
-        from voxplayer.engine import libvlc_ffi
-
-        ver = libvlc_ffi.probe()
-        if not ver:
-            raise RuntimeError("libvlc version unavailable")
-    except Exception as exc:
-        print(f"libvlc load failed: {exc}", file=sys.stderr)
-        print(
-            "VoxPlayer needs system or bundled libvlc (Vox ctypes binding; no python-vlc).\n"
-            "  Arch:   sudo pacman -S vlc\n"
-            "  Debian: sudo apt install vlc libvlc-dev\n"
-            "  macOS:  brew install vlc\n"
-            "  Windows: install the desktop media suite so libvlc is on PATH\n"
-            "  Or: packaging/install_native_core_*.{sh,ps1}\n"
-            "Then: python run.py",
-            file=sys.stderr,
+        from voxplayer.engine.decode_preflight import (
+            decode_install_hint,
+            ensure_decode_backend,
         )
+
+        info = ensure_decode_backend(write_env=True)
+    except Exception as exc:
+        print(f"decode preflight failed: {exc}", file=sys.stderr)
         sys.exit(1)
+    if not info.ok:
+        print(decode_install_hint(info), file=sys.stderr)
+        sys.exit(1)
+    if info.selected == "libav":
+        how = "auto-fallback" if info.auto_selected else "VOXPLAYER_DECODE"
+        print(f"Decode core: FOSS libav ({info.libav_detail}; {how})")
+    else:
+        print(
+            f"Decode core: libvlc {info.libvlc_version} ({info.libvlc_via})"
+        )
 
 
 def main():
     """Launch VoxPlayer"""
     _reexec_with_venv_if_needed()
-    print("Starting VoxPlayer (native C media core)...")
+    print("Starting VoxPlayer...")
 
     os.environ["QT_LOGGING_RULES"] = (
         "qt.multimedia.ffmpeg.debug=false;qt.core.qfuture.continuations=false"
     )
     os.environ["VOXPLAYER_ENGINE"] = "native"
 
-    _preflight_native_engine()
+    _preflight_decode_core()
 
     try:
         from app import main as app_main

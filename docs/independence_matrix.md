@@ -1,6 +1,6 @@
 # Dependency independence matrix
 
-Honest status after **1.99.0** (Vox `libvlc_ffi`), **1.100.0** (matrix + e2e gates), and **1.101.0** (stageable `native_core/` + bundle isolation e2e).
+Honest status through **1.103.0** (system libvlc optional when FOSS libav works).
 
 **Binding ≠ decode.** Removing `python-vlc` did not remove libvlc. Desktop playback still demuxes/decodes through **system or bundled libvlc plugins**.
 
@@ -31,9 +31,10 @@ Typical Arch/Manjaro workspace with `pacman -S vlc`:
 | Action | Result |
 |--------|--------|
 | Uninstall `python-vlc` | **OK** — already the supported state |
-| `pacman -Rns vlc` (no staged `native_core/`) | Desktop **will not start** |
-| Stage then remove system VLC | Desktop can load core from `native_core/` (proven by isolation e2e; libc/dbus stay system) |
-| Remove `ffmpeg` only | Playback continues; thumbnails / Help codec probe / spectrum degrade |
+| `pacman -Rns vlc` with `voxplayer[libav]` | Desktop **auto-falls back** to FOSS libav (`e2e_no_system_vlc.py`) |
+| `pacman -Rns vlc` without libav and without staged `native_core/` | Desktop **will not start** |
+| Stage then remove system VLC | Desktop can load libvlc from `native_core/` (isolation e2e) |
+| Remove `ffmpeg` only | libvlc path OK; libav path / thumbs / spectrum degrade |
 | Android/Quest APK | Unrelated — Media3 only |
 
 ## Codec policy (opsec-aligned)

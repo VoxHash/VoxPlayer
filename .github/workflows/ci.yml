@@ -99,6 +99,9 @@ jobs:
       run: |
         pip install "av>=12"
         python scripts/e2e_libav_backend.py
+        # #79: auto-fallback when system libvlc is unavailable
+        unset VOXPLAYER_DECODE || true
+        python scripts/e2e_no_system_vlc.py
     
     - name: Run tests
       env:

@@ -14,7 +14,7 @@ Windows, macOS, and Linux. Source installs work wherever Python + PyQt6 run; pac
 
 ## Why did the app refuse to start?
 
-Usually system or bundled libvlc is missing (VoxPlayer loads it via its own ctypes binding — no python-vlc). Use `python run.py` (venv + preflight) and follow the printed install hint. There is no silent Qt playback fallback.
+Usually no decode core is available. Install either FOSS libav (`pip install "voxplayer[libav]"`) or system/bundled libvlc, then `python run.py`. With libav installed, system VLC is optional (auto-fallback). There is no silent Qt Multimedia player fallback.
 
 ## Do I need another media player for debugging?
 

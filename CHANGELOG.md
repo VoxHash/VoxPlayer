@@ -7,7 +7,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
-- Desktop Phase 7: retire required system VLC when FOSS/libav core is default-capable; meta/thumbs off ffmpeg CLI; cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+- Desktop Phase 7: meta/thumbs off ffmpeg CLI; cross-platform H.264/HEVC/AV1/Opus fixture matrix (wrap FOSS — no in-tree x264/x265)
+
+## [1.103.0] - 2026-10-26
+
+### Changed
+- Desktop: **system libvlc no longer mandatory** when FOSS libav works — `decode_preflight.ensure_decode_backend()` prefers libvlc, auto-falls back to PyAV, and `run.py` preflight accepts either core
+- Independence e2e gates require libvlc **or** libav **or** staged `native_core/`
+- Docs / install hints list FOSS libav as a first-class Option A (no distro VLC)
+
+### Added
+- `scripts/e2e_no_system_vlc.py` — proves auto-fallback + playback with libvlc isolated away
 
 ## [1.102.0] - 2026-10-26
 

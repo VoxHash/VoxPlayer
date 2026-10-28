@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -259,6 +260,9 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
             maxWidth >= CAR_SHELL_MIN_DP.dp &&
             maxWidth > maxHeight * 1.15f
         val foldPad = if (windowLayout.foldSeparating) 28.dp else 0.dp
+        // Phone: bottom nav only. Tablet/wide: left rail only. Never both (FOSS player pattern).
+        val useRail = wide && !panelCompact
+        val useBottomDest = !useRail && !carMode
         Scaffold(
             containerColor = VoxColors.BgApp,
             bottomBar = {
@@ -273,47 +277,49 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                             onOpenNowPlaying = vm::openNowPlayingTab,
                             onOpenSettings = { vm.openPlayerSheet(PlayerSheet.Settings) },
                         )
-                        // Phone / short panel: primary destinations above transport (tablet uses left rail).
-                        if (panelCompact || !wide) {
+                        if (useBottomDest) {
                             PrimaryDestBar(
                                 selected = state.primaryDest(),
                                 onSelect = vm::setPrimaryDest,
                             )
                         }
-                        TransportBar(
-                            state = state,
-                            wide = wide && !panelCompact,
-                            onConnect = { vm.openConnect(true) },
-                            onPlayPause = {
-                                if (state.activeOutput.startsWith("Desktop")) vm.remotePlayPause()
-                                else vm.localPlayPause()
-                            },
-                            onPrev = {
-                                if (state.activeOutput.startsWith("Desktop")) vm.remotePrev()
-                                else vm.localPrev()
-                            },
-                            onNext = {
-                                if (state.activeOutput.startsWith("Desktop")) vm.remoteNext()
-                                else vm.localNext()
-                            },
-                            onStop = {
-                                if (state.activeOutput.startsWith("Desktop")) vm.remoteStop()
-                                else vm.localStop()
-                            },
-                            onShuffle = { if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalShuffle() },
-                            onRepeat = { if (!state.activeOutput.startsWith("Desktop")) vm.cycleLocalRepeat() },
-                            onVolDown = {
-                                if (state.activeOutput.startsWith("Desktop")) vm.remoteVolDown()
-                                else vm.localVolDown()
-                            },
-                            onVolUp = {
-                                if (state.activeOutput.startsWith("Desktop")) vm.remoteVolUp()
-                                else vm.localVolUp()
-                            },
-                            onMute = {
-                                if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalMute()
-                            },
-                        )
+                        // Full transport only on wide shells — phone uses mini-player + stage.
+                        if (useRail) {
+                            TransportBar(
+                                state = state,
+                                wide = true,
+                                onConnect = { vm.openConnect(true) },
+                                onPlayPause = {
+                                    if (state.activeOutput.startsWith("Desktop")) vm.remotePlayPause()
+                                    else vm.localPlayPause()
+                                },
+                                onPrev = {
+                                    if (state.activeOutput.startsWith("Desktop")) vm.remotePrev()
+                                    else vm.localPrev()
+                                },
+                                onNext = {
+                                    if (state.activeOutput.startsWith("Desktop")) vm.remoteNext()
+                                    else vm.localNext()
+                                },
+                                onStop = {
+                                    if (state.activeOutput.startsWith("Desktop")) vm.remoteStop()
+                                    else vm.localStop()
+                                },
+                                onShuffle = { if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalShuffle() },
+                                onRepeat = { if (!state.activeOutput.startsWith("Desktop")) vm.cycleLocalRepeat() },
+                                onVolDown = {
+                                    if (state.activeOutput.startsWith("Desktop")) vm.remoteVolDown()
+                                    else vm.localVolDown()
+                                },
+                                onVolUp = {
+                                    if (state.activeOutput.startsWith("Desktop")) vm.remoteVolUp()
+                                    else vm.localVolUp()
+                                },
+                                onMute = {
+                                    if (!state.activeOutput.startsWith("Desktop")) vm.toggleLocalMute()
+                                },
+                            )
+                        }
                     }
                 }
             },
@@ -324,7 +330,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                     .padding(pad)
                     .padding(horizontal = foldPad),
             ) {
-                if (!panelCompact) {
+                if (useRail) {
                     LeftRail(
                         state = state,
                         onSelectDest = vm::setPrimaryDest,
@@ -337,9 +343,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                         ShellHeader(
                             state = state,
                             wide = wide,
-                            onCycleTheme = vm::cycleThemeMode,
-                            onSetTheme = vm::setThemeMode,
-                            onPinTheme = vm::setPreferredThemeMode,
+                            onConnect = { vm.openConnect(true) },
                         )
                     }
                     if (panelCompact) {
@@ -910,8 +914,8 @@ private fun LeftRail(
         RailBtn(Icons.Default.MoreHoriz, "More", selected == PrimaryDest.More) {
             onSelectDest(PrimaryDest.More)
         }
-        RailBtn(Icons.Default.PlayArrow, "Open file", false, onOpen)
         Spacer(Modifier.weight(1f))
+        RailBtn(Icons.Default.PlayArrow, "Open file", false, onOpen)
         RailBtn(
             Icons.Default.Devices,
             "Connect",
@@ -995,63 +999,42 @@ private fun RailBtn(icon: ImageVector, tip: String, active: Boolean, onClick: ()
 private fun ShellHeader(
     state: PlayerUiState,
     wide: Boolean,
-    onCycleTheme: () -> Unit,
-    onSetTheme: (ThemeMode) -> Unit,
-    onPinTheme: (ThemeMode) -> Unit,
+    onConnect: () -> Unit,
 ) {
-    Column(
+    Row(
         Modifier
             .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(listOf(VoxColors.BgPanel, VoxColors.BgApp)),
-            )
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .background(VoxColors.BgApp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("VoxPlayer", style = MaterialTheme.typography.headlineMedium, color = VoxColors.Accent)
-                Text(
-                    if (wide) "Library · Now Playing · Connect" else "On-device library & desktop remote",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            QuietButton(
-                "Theme · ${state.themeMode.label()}",
-                onCycleTheme,
+        Column(Modifier.weight(1f)) {
+            Text(
+                "VoxPlayer",
+                style = MaterialTheme.typography.titleLarge,
+                color = VoxColors.Accent,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
-                state.activeOutput,
-                color = if (state.activeOutput.startsWith("Desktop")) VoxColors.Success else VoxColors.TextMuted,
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(start = 8.dp),
+                if (wide) "Library · remote" else "On-device library",
+                style = MaterialTheme.typography.labelMedium,
+                color = VoxColors.TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            listOf(
-                ThemeMode.Dark to "Dark",
-                ThemeMode.Light to "Light",
-                ThemeMode.System to "System",
-            ).forEach { (mode, label) ->
-                ThemeModeChip(
-                    label = label,
-                    selected = state.themeMode == mode,
-                    preferred = state.themePreferred == mode,
-                    onSelect = { onSetTheme(mode) },
-                    onPin = { onPinTheme(mode) },
-                )
-            }
-        }
+        Text(
+            state.activeOutput,
+            color = if (state.activeOutput.startsWith("Desktop")) VoxColors.Success else VoxColors.TextMuted,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 96.dp),
+        )
+        QuietButton("Connect", onConnect)
     }
 }
 
@@ -1116,8 +1099,11 @@ private fun LocalLibraryPane(
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        if (player != null && state.localIsVideo && state.qualityMode != "audio" &&
-            (state.localPlaying || state.localTitle != "(nothing loaded)")
+        // Inline video surface only while actively playing on the Video destination.
+        // Paused / idle use mini-player + Now Playing stage instead of a black hero.
+        if (state.localFilter == "video" &&
+            player != null && state.localIsVideo && state.qualityMode != "audio" &&
+            state.localPlaying
         ) {
             Box(
                 Modifier
@@ -1188,43 +1174,21 @@ private fun LocalLibraryPane(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            QuietButton("Player settings", onOpenPlayerSettings, Modifier.fillMaxWidth())
-            if (state.pipAvailable) {
-                QuietButton("Picture-in-picture", onEnterPip, Modifier.fillMaxWidth())
-            }
-            Spacer(Modifier.height(12.dp))
         }
 
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+        // Open lives on Video/Audio library rows; Browse already has Open file.
+        if (state.localFilter == "video" || state.localFilter == "audio" ||
+            state.localFilter == "all" || state.localFilter == "recent" ||
+            state.localFilter == "top" || state.localFilter == "week" ||
+            state.localFilter == "month"
         ) {
             Row(
-                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                listOf(
-                    "all" to "All",
-                    "audio" to "Audio",
-                    "video" to "Video",
-                    "browse" to "Browse",
-                    "recent" to "Recent",
-                    "top" to "Top",
-                    "week" to "Week",
-                    "month" to "Month",
-                    "lists" to "Lists",
-                ).forEach { (k, label) ->
-                    HomeFilterChip(
-                        label = label,
-                        selected = state.localFilter == k,
-                        preferred = state.localFilterPreferred == k,
-                        onSelect = { onFilter(k) },
-                        onPin = { onPinFilter(k) },
-                    )
-                }
+                QuietButton("Open", onOpenFile)
             }
-            QuietButton("Open", onOpenFile)
         }
 
         if (state.localFilter == "browse") {
@@ -1636,7 +1600,7 @@ private fun BrowsePane(
         }
         if (!inFolder) {
             Text(
-                "Favorites & storages stay on-device. Add folder uses the system picker (SAF) — GrapheneOS Storage Scopes friendly; no cloud.",
+                "On-device folders · SAF picker · no cloud",
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
@@ -4233,6 +4197,28 @@ private fun DesktopRemotePane(state: PlayerUiState, vm: PlayerViewModel, wide: B
         if (state.syncMessage.isNotBlank()) {
             Text(state.syncMessage, style = MaterialTheme.typography.bodySmall)
         }
+        Text("Appearance", style = MaterialTheme.typography.titleSmall, color = VoxColors.Accent)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            listOf(
+                ThemeMode.Dark to "Dark",
+                ThemeMode.Light to "Light",
+                ThemeMode.System to "System",
+            ).forEach { (mode, label) ->
+                ThemeModeChip(
+                    label = label,
+                    selected = state.themeMode == mode,
+                    preferred = state.themePreferred == mode,
+                    onSelect = { vm.setThemeMode(mode) },
+                    onPin = { vm.setPreferredThemeMode(mode) },
+                )
+            }
+        }
+        Text("Player", style = MaterialTheme.typography.titleSmall, color = VoxColors.Accent)
         QuietButton(
             "Player settings",
             { vm.openPlayerSheet(PlayerSheet.Settings) },

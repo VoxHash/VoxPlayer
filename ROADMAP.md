@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.108.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
+Status as of October 2026 (**v1.109.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
 
 ## Shipped in 1.3.0
 
@@ -197,6 +197,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 82. **Non-goal (policy)**: do **not** invent in-tree H.264/x264/H.265/x265; wrap maintained FOSS + platform MediaCodec only (**Done 1.106.0** — `docs/codec_policy.md`, `voxplayer.engine.codec_policy` scan gate, `e2e_codec_policy.py`, Help → Codec policy…; standing + CI-enforced)
 83. **Modern player chrome (streaming-style sheets, FOSS)**: Material bottom sheets for Quality / Playback speed (0.25–3.0× slider + presets) / Captions (+ show when muted) / More (loop, ambient, sleep, storage) / Track actions / Downloads & storage; mini-player + video top chrome; no GMS / no cloud-music links (**Done 1.107.0** — `ModernChrome.kt`; Pixel 7 Pro e2e screencaps; Quest APK install — VR lockscreen blocks panel screencap)
 84. **Immersive Now Playing stage + Media3 opsec**: Full-screen stage (art-dominant, headphones/video toggle, pill actions, circular transport, up-next grabber); TextureView surfaces + lean DefaultLoadControl on Quest/low-RAM; desktop Now Playing pill expand/minimize; Kotlin/Media3 stack aligned with modern Android players (**Done 1.108.0** — `NowPlayingStage.kt`, `PlayerSurfaces.kt`; Pixel + Quest install e2e; desktop shell smoke)
+85. **Shell declutter (Home / rail / menu)**: Phone bottom-nav XOR tablet rail (never both); drop duplicate transport on phone; slim header + Connect; theme moved to More; remove redundant home filter chips (**Done 1.109.0** — Pixel e2e)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

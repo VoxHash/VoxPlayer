@@ -9,6 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.109.0] - 2026-10-27
+
+### Changed
+- Android / GrapheneOS / Quest: **decluttered shell** — mutually exclusive bottom destinations vs left rail; phone drops the second transport bar; slim header; Appearance theme chips live under More
+- Home no longer stacks duplicate All/Audio/Video/Browse filter chips on top of primary destinations
+
+### Fixed
+- Phone layout no longer shows sidebar + bottom nav + transport + theme strip together (oversaturated chrome)
+
 ## [1.108.0] - 2026-10-27
 
 ### Added

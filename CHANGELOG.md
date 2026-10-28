@@ -9,6 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.110.0] - 2026-10-27
+
+### Changed
+- Android / Quest **panel lean shell**: multi-window wide panels use a labeled left rail + mini-player only (no stacked transport bar, shell header, or side Now Playing column)
+- Restored **Home** as a primary destination with Library / Recent / Top / Week / Month facets; Browse no longer falsely selected for Home filters
+- More menu: title + Connect CTA when unpaired; desktop transport/library only while connected; duplicate Open chrome removed when the rail already exposes Open
+
+### Fixed
+- Quest 2D panel (~1280×800) oversaturated chrome (rail + header + NP pane + mini + transport) misaligned with content-first panel apps
+
 ## [1.109.0] - 2026-10-27
 
 ### Changed

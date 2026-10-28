@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -55,6 +56,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
@@ -255,14 +257,35 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         // Quest short panel / multi-window strip: keep transport usable, skip tall chrome.
         val panelCompact = maxHeight < PANEL_COMPACT_MAX_HEIGHT_DP.dp ||
             windowLayout.multiWindow && maxHeight < 640.dp
+        // Quest / split 2D panels (~1280×800): content-first like streaming + FOSS panel apps —
+        // one rail, one mini-player, no stacked transport / header / side Now Playing.
+        // Horizon OS often leaves Activity.isInMultiWindowMode=false while windowingMode is
+        // multi-window, so also key off wide + short landscape height (h640dp / 800px).
+        val panelLean = wide && !panelCompact && (
+            windowLayout.multiWindow ||
+                state.multiWindow ||
+                (maxHeight <= 900.dp && maxWidth >= maxHeight)
+            )
         // Driving layout only when tall enough — never in a short Quest panel / split.
         val carMode = !panelCompact &&
+            !panelLean &&
             maxWidth >= CAR_SHELL_MIN_DP.dp &&
             maxWidth > maxHeight * 1.15f
         val foldPad = if (windowLayout.foldSeparating) 28.dp else 0.dp
         // Phone: bottom nav only. Tablet/wide: left rail only. Never both (FOSS player pattern).
         val useRail = wide && !panelCompact
         val useBottomDest = !useRail && !carMode
+        val showShellHeader = !carMode && !panelCompact && !panelLean && !useRail
+        val showSideNowPlaying = wide && !carMode && !panelCompact && !panelLean
+        val showTransportBar = useRail && !panelLean
+        LaunchedEffect(panelLean, useRail, showTransportBar, showSideNowPlaying, maxWidth, maxHeight) {
+            Log.i(
+                "VoxPlayerBT",
+                "shell chrome lean=$panelLean rail=$useRail transport=$showTransportBar " +
+                    "sideNp=$showSideNowPlaying header=$showShellHeader " +
+                    "size=${maxWidth.value.toInt()}x${maxHeight.value.toInt()}dp",
+            )
+        }
         Scaffold(
             containerColor = VoxColors.BgApp,
             bottomBar = {
@@ -283,8 +306,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 onSelect = vm::setPrimaryDest,
                             )
                         }
-                        // Full transport only on wide shells — phone uses mini-player + stage.
-                        if (useRail) {
+                        // Full transport only on non-panel wide shells — Quest lean uses mini + stage.
+                        if (showTransportBar) {
                             TransportBar(
                                 state = state,
                                 wide = true,
@@ -333,13 +356,14 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                 if (useRail) {
                     LeftRail(
                         state = state,
+                        labeled = panelLean,
                         onSelectDest = vm::setPrimaryDest,
                         onOpen = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                         onConnect = { vm.openConnect(true) },
                     )
                 }
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    if (!carMode && !panelCompact) {
+                    if (showShellHeader) {
                         ShellHeader(
                             state = state,
                             wide = wide,
@@ -388,6 +412,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     state = state,
                                     player = player,
                                     wide = wide,
+                                    railChrome = useRail,
                                     onPlay = vm::playLocal,
                                     onPlayHistory = vm::playHistory,
                                     onClearHistory = vm::clearPlayHistory,
@@ -453,7 +478,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                 AppTab.Connect -> DesktopRemotePane(state, vm, wide)
                             }
                         }
-                        if (wide && !carMode && !panelCompact) {
+                        if (showSideNowPlaying) {
                             NowPlayingPane(
                                 state = state,
                                 player = player,
@@ -726,7 +751,9 @@ private fun PlayerUiState.primaryDest(): PrimaryDest = when {
     localFilter == "audio" -> PrimaryDest.Audio
     localFilter == "lists" -> PrimaryDest.Lists
     localFilter == "browse" -> PrimaryDest.Browse
-    else -> PrimaryDest.Browse
+    localFilter == "all" || localFilter == "recent" || localFilter == "top" ||
+        localFilter == "week" || localFilter == "month" -> PrimaryDest.Home
+    else -> PrimaryDest.Home
 }
 
 @Composable
@@ -747,6 +774,7 @@ private fun CompactPanelChrome(
     ) {
         Text("VX", color = VoxColors.Accent, fontWeight = FontWeight.Bold, fontSize = 13.sp)
         listOf(
+            PrimaryDest.Home to "Home",
             PrimaryDest.Video to "Video",
             PrimaryDest.Audio to "Audio",
             PrimaryDest.Browse to "Browse",
@@ -875,53 +903,64 @@ private fun CarDrivingPane(
 @Composable
 private fun LeftRail(
     state: PlayerUiState,
+    labeled: Boolean,
     onSelectDest: (PrimaryDest) -> Unit,
     onOpen: () -> Unit,
     onConnect: () -> Unit,
 ) {
     val selected = state.primaryDest()
+    val dests = listOf(
+        Triple(PrimaryDest.Home, "Home", Icons.Default.Home),
+        Triple(PrimaryDest.Video, "Video", Icons.Default.Movie),
+        Triple(PrimaryDest.Audio, "Audio", Icons.Default.AudioFile),
+        Triple(PrimaryDest.Browse, "Browse", Icons.Default.FolderOpen),
+        Triple(PrimaryDest.Lists, "Lists", Icons.Default.QueueMusic),
+        Triple(PrimaryDest.More, "More", Icons.Default.MoreHoriz),
+    )
     Column(
         Modifier
-            .width(64.dp)
+            .width(if (labeled) 88.dp else 64.dp)
             .fillMaxHeight()
             .background(VoxColors.Rail)
-            .padding(vertical = 12.dp),
+            .padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(if (labeled) 4.dp else 8.dp),
     ) {
         Box(
             Modifier
-                .size(40.dp)
+                .size(if (labeled) 36.dp else 40.dp)
                 .clip(RoundedCornerShapeCompat)
                 .background(VoxColors.AccentSoft),
             contentAlignment = Alignment.Center,
         ) {
             Text("VX", color = VoxColors.Accent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
-        Spacer(Modifier.height(8.dp))
-        RailBtn(Icons.Default.Movie, "Video", selected == PrimaryDest.Video) {
-            onSelectDest(PrimaryDest.Video)
-        }
-        RailBtn(Icons.Default.AudioFile, "Audio", selected == PrimaryDest.Audio) {
-            onSelectDest(PrimaryDest.Audio)
-        }
-        RailBtn(Icons.Default.FolderOpen, "Browse", selected == PrimaryDest.Browse) {
-            onSelectDest(PrimaryDest.Browse)
-        }
-        RailBtn(Icons.Default.QueueMusic, "Lists", selected == PrimaryDest.Lists) {
-            onSelectDest(PrimaryDest.Lists)
-        }
-        RailBtn(Icons.Default.MoreHoriz, "More", selected == PrimaryDest.More) {
-            onSelectDest(PrimaryDest.More)
+        Spacer(Modifier.height(4.dp))
+        dests.forEach { (dest, label, icon) ->
+            if (labeled) {
+                RailLabeledBtn(icon, label, selected == dest) { onSelectDest(dest) }
+            } else {
+                RailBtn(icon, label, selected == dest) { onSelectDest(dest) }
+            }
         }
         Spacer(Modifier.weight(1f))
-        RailBtn(Icons.Default.PlayArrow, "Open file", false, onOpen)
-        RailBtn(
-            Icons.Default.Devices,
-            "Connect",
-            state.activeOutput.startsWith("Desktop"),
-            onConnect,
-        )
+        if (labeled) {
+            RailLabeledBtn(Icons.Default.PlayArrow, "Open", false, onOpen)
+            RailLabeledBtn(
+                Icons.Default.Devices,
+                "Link",
+                state.activeOutput.startsWith("Desktop"),
+                onConnect,
+            )
+        } else {
+            RailBtn(Icons.Default.PlayArrow, "Open file", false, onOpen)
+            RailBtn(
+                Icons.Default.Devices,
+                "Connect",
+                state.activeOutput.startsWith("Desktop"),
+                onConnect,
+            )
+        }
     }
 }
 
@@ -931,6 +970,7 @@ private fun PrimaryDestBar(
     onSelect: (PrimaryDest) -> Unit,
 ) {
     val items = listOf(
+        Triple(PrimaryDest.Home, "Home", Icons.Default.Home),
         Triple(PrimaryDest.Video, "Video", Icons.Default.Movie),
         Triple(PrimaryDest.Audio, "Audio", Icons.Default.AudioFile),
         Triple(PrimaryDest.Browse, "Browse", Icons.Default.FolderOpen),
@@ -995,6 +1035,38 @@ private fun RailBtn(icon: ImageVector, tip: String, active: Boolean, onClick: ()
     }
 }
 
+/** Quest / lean rail: icon + short label for controller pointing (streaming + FOSS panel pattern). */
+@Composable
+private fun RailLabeledBtn(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (active) VoxColors.AccentSoft else androidx.compose.ui.graphics.Color.Transparent)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = label }
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = if (active) VoxColors.Accent else VoxColors.TextSecondary,
+            modifier = Modifier.size(22.dp),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) VoxColors.Accent else VoxColors.TextMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontSize = 10.sp,
+        )
+    }
+}
+
 @Composable
 private fun ShellHeader(
     state: PlayerUiState,
@@ -1044,6 +1116,7 @@ private fun LocalLibraryPane(
     state: PlayerUiState,
     player: Player?,
     wide: Boolean,
+    railChrome: Boolean,
     onPlay: (LocalMediaItem) -> Unit,
     onPlayHistory: (PlayHistoryStore.Entry) -> Unit,
     onClearHistory: () -> Unit,
@@ -1176,11 +1249,12 @@ private fun LocalLibraryPane(
             Spacer(Modifier.height(8.dp))
         }
 
-        // Open lives on Video/Audio library rows; Browse already has Open file.
-        if (state.localFilter == "video" || state.localFilter == "audio" ||
-            state.localFilter == "all" || state.localFilter == "recent" ||
-            state.localFilter == "top" || state.localFilter == "week" ||
-            state.localFilter == "month"
+        // Open file lives on the rail when present; phone keeps a single Open affordance.
+        if (!railChrome &&
+            (state.localFilter == "video" || state.localFilter == "audio" ||
+                state.localFilter == "all" || state.localFilter == "recent" ||
+                state.localFilter == "top" || state.localFilter == "week" ||
+                state.localFilter == "month")
         ) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -1194,6 +1268,7 @@ private fun LocalLibraryPane(
         if (state.localFilter == "browse") {
             BrowsePane(
                 state = state,
+                railChrome = railChrome,
                 onShortcut = onBrowseShortcut,
                 onFavorite = onBrowseFavorite,
                 onInternal = onBrowseInternal,
@@ -1209,6 +1284,35 @@ private fun LocalLibraryPane(
                     .padding(top = 8.dp),
             )
             return
+        }
+
+        val homeFacet = state.localFilter == "all" || state.localFilter == "recent" ||
+            state.localFilter == "top" || state.localFilter == "week" ||
+            state.localFilter == "month"
+        if (homeFacet) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(
+                    "all" to "Library",
+                    "recent" to "Recent",
+                    "top" to "Top",
+                    "week" to "Week",
+                    "month" to "Month",
+                ).forEach { (key, label) ->
+                    HomeFilterChip(
+                        label = label,
+                        selected = state.localFilter == key,
+                        preferred = state.localFilterPreferred == key,
+                        onSelect = { onFilter(key) },
+                        onPin = { onPinFilter(key) },
+                    )
+                }
+            }
         }
 
         if (state.localFilter == "audio") {
@@ -1558,6 +1662,7 @@ private fun LocalLibraryPane(
 @Composable
 private fun BrowsePane(
     state: PlayerUiState,
+    railChrome: Boolean,
     onShortcut: (String, String) -> Unit,
     onFavorite: (BrowseStore.FavoriteFolder) -> Unit,
     onInternal: () -> Unit,
@@ -1595,7 +1700,10 @@ private fun BrowsePane(
                 QuietButton("Back", onBack)
             } else {
                 QuietButton("Add folder…", onAddFolder)
-                QuietButton("Open file", onOpenFile)
+                // Rail already exposes Open — avoid duplicate chrome on Quest/tablet.
+                if (!railChrome) {
+                    QuietButton("Open file", onOpenFile)
+                }
             }
         }
         if (!inFolder) {
@@ -4159,40 +4267,52 @@ private fun DesktopRemotePane(state: PlayerUiState, vm: PlayerViewModel, wide: B
     Column(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .padding(top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        Text("More", style = MaterialTheme.typography.titleLarge, color = VoxColors.Accent)
         Text(
             if (state.remoteConnected) {
-                "Connected · $linkLabel · desktop v${state.remoteVersion.ifBlank { "?" }}"
+                "Desktop · $linkLabel · v${state.remoteVersion.ifBlank { "?" }}"
             } else {
-                "Not connected — use Connect to find your PC"
+                "Desktop remote · tap Link on the rail (or Connect) to pair"
             },
-            color = if (state.remoteConnected) VoxColors.Success else VoxColors.Danger,
-            style = MaterialTheme.typography.titleMedium,
+            color = if (state.remoteConnected) VoxColors.Success else VoxColors.TextSecondary,
+            style = MaterialTheme.typography.bodyMedium,
         )
-        Text(state.remoteTitle, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("${state.remotePositionLabel} · vol ${state.remoteVolume}%", style = MaterialTheme.typography.bodyMedium)
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            AccentButton("Prev", vm::remotePrev, Modifier.weight(1f))
-            AccentButton(if (state.remotePlaying) "Pause" else "Play", vm::remotePlayPause, Modifier.weight(1f))
-            AccentButton("Next", vm::remoteNext, Modifier.weight(1f))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            QuietButton("Stop", vm::remoteStop, Modifier.weight(1f))
-            QuietButton("−5s", vm::remoteSeekBack, Modifier.weight(1f))
-            QuietButton("+5s", vm::remoteSeekFwd, Modifier.weight(1f))
-            QuietButton("Vol −", vm::remoteVolDown, Modifier.weight(1f))
-            QuietButton("Vol +", vm::remoteVolUp, Modifier.weight(1f))
-        }
         if (state.remoteConnected) {
+            Text(
+                state.remoteTitle,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "${state.remotePositionLabel} · vol ${state.remoteVolume}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = VoxColors.TextMuted,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                AccentButton("Prev", vm::remotePrev, Modifier.weight(1f))
+                AccentButton(if (state.remotePlaying) "Pause" else "Play", vm::remotePlayPause, Modifier.weight(1f))
+                AccentButton("Next", vm::remoteNext, Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                QuietButton("Stop", vm::remoteStop, Modifier.weight(1f))
+                QuietButton("−5s", vm::remoteSeekBack, Modifier.weight(1f))
+                QuietButton("+5s", vm::remoteSeekFwd, Modifier.weight(1f))
+                QuietButton("Vol −", vm::remoteVolDown, Modifier.weight(1f))
+                QuietButton("Vol +", vm::remoteVolUp, Modifier.weight(1f))
+            }
             AccentButton(
                 if (state.syncBusy) "Syncing…" else "Sync playlists & podcasts",
                 vm::syncFromDesktop,
                 Modifier.fillMaxWidth(),
                 enabled = !state.syncBusy,
             )
+        } else {
+            AccentButton("Connect desktop", { vm.openConnect(true) }, Modifier.fillMaxWidth())
         }
         if (state.syncMessage.isNotBlank()) {
             Text(state.syncMessage, style = MaterialTheme.typography.bodySmall)
@@ -4284,9 +4404,11 @@ private fun DesktopRemotePane(state: PlayerUiState, vm: PlayerViewModel, wide: B
                     }
                 }
             }
-            item { Text("Desktop library", style = MaterialTheme.typography.titleMedium) }
-            items(state.remoteLibrary.take(if (wide) 120 else 60)) { item ->
-                LibraryRow(item.title) { vm.remoteOpen(item.path) }
+            if (state.remoteConnected && state.remoteLibrary.isNotEmpty()) {
+                item { Text("Desktop library", style = MaterialTheme.typography.titleMedium) }
+                items(state.remoteLibrary.take(if (wide) 120 else 60)) { item ->
+                    LibraryRow(item.title) { vm.remoteOpen(item.path) }
+                }
             }
         }
     }

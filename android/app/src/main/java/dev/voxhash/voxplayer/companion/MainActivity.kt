@@ -218,6 +218,22 @@ class MainActivity : ComponentActivity() {
             extras.getString("now_playing_stage").equals("1", true) ||
             extras.getString("now_playing_stage").equals("true", true)
         if (stage) vm.openNowPlayingTab()
+        val dest = extras.getString("primary_dest").orEmpty().lowercase()
+        if (dest.isNotBlank()) {
+            val mapped = when (dest) {
+                "home" -> PrimaryDest.Home
+                "video" -> PrimaryDest.Video
+                "audio" -> PrimaryDest.Audio
+                "browse" -> PrimaryDest.Browse
+                "lists" -> PrimaryDest.Lists
+                "more" -> PrimaryDest.More
+                else -> null
+            }
+            if (mapped != null) {
+                android.util.Log.i("VoxPlayerBT", "setPrimaryDest=$dest")
+                vm.setPrimaryDest(mapped)
+            }
+        }
     }
 
     private fun handleViewIntent(intent: Intent?) {

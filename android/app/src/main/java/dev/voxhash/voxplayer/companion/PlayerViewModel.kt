@@ -37,8 +37,8 @@ import java.io.File
 
 enum class AppTab { Local, Connect }
 
-/** Primary shell destinations (phone bottom bar / tablet rail) — Video · Audio · Browse · Lists · More. */
-enum class PrimaryDest { Video, Audio, Browse, Lists, More }
+/** Primary shell destinations (phone bottom bar / tablet·Quest rail) — Home · Video · Audio · Browse · Lists · More. */
+enum class PrimaryDest { Home, Video, Audio, Browse, Lists, More }
 
 enum class RemoteLink { None, Wifi, Bluetooth }
 
@@ -453,6 +453,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     /** Bottom / rail primary destinations (GrapheneOS-friendly Material nav; no GMS). */
     fun setPrimaryDest(dest: PrimaryDest) {
         when (dest) {
+            PrimaryDest.Home -> {
+                setTab(AppTab.Local)
+                // Keep an active Home facet (all/recent/top/week/month); default to all.
+                val cur = _state.value.localFilter
+                if (cur !in setOf("all", "recent", "top", "week", "month")) {
+                    setLocalFilter("all")
+                }
+            }
             PrimaryDest.Video -> {
                 setTab(AppTab.Local)
                 setLocalFilter("video")

@@ -521,6 +521,20 @@ def app_stylesheet() -> str:
         background: {c['bg_hover']};
         color: {c['accent']};
     }}
+    QPushButton#NpPillBtn {{
+        background: {c['bg_hover']};
+        border: 1px solid {c['border']};
+        border-radius: 14px;
+        color: {c['text']};
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 12px;
+        min-height: 26px;
+    }}
+    QPushButton#NpPillBtn:hover {{
+        border-color: {c['accent']};
+        color: {c['accent']};
+    }}
     QLineEdit#SearchField {{
         background: {c['bg_input']};
         border: 1px solid {c['border']};

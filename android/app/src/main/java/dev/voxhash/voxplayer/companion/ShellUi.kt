@@ -234,12 +234,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         ) {
             if (player != null && state.localIsVideo) {
                 AndroidView(
-                    factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            this.player = player
-                            useController = false
-                        }
-                    },
+                    factory = { ctx -> PlayerSurfaces.attachPlayerView(ctx, player) },
                     update = { it.player = player },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -558,6 +553,39 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         onClearCache = vm::clearArtworkCache,
         onShowDeviceFiles = vm::setShowDeviceFiles,
     )
+
+    if (state.nowPlayingStage && !state.pipActive) {
+        NowPlayingStage(
+            state = state,
+            player = player,
+            audioSurface = state.stageAudioSurface,
+            onDismiss = vm::dismissNowPlayingStage,
+            onAudioSurface = vm::setStageAudioSurface,
+            onPlayPause = vm::localPlayPause,
+            onPrev = vm::localPrev,
+            onNext = vm::localNext,
+            onShuffle = vm::toggleLocalShuffle,
+            onSeek = vm::seekLocal,
+            onOpenCaptions = { vm.openPlayerSheet(PlayerSheet.Captions) },
+            onOpenSettings = { vm.openPlayerSheet(PlayerSheet.Settings) },
+            onShare = { vm.shareNowPlayingCard(context) },
+            onSaveList = {
+                val row = state.localQueue.firstOrNull { it.isCurrent }
+                if (row != null && row.uri.isNotBlank()) {
+                    vm.openAddToListFromQueueRow(row)
+                }
+            },
+            onCast = vm::castNowPlayingToDlna,
+            onOpenQueue = {
+                vm.dismissNowPlayingStage()
+                if (state.localIsVideo) vm.setPrimaryDest(PrimaryDest.Video)
+                else vm.setPrimaryDest(PrimaryDest.Audio)
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(8f),
+        )
+    }
 
     if (state.connectOpen) {
         ModalBottomSheet(
@@ -1115,10 +1143,7 @@ private fun LocalLibraryPane(
                     ) {
                         AndroidView(
                             factory = { ctx ->
-                                PlayerView(ctx).apply {
-                                    this.player = player
-                                    useController = false
-                                }
+                                PlayerSurfaces.attachPlayerView(ctx, player)
                             },
                             update = { it.player = player },
                             modifier = Modifier.fillMaxSize(),
@@ -1127,10 +1152,7 @@ private fun LocalLibraryPane(
                 } else {
                     AndroidView(
                         factory = { ctx ->
-                            PlayerView(ctx).apply {
-                                this.player = player
-                                useController = false
-                            }
+                            PlayerSurfaces.attachPlayerView(ctx, player)
                         },
                         update = { it.player = player },
                         modifier = Modifier.fillMaxSize(),
@@ -2587,10 +2609,7 @@ private fun NowPlayingPane(
                 ) {
                     AndroidView(
                         factory = { ctx ->
-                            PlayerView(ctx).apply {
-                                this.player = player
-                                useController = false
-                            }
+                            PlayerSurfaces.attachPlayerView(ctx, player)
                         },
                         update = { it.player = player },
                         modifier = Modifier.fillMaxSize(),
@@ -4561,7 +4580,7 @@ private fun PlaybackStatusChips(
 }
 
 @Composable
-private fun SeekScrubber(
+fun SeekScrubber(
     positionMs: Long,
     durationMs: Long,
     onSeek: (Long) -> Unit,

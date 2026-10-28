@@ -214,6 +214,10 @@ class MainActivity : ComponentActivity() {
             }
             if (mapped != null) vm.openPlayerSheet(mapped)
         }
+        val stage = extras.getBoolean("now_playing_stage", false) ||
+            extras.getString("now_playing_stage").equals("1", true) ||
+            extras.getString("now_playing_stage").equals("true", true)
+        if (stage) vm.openNowPlayingTab()
     }
 
     private fun handleViewIntent(intent: Intent?) {

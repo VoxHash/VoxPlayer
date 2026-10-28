@@ -9,6 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.108.0] - 2026-10-27
+
+### Added
+- Android / GrapheneOS / Quest: **immersive Now Playing stage** — art-dominant layout, headphones/video surface toggle, pill actions, circular play control, up-next grabber (mini-player expands into stage)
+- `PlayerSurfaces` — TextureView Media3 surfaces + leaner ExoPlayer load-control on Quest / low-RAM devices
+- Desktop: Now Playing **Expand / Minimize** pill row under artwork for faster stage control
+
+### Changed
+- ROADMAP **#84** closed; companion stays Kotlin + Media3 (FOSS, no GMS)
+
 ## [1.107.0] - 2026-10-27
 
 ### Added

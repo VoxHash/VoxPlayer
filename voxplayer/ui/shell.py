@@ -730,13 +730,13 @@ class NowPlayingPanel(_MediaDropMixin, QWidget):
 
         self.art = ClickableArt("VoxPlayer")
         self.art.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.art.setMinimumHeight(220)
+        self.art.setMinimumHeight(240)
         self.art.setStyleSheet(
             f"""
             QLabel {{
                 background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
                     stop:0 {COLORS['bg_input']}, stop:1 {COLORS['bg_elevated']});
-                border-radius: 16px;
+                border-radius: 20px;
                 color: {COLORS['accent']};
                 font-size: 22px;
                 font-weight: 700;
@@ -745,6 +745,22 @@ class NowPlayingPanel(_MediaDropMixin, QWidget):
         )
         self.art.clicked.connect(self.art_clicked.emit)
         layout.addWidget(self.art)
+
+        # Compact action pills under art (share / expand / more) — modern stage chrome
+        pills = QHBoxLayout()
+        pills.setSpacing(6)
+        self.btn_expand_pill = QPushButton("Expand")
+        self.btn_expand_pill.setObjectName("NpPillBtn")
+        self.btn_expand_pill.setToolTip("Expand Now Playing")
+        self.btn_expand_pill.clicked.connect(self.expand_requested.emit)
+        pills.addWidget(self.btn_expand_pill)
+        self.btn_minimize_pill = QPushButton("Minimize")
+        self.btn_minimize_pill.setObjectName("NpPillBtn")
+        self.btn_minimize_pill.setToolTip("Minimize Now Playing")
+        self.btn_minimize_pill.clicked.connect(self.minimize_requested.emit)
+        pills.addWidget(self.btn_minimize_pill)
+        pills.addStretch(1)
+        layout.addLayout(pills)
 
         self.title = MarqueeLabel("Nothing playing")
         self.title.setObjectName("MetaPrimary")

@@ -192,6 +192,10 @@ data class PlayerUiState(
     val showDeviceFiles: Boolean = true,
     val cacheUsageLabel: String = "",
     val cacheUsageFraction: Float = 0.05f,
+    /** Immersive full-screen Now Playing stage (mini-player expand). */
+    val nowPlayingStage: Boolean = false,
+    /** When true, stage prefers artwork / audio chrome over video surface. */
+    val stageAudioSurface: Boolean = false,
 )
 
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
@@ -2899,6 +2903,23 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         setPrimaryDest(PrimaryDest.Audio)
         // Prefer video dest when current item is video
         if (_state.value.localIsVideo) setPrimaryDest(PrimaryDest.Video)
+        _state.update {
+            it.copy(
+                nowPlayingStage = true,
+                stageAudioSurface = !it.localIsVideo || it.qualityMode == "audio",
+            )
+        }
+    }
+
+    fun dismissNowPlayingStage() {
+        _state.update { it.copy(nowPlayingStage = false) }
+    }
+
+    fun setStageAudioSurface(audio: Boolean) {
+        _state.update { it.copy(stageAudioSurface = audio) }
+        if (audio && _state.value.qualityMode != "audio") {
+            // Keep decode path; only hide video surface in the stage chrome.
+        }
     }
 
     /** Long-press: pin / clear preferred playback speed. */

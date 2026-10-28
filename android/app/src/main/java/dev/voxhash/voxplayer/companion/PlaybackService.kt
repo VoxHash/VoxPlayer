@@ -334,6 +334,7 @@ class PlaybackService : MediaSessionService() {
         audioManager?.registerAudioDeviceCallback(deviceCallback, mainHandler)
 
         val player = ExoPlayer.Builder(this)
+            .applyVoxLoadControl(this)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)

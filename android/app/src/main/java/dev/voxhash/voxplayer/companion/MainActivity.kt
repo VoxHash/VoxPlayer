@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleViewIntent(intent)
         applyConnectExtras(intent)
     }
@@ -198,6 +199,20 @@ class MainActivity : ComponentActivity() {
             extras.getString("bt_connect").equals("true", true)
         if (btAddress.isNotBlank() && btConnect) {
             vm.connectBluetooth(btAddress, btName)
+        }
+        val sheet = extras.getString("player_sheet").orEmpty().lowercase()
+        if (sheet.isNotBlank()) {
+            val mapped = when (sheet) {
+                "settings" -> PlayerSheet.Settings
+                "speed" -> PlayerSheet.Speed
+                "captions" -> PlayerSheet.Captions
+                "more" -> PlayerSheet.More
+                "quality" -> PlayerSheet.Quality
+                "storage" -> PlayerSheet.Storage
+                "track", "track_actions" -> PlayerSheet.TrackActions
+                else -> null
+            }
+            if (mapped != null) vm.openPlayerSheet(mapped)
         }
     }
 

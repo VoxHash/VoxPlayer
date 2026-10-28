@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.106.0**). Stack: **PyQt6 shell** + decode via **libvlc when present** or **FOSS libav (PyAV)** auto-fallback — system VLC not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Media3 (no GMS). No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
+Status as of October 2026 (**v1.107.0**). Stack: **PyQt6 shell** + decode via **libvlc when present** or **FOSS libav (PyAV)** auto-fallback — system VLC not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Media3 (no GMS) with modern player chrome sheets. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
 
 ## Shipped in 1.3.0
 
@@ -195,6 +195,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 80. **Meta/thumbs without ffmpeg CLI**: `vox_meta` / Python thumbs use linked FOSS decode for tags/posters (**Done 1.104.0** — `libav_io` + ThumbnailCache/metadata/audio_viz PyAV-first; workers prefer libav; `e2e_no_ffmpeg_cli.py`)
 81. **Cross-platform codec fixture matrix**: automated H.264 / H.265 / AV1 / Opus decode fixtures on Desktop (FOSS core) + Android/Quest (Media3/MediaCodec) — GrapheneOS-honest (**Done 1.105.0** — `codec_fixtures` + `e2e_codec_fixtures.py`; Android `CodecFixtureMatrix`; `docs/codec_fixture_matrix.md`)
 82. **Non-goal (policy)**: do **not** invent in-tree H.264/x264/H.265/x265; wrap maintained FOSS + platform MediaCodec only (**Done 1.106.0** — `docs/codec_policy.md`, `voxplayer.engine.codec_policy` scan gate, `e2e_codec_policy.py`, Help → Codec policy…; standing + CI-enforced)
+83. **Modern player chrome (YouTube-style sheets, FOSS)**: Material bottom sheets for Quality / Playback speed (0.25–3.0× slider + presets) / Captions (+ show when muted) / More (loop, ambient, sleep, storage) / Track actions / Downloads & storage; mini-player + video top chrome; no GMS / no YT Music links (**Done 1.107.0** — `ModernChrome.kt`; Pixel 7 Pro e2e screencaps; Quest APK install — VR lockscreen blocks panel screencap)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

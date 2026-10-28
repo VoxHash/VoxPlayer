@@ -9,6 +9,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.107.0] - 2026-10-27
+
+### Added
+- Android / GrapheneOS / Quest: **modern player chrome** — Material bottom sheets for Quality, Playback speed (continuous 0.25–3.0× + presets), Captions (sidecar lyrics + show-when-muted), More (loop / ambient / sleep / storage), Track actions, Downloads & storage
+- Mini-player strip + video top chrome (captions / settings); `player_sheet` intent extra for deep-link / e2e
+- ROADMAP **#83** closed; e2e verified on Pixel 7 Pro (sheets screencapped); Quest debug APK installed (panel screencap blocked while VR lockscreen holds focus)
+
+### Fixed
+- Nested `ModalBottomSheet` dispose no longer clears the next sheet when navigating Settings → Speed / Captions / …
+- `MainActivity` `singleTop` + `setIntent` so sheet extras apply on warm start
+
 ## [1.106.0] - 2026-10-26
 
 ### Added

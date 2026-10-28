@@ -180,6 +180,18 @@ data class PlayerUiState(
     val queueUndoAvailable: Boolean = false,
     /** Single Up-next row remove can be undone briefly. */
     val queueItemUndoAvailable: Boolean = false,
+    /** Modern player chrome sheets (settings / speed / captions / …). */
+    val playerSheet: PlayerSheet = PlayerSheet.None,
+    val screenLocked: Boolean = false,
+    val captionsMode: CaptionsMode = CaptionsMode.Off,
+    val captionsShowWhenMuted: Boolean = true,
+    val loopVideo: Boolean = false,
+    val ambientMode: Boolean = true,
+    /** auto | high | saver | audio */
+    val qualityMode: String = "auto",
+    val showDeviceFiles: Boolean = true,
+    val cacheUsageLabel: String = "",
+    val cacheUsageFraction: Float = 0.05f,
 )
 
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
@@ -238,6 +250,16 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 playbackSpeedPreferred = PlaybackSpeed.loadPreferred(app) ?: Float.NaN,
                 themeMode = ThemePrefs.loadBoot(app),
                 themePreferred = ThemePrefs.loadPreferred(app),
+                screenLocked = prefs.getBoolean("screen_locked", false),
+                captionsMode = when (prefs.getString("captions_mode", null)) {
+                    CaptionsMode.Lyrics.name -> CaptionsMode.Lyrics
+                    else -> CaptionsMode.Off
+                },
+                captionsShowWhenMuted = prefs.getBoolean("captions_when_muted", true),
+                loopVideo = prefs.getBoolean("loop_video", false),
+                ambientMode = prefs.getBoolean("ambient_mode", true),
+                qualityMode = prefs.getString("quality_mode", "auto") ?: "auto",
+                showDeviceFiles = prefs.getBoolean("show_device_files", true),
                 dlnaEnabled = DlnaCastControl.loadEnabled(app),
                 dlnaDefaultId = DlnaCastControl.loadDefaultId(app),
                 dlnaSelectedId = DlnaCastControl.loadDefaultId(app),
@@ -2738,6 +2760,145 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             Log.w(TAG, "SET_PLAYBACK_SPEED failed", e)
             player?.let { PlaybackSpeed.apply(it, s) }
         }
+    }
+
+    fun openPlayerSheet(sheet: PlayerSheet) {
+        Log.i(TAG, "openPlayerSheet=$sheet")
+        if (sheet == PlayerSheet.Storage) refreshCacheUsage()
+        _state.update {
+            it.copy(
+                playerSheet = sheet,
+                statusToast = when (sheet) {
+                    PlayerSheet.None -> it.statusToast
+                    PlayerSheet.Settings -> "Player settings"
+                    PlayerSheet.Speed -> "Playback speed"
+                    PlayerSheet.Captions -> "Captions"
+                    PlayerSheet.More -> "More player options"
+                    PlayerSheet.Quality -> "Quality"
+                    PlayerSheet.TrackActions -> "Track actions"
+                    PlayerSheet.Storage -> "Storage"
+                },
+            )
+        }
+        if (sheet != PlayerSheet.None) clearStatusToastLater()
+    }
+
+    fun dismissPlayerSheet() = _state.update { it.copy(playerSheet = PlayerSheet.None) }
+
+    fun nudgePlaybackSpeed(delta: Float) = setPlaybackSpeed(nudgeSpeed(_state.value.playbackSpeed, delta))
+
+    fun setScreenLocked(locked: Boolean) {
+        prefs.edit().putBoolean("screen_locked", locked).apply()
+        _state.update {
+            it.copy(
+                screenLocked = locked,
+                playerSheet = PlayerSheet.None,
+                statusToast = if (locked) "Screen locked — tap lock again in settings" else "Screen unlocked",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    fun setCaptionsMode(mode: CaptionsMode) {
+        prefs.edit().putString("captions_mode", mode.name).apply()
+        _state.update {
+            it.copy(
+                captionsMode = mode,
+                statusToast = when (mode) {
+                    CaptionsMode.Off -> "Captions off"
+                    CaptionsMode.Lyrics -> "Sidecar captions / lyrics"
+                },
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    fun setCaptionsShowWhenMuted(on: Boolean) {
+        prefs.edit().putBoolean("captions_when_muted", on).apply()
+        _state.update { it.copy(captionsShowWhenMuted = on) }
+    }
+
+    fun setLoopVideo(on: Boolean) {
+        prefs.edit().putBoolean("loop_video", on).apply()
+        _state.update { it.copy(loopVideo = on) }
+        if (on) {
+            player?.repeatMode = Player.REPEAT_MODE_ONE
+            prefs.edit().putInt(PREF_REPEAT, Player.REPEAT_MODE_ONE).apply()
+            _state.update { it.copy(localRepeatMode = Player.REPEAT_MODE_ONE, statusToast = "Loop video on") }
+        } else if (_state.value.localRepeatMode == Player.REPEAT_MODE_ONE) {
+            player?.repeatMode = Player.REPEAT_MODE_OFF
+            prefs.edit().putInt(PREF_REPEAT, Player.REPEAT_MODE_OFF).apply()
+            _state.update { it.copy(localRepeatMode = Player.REPEAT_MODE_OFF, statusToast = "Loop video off") }
+        }
+        clearStatusToastLater()
+    }
+
+    fun setAmbientMode(on: Boolean) {
+        prefs.edit().putBoolean("ambient_mode", on).apply()
+        _state.update {
+            it.copy(
+                ambientMode = on,
+                statusToast = if (on) "Ambient glow on" else "Ambient glow off",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    fun setQualityMode(mode: String) {
+        val m = when (mode) {
+            "high", "saver", "audio" -> mode
+            else -> "auto"
+        }
+        prefs.edit().putString("quality_mode", m).apply()
+        _state.update {
+            it.copy(
+                qualityMode = m,
+                playerSheet = if (it.playerSheet == PlayerSheet.Quality) PlayerSheet.None else it.playerSheet,
+                statusToast = "Quality · ${it.copy(qualityMode = m).qualityModeLabel()}",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    fun setShowDeviceFiles(on: Boolean) {
+        prefs.edit().putBoolean("show_device_files", on).apply()
+        _state.update { it.copy(showDeviceFiles = on) }
+        if (on) reloadLocalLibrary()
+    }
+
+    fun refreshCacheUsage() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dir = getApplication<Application>().cacheDir
+            var bytes = 0L
+            dir?.walkTopDown()?.forEach { f ->
+                if (f.isFile) bytes += f.length()
+            }
+            val mb = bytes / (1024.0 * 1024.0)
+            val label = if (mb < 1) "${bytes / 1024} KB used" else String.format("%.1f MB used", mb)
+            val frac = (mb / 512.0).toFloat().coerceIn(0.02f, 1f)
+            _state.update { it.copy(cacheUsageLabel = label, cacheUsageFraction = frac) }
+        }
+    }
+
+    fun clearArtworkCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val cache = getApplication<Application>().cacheDir
+            cache?.listFiles()?.forEach { f ->
+                if (f.isDirectory && (f.name.contains("image", true) || f.name.contains("share", true) || f.name.contains("art", true))) {
+                    f.deleteRecursively()
+                }
+                if (f.isFile && (f.extension in listOf("jpg", "png", "webp"))) f.delete()
+            }
+            refreshCacheUsage()
+            _state.update { it.copy(statusToast = "Cache cleared") }
+            clearStatusToastLater()
+        }
+    }
+
+    fun openNowPlayingTab() {
+        setPrimaryDest(PrimaryDest.Audio)
+        // Prefer video dest when current item is video
+        if (_state.value.localIsVideo) setPrimaryDest(PrimaryDest.Video)
     }
 
     /** Long-press: pin / clear preferred playback speed. */

@@ -39,6 +39,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -268,6 +269,15 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
             bottomBar = {
                 if (!carMode) {
                     Column(Modifier.fillMaxWidth()) {
+                        MiniPlayerBar(
+                            state = state,
+                            onPlayPause = {
+                                if (state.activeOutput.startsWith("Desktop")) vm.remotePlayPause()
+                                else vm.localPlayPause()
+                            },
+                            onOpenNowPlaying = vm::openNowPlayingTab,
+                            onOpenSettings = { vm.openPlayerSheet(PlayerSheet.Settings) },
+                        )
                         // Phone / short panel: primary destinations above transport (tablet uses left rail).
                         if (panelCompact || !wide) {
                             PrimaryDestBar(
@@ -426,6 +436,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                                     onSeekLocal = vm::seekLocal,
                                     onSetVolume = vm::setLocalVolume,
                                     onEnterPip = enterPip,
+                                    onOpenPlayerSettings = { vm.openPlayerSheet(PlayerSheet.Settings) },
+                                    onOpenCaptions = { vm.openPlayerSheet(PlayerSheet.Captions) },
                                     onOpenFile = { openDoc.launch(arrayOf("audio/*", "video/*")) },
                                     onRequestPerm = {
                                         val perms = if (Build.VERSION.SDK_INT >= 33) {
@@ -512,6 +524,40 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
             }
         }
     }
+
+    ModernPlayerSheets(
+        state = state,
+        onDismiss = vm::dismissPlayerSheet,
+        onOpenSheet = vm::openPlayerSheet,
+        onSpeed = vm::setPlaybackSpeed,
+        onNudgeSpeed = vm::nudgePlaybackSpeed,
+        onCaptionsOff = { vm.setCaptionsMode(CaptionsMode.Off) },
+        onCaptionsLyrics = { vm.setCaptionsMode(CaptionsMode.Lyrics) },
+        onShowWhenMuted = vm::setCaptionsShowWhenMuted,
+        onLoopVideo = vm::setLoopVideo,
+        onAmbient = vm::setAmbientMode,
+        onLockScreen = vm::setScreenLocked,
+        onOpenSleep = {
+            vm.dismissPlayerSheet()
+            vm.openNowPlayingTab()
+        },
+        onQualityMode = vm::setQualityMode,
+        onPlayNext = {
+            vm.localNext()
+            vm.dismissPlayerSheet()
+        },
+        onSavePlaylist = {
+            vm.dismissPlayerSheet()
+        },
+        onShare = {
+            vm.shareNowPlayingCard(context)
+            vm.dismissPlayerSheet()
+        },
+        onAddQueue = { vm.dismissPlayerSheet() },
+        onOpenStorage = { vm.openPlayerSheet(PlayerSheet.Storage) },
+        onClearCache = vm::clearArtworkCache,
+        onShowDeviceFiles = vm::setShowDeviceFiles,
+    )
 
     if (state.connectOpen) {
         ModalBottomSheet(
@@ -1020,6 +1066,8 @@ private fun LocalLibraryPane(
     onSeekLocal: (Long) -> Unit,
     onSetVolume: (Int) -> Unit,
     onEnterPip: () -> Unit,
+    onOpenPlayerSettings: () -> Unit,
+    onOpenCaptions: () -> Unit,
     onOpenFile: () -> Unit,
     onRequestPerm: () -> Unit,
 ) {
@@ -1040,32 +1088,86 @@ private fun LocalLibraryPane(
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        if (player != null && state.localIsVideo && (state.localPlaying || state.localTitle != "(nothing loaded)")) {
-            VideoGestureSurface(
-                positionMs = state.localPositionMs,
-                durationMs = state.localDurationMs,
-                volumePercent = state.localVolume,
-                onSeek = onSeekLocal,
-                onVolumePercent = onSetVolume,
-                modifier = Modifier
+        if (player != null && state.localIsVideo && state.qualityMode != "audio" &&
+            (state.localPlaying || state.localTitle != "(nothing loaded)")
+        ) {
+            Box(
+                Modifier
                     .fillMaxWidth()
                     .aspectRatio(if (wide) 21f / 9f else 16f / 9f)
                     .clip(VoxShapes.art)
-                    .background(androidx.compose.ui.graphics.Color.Black),
+                    .background(
+                        if (state.ambientMode && state.qualityMode != "saver") {
+                            VoxColors.AccentSoft
+                        } else {
+                            androidx.compose.ui.graphics.Color.Black
+                        },
+                    ),
             ) {
-                AndroidView(
-                    factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            this.player = player
-                            useController = false
-                        }
-                    },
-                    update = { it.player = player },
-                    modifier = Modifier.fillMaxSize(),
+                if (!state.screenLocked) {
+                    VideoGestureSurface(
+                        positionMs = state.localPositionMs,
+                        durationMs = state.localDurationMs,
+                        volumePercent = state.localVolume,
+                        onSeek = onSeekLocal,
+                        onVolumePercent = onSetVolume,
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        AndroidView(
+                            factory = { ctx ->
+                                PlayerView(ctx).apply {
+                                    this.player = player
+                                    useController = false
+                                }
+                            },
+                            update = { it.player = player },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                } else {
+                    AndroidView(
+                        factory = { ctx ->
+                            PlayerView(ctx).apply {
+                                this.player = player
+                                useController = false
+                            }
+                        },
+                        update = { it.player = player },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                VideoTopChrome(
+                    captionsOn = state.captionsMode != CaptionsMode.Off,
+                    onCaptions = onOpenCaptions,
+                    onSettings = onOpenPlayerSettings,
+                    locked = state.screenLocked,
                 )
+                if (state.captionsMode == CaptionsMode.Lyrics &&
+                    state.lyricsLines.isNotEmpty() &&
+                    (state.localVolume > 0 || state.captionsShowWhenMuted)
+                ) {
+                    val line = state.lyricsLines.getOrNull(state.lyricsActiveIndex.coerceAtLeast(0))
+                        ?: state.lyricsLines.firstOrNull().orEmpty()
+                    if (line.isNotBlank()) {
+                        Text(
+                            line,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(12.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.65f))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            color = VoxColors.Text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
+            Spacer(Modifier.height(8.dp))
+            QuietButton("Player settings", onOpenPlayerSettings, Modifier.fillMaxWidth())
             if (state.pipAvailable) {
-                Spacer(Modifier.height(8.dp))
                 QuietButton("Picture-in-picture", onEnterPip, Modifier.fillMaxWidth())
             }
             Spacer(Modifier.height(12.dp))
@@ -4112,6 +4214,21 @@ private fun DesktopRemotePane(state: PlayerUiState, vm: PlayerViewModel, wide: B
         if (state.syncMessage.isNotBlank()) {
             Text(state.syncMessage, style = MaterialTheme.typography.bodySmall)
         }
+        QuietButton(
+            "Player settings",
+            { vm.openPlayerSheet(PlayerSheet.Settings) },
+            Modifier.fillMaxWidth(),
+        )
+        QuietButton(
+            "Playback speed",
+            { vm.openPlayerSheet(PlayerSheet.Speed) },
+            Modifier.fillMaxWidth(),
+        )
+        QuietButton(
+            "Downloads and storage",
+            { vm.openPlayerSheet(PlayerSheet.Storage) },
+            Modifier.fillMaxWidth(),
+        )
         QuietButton(
             if (showCodecMatrix) "Hide codec matrix" else "Codec fixture matrix",
             { showCodecMatrix = !showCodecMatrix },

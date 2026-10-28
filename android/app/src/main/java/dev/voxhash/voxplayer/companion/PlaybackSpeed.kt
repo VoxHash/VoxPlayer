@@ -5,21 +5,25 @@ import android.os.Bundle
 import androidx.media3.common.Player
 import androidx.media3.session.SessionCommand
 import kotlin.math.abs
+import kotlin.math.round
 
 /**
- * On-device playback rate for podcasts / spoken word (Media3
- * [Player.setPlaybackSpeed]). Pitch stays natural (default Media3 behavior).
- * No cloud / no proprietary audio SDK.
- * Optional sticky preferred rate (long-press) restores on cold start / reapply.
+ * On-device playback rate (Media3 [Player.setPlaybackSpeed]).
+ * Continuous 0.25×–3.00× with streaming-style presets; FOSS, no premium gate.
  */
 object PlaybackSpeed {
     const val PREFS = "voxplayer_playback_speed"
     const val KEY_SPEED = "speed"
     const val KEY_PREFERRED = "preferred_speed"
     const val DEFAULT = 1.0f
+    const val MIN = 0.25f
+    const val MAX = 3.0f
     private const val NO_PREFERRED = -1f
 
-    /** Common spoken-word / music rates. */
+    /** Chip presets (slider can land anywhere in MIN..MAX). */
+    val PRESETS: List<Float> = listOf(1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
+
+    /** Legacy option list for older UI chips. */
     val OPTIONS: List<Pair<Float, String>> = listOf(
         0.75f to "0.75×",
         1.0f to "1×",
@@ -27,6 +31,7 @@ object PlaybackSpeed {
         1.5f to "1.5×",
         1.75f to "1.75×",
         2.0f to "2×",
+        3.0f to "3×",
     )
 
     const val ACTION_SET = "dev.voxhash.voxplayer.SET_PLAYBACK_SPEED"
@@ -72,19 +77,26 @@ object PlaybackSpeed {
             .apply()
     }
 
-    /** Preferred pin if set, else last selected speed. */
     fun loadBoot(context: Context): Float =
         loadPreferred(context) ?: load(context)
 
     fun normalize(speed: Float): Float {
-        if (OPTIONS.any { abs(it.first - speed) < 0.001f }) {
-            return OPTIONS.first { abs(it.first - speed) < 0.001f }.first
+        val clamped = speed.coerceIn(MIN, MAX)
+        // Snap very close to known presets for stable labels
+        PRESETS.forEach { p ->
+            if (abs(clamped - p) < 0.02f) return p
         }
-        return OPTIONS.minBy { abs(it.first - speed) }.first
+        OPTIONS.forEach { (v, _) ->
+            if (abs(clamped - v) < 0.02f) return v
+        }
+        return (round(clamped * 20f) / 20f).coerceIn(MIN, MAX)
     }
 
-    fun label(speed: Float): String =
-        OPTIONS.firstOrNull { abs(it.first - normalize(speed)) < 0.001f }?.second ?: "1×"
+    fun label(speed: Float): String {
+        val s = normalize(speed)
+        OPTIONS.firstOrNull { abs(it.first - s) < 0.001f }?.let { return it.second }
+        return String.format("%.2f×", s)
+    }
 
     fun isSame(a: Float, b: Float): Boolean = abs(normalize(a) - normalize(b)) < 0.001f
 

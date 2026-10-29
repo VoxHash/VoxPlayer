@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Static FOSS project website (ROADMAP #91)
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.114.1] - 2026-10-28
+
+### Fixed
+- Quest / Horizon: video notification artwork no longer feeds a raw video `content://` into Media3 BitmapLoader (ParserException spam); embed JPEG `artworkData` only for video thumbs
+- Player settings Speed section matches Playback speed sheet (slider +/−, no preset chips) on Quest panel lean + phone
+
+### Added
+- Quest panel e2e intent extras: `share`, `speed`, `open_connect`, `bookmark` (offline paths)
+
 ## [1.114.0] - 2026-10-28
 
 ### Added

@@ -590,8 +590,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             .apply {
                 if (item.album.isNotBlank()) setAlbumTitle(item.album)
                 if (item.durationMs > 0L) setDurationMs(item.durationMs)
-                // Album art or video frame URI — Media3 notification BitmapLoader (offline).
-                setArtworkUri(item.artworkContentUri())
+                // Audio album-art URI only — BitmapLoader cannot decode a video content:// as an
+                // image (Quest/Horizon spam). Video thumbs come from enrichNotificationArtwork
+                // (JPEG artworkData, offline MediaStore thumb / MediaMetadataRetriever).
+                if (!item.isVideo) setArtworkUri(item.artworkContentUri())
                 setMediaType(
                     if (item.isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
                     else MediaMetadata.MEDIA_TYPE_MUSIC,
@@ -621,13 +623,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             if (controller.currentMediaItemIndex != idx) return@launch
             val cur = controller.currentMediaItem ?: return@launch
             if (cur.mediaMetadata.artworkData != null) return@launch
+            val isVideo = cur.mediaMetadata.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO
             val md = cur.mediaMetadata.buildUpon()
                 .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                .setArtworkUri(artUri)
+                // Keep album-art URI for audio; omit video URI so BitmapLoader does not parse MP4.
+                .apply {
+                    if (isVideo) setArtworkUri(null) else setArtworkUri(artUri)
+                }
                 .build()
             val updated = cur.buildUpon().setMediaMetadata(md).build()
             try {
                 controller.replaceMediaItem(idx, updated)
+                Log.i(TAG, "enrichNotificationArtwork ok bytes=${bytes.size} video=$isVideo")
             } catch (e: Exception) {
                 Log.w(TAG, "enrichNotificationArtwork failed", e)
             }
@@ -707,7 +714,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     .apply {
                         if (album.isNotBlank()) setAlbumTitle(album)
                         if (durationMs > 0L) setDurationMs(durationMs)
-                        setArtworkUri(uri)
+                        // Do not point BitmapLoader at a video content:// — enrich embeds JPEG instead.
+                        if (!isVideo) setArtworkUri(uri)
                         setMediaType(
                             if (isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
                             else MediaMetadata.MEDIA_TYPE_MUSIC,

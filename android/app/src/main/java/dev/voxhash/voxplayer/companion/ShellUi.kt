@@ -47,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Bookmark
@@ -2554,6 +2555,7 @@ private fun MediaCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NowPlayingPane(
     state: PlayerUiState,
@@ -2985,7 +2987,7 @@ private fun NowPlayingPane(
             )
             Text(
                 buildString {
-                    append("Tap to apply · long-press pin preferred. Now ")
+                    append("Slider or +/− · long-press label to pin preferred. Now ")
                     append(PlaybackSpeed.label(state.playbackSpeed))
                     if (!state.playbackSpeedPreferred.isNaN()) {
                         append(" · Preferred ")
@@ -2995,23 +2997,53 @@ private fun NowPlayingPane(
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
             )
-            PlaybackSpeed.OPTIONS.chunked(3).forEach { row ->
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    row.forEach { (speed, label) ->
-                        SpeedPresetChip(
-                            label = label,
-                            selected = PlaybackSpeed.isSame(state.playbackSpeed, speed),
-                            preferred = !state.playbackSpeedPreferred.isNaN() &&
-                                PlaybackSpeed.isSame(state.playbackSpeedPreferred, speed),
-                            onSelect = { onPlaybackSpeed(speed) },
-                            onPin = { onPinPlaybackSpeed(speed) },
-                            modifier = Modifier.weight(1f),
+            // Match PlaybackSpeedSheet / Pixel 1.114.0 — no preset chips (Quest panel + phone).
+            Text(
+                PlaybackSpeed.label(state.playbackSpeed),
+                style = MaterialTheme.typography.headlineSmall,
+                color = VoxColors.Text,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = { onPinPlaybackSpeed(state.playbackSpeed) },
+                    ),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                IconButton(
+                    onClick = {
+                        onPlaybackSpeed(
+                            (state.playbackSpeed - 0.05f).coerceIn(PlaybackSpeed.MIN, PlaybackSpeed.MAX),
                         )
-                    }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    },
+                ) {
+                    Icon(Icons.Default.Remove, contentDescription = "Slower", tint = VoxColors.Text)
+                }
+                Slider(
+                    value = state.playbackSpeed.coerceIn(PlaybackSpeed.MIN, PlaybackSpeed.MAX),
+                    onValueChange = onPlaybackSpeed,
+                    valueRange = PlaybackSpeed.MIN..PlaybackSpeed.MAX,
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = VoxColors.Text,
+                        activeTrackColor = VoxColors.Text,
+                        inactiveTrackColor = VoxColors.BorderSoft,
+                    ),
+                )
+                IconButton(
+                    onClick = {
+                        onPlaybackSpeed(
+                            (state.playbackSpeed + 0.05f).coerceIn(PlaybackSpeed.MIN, PlaybackSpeed.MAX),
+                        )
+                    },
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Faster", tint = VoxColors.Text)
                 }
             }
             Text("DLNA cast", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)

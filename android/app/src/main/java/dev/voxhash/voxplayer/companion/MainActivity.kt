@@ -270,6 +270,36 @@ class MainActivity : ComponentActivity() {
                 vm.seekLocal(ms)
             }
         }
+        // Quest / panel e2e hooks (same offline paths as Pixel chrome).
+        if (extras.getBoolean("share", false) ||
+            extras.getString("share").equals("1", true) ||
+            extras.getString("share").equals("true", true)
+        ) {
+            android.util.Log.i("VoxPlayerBT", "share=now_playing_card")
+            vm.shareNowPlayingCard(this)
+        }
+        if (extras.containsKey("speed")) {
+            val raw = extras.getFloat("speed", Float.NaN).takeUnless { it.isNaN() }
+                ?: extras.getString("speed")?.toFloatOrNull()
+            if (raw != null) {
+                android.util.Log.i("VoxPlayerBT", "speed=$raw")
+                vm.setPlaybackSpeed(raw)
+            }
+        }
+        if (extras.getBoolean("open_connect", false) ||
+            extras.getString("open_connect").equals("1", true) ||
+            extras.getString("open_connect").equals("true", true)
+        ) {
+            android.util.Log.i("VoxPlayerBT", "open_connect")
+            vm.openConnect(true)
+        }
+        if (extras.getBoolean("bookmark", false) ||
+            extras.getString("bookmark").equals("1", true) ||
+            extras.getString("bookmark").equals("true", true)
+        ) {
+            android.util.Log.i("VoxPlayerBT", "bookmark")
+            vm.bookmarkNow()
+        }
     }
 
     private fun handleViewIntent(intent: Intent?) {

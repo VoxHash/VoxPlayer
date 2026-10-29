@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.110.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets + Quest panel-lean shell. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
+Status as of October 2026 (**v1.111.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets + Quest panel-lean shell + seek audio guard. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
 
 ## Shipped in 1.3.0
 
@@ -199,6 +199,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 84. **Immersive Now Playing stage + Media3 opsec**: Full-screen stage (art-dominant, headphones/video toggle, pill actions, circular transport, up-next grabber); TextureView surfaces + lean DefaultLoadControl on Quest/low-RAM; desktop Now Playing pill expand/minimize; Kotlin/Media3 stack aligned with modern Android players (**Done 1.108.0** — `NowPlayingStage.kt`, `PlayerSurfaces.kt`; Pixel + Quest install e2e; desktop shell smoke)
 85. **Shell declutter (Home / rail / menu)**: Phone bottom-nav XOR tablet rail (never both); drop duplicate transport on phone; slim header + Connect; theme moved to More; remove redundant home filter chips (**Done 1.109.0** — Pixel e2e)
 86. **Quest panel Home / sidebar / menu**: Content-first lean shell on multi-window wide panels (labeled rail + mini only); restore Home dest + facets; accurate dest selection; slim More when unpaired (**Done 1.110.0** — Quest 3 e2e intents + activity state; REA: on-device 2D panel streaming layout)
+87. **Quest seek / next / prev hiss**: Mute + release audio effects across seek discontinuities; re-apply on READY; non-spatial media attributes on Quest-like devices; scrub seeks on gesture release only (**Done 1.111.0** — Quest 3 playback e2e)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

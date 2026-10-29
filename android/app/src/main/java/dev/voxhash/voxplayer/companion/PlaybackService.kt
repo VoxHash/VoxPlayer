@@ -12,8 +12,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.annotation.OptIn
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -53,6 +51,8 @@ class PlaybackService : MediaSessionService() {
     private var fadeMs: Long = CrossfadeControl.DEFAULT_FADE_MS
     private var playbackSpeed: Float = PlaybackSpeed.DEFAULT
     private val crossfadeApplier = CrossfadeApplier()
+    /** After seek/next/prev: effects released + muted until STATE_READY re-chains. */
+    private var seekEffectsPending: Boolean = false
     private var audioManager: AudioManager? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val sleepTick = object : Runnable {
@@ -108,6 +108,7 @@ class PlaybackService : MediaSessionService() {
             persistQueue()
             notifyWidget()
             // Soft fade-in on auto / repeat advances — reduces clicks across mixed codecs.
+            // Never fade on SEEK transitions (next/prev) — that fights seek mute recovery.
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
             ) {
@@ -120,6 +121,22 @@ class PlaybackService : MediaSessionService() {
                     volumeMuted,
                     fadeMs,
                 )
+            } else if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
+                onSeekDiscontinuity("media_item_seek")
+            }
+        }
+
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            when (reason) {
+                Player.DISCONTINUITY_REASON_SEEK,
+                Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT,
+                Player.DISCONTINUITY_REASON_SKIP,
+                -> onSeekDiscontinuity("discontinuity_$reason")
+                else -> Unit
             }
         }
 
@@ -127,7 +144,15 @@ class PlaybackService : MediaSessionService() {
             if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
                 persistQueue()
             }
-            applyAudioChain()
+            // Re-chain only when the track is ready — applying EQ/Loudness during BUFFERING
+            // after seek on Quest HAS leaves a stuck hiss on the old audio session.
+            if (playbackState == Player.STATE_READY) {
+                if (seekEffectsPending) {
+                    seekEffectsPending = false
+                    Log.i(TAG, "seek recovery — re-apply audio chain")
+                }
+                applyAudioChain()
+            }
         }
     }
 
@@ -336,16 +361,16 @@ class PlaybackService : MediaSessionService() {
         val player = ExoPlayer.Builder(this)
             .applyVoxLoadControl(this)
             .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                    .build(),
+                DeviceAudio.mediaAttributes(),
                 /* handleAudioFocus = */ true,
             )
             .setHandleAudioBecomingNoisy(true)
             .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
             .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
             .build()
+        if (DeviceAudio.isQuestLike()) {
+            Log.i(TAG, "Quest-like device — non-spatial media attributes + seek audio guard")
+        }
         player.repeatMode = Player.REPEAT_MODE_OFF
         player.skipSilenceEnabled = skipSilence
         PlaybackSpeed.apply(player, playbackSpeed)
@@ -493,6 +518,21 @@ class PlaybackService : MediaSessionService() {
         player.skipSilenceEnabled = skipSilence
     }
 
+    /**
+     * Seek / skip / ±15s: mute + drop AudioEffects until STATE_READY.
+     * Quest HAS deep-buffer + spatialize otherwise keeps a continuous noise after
+     * LoudnessEnhancer/Equalizer remain attached across AudioTrack rebuilds.
+     */
+    private fun onSeekDiscontinuity(from: String) {
+        crossfadeApplier.cancel()
+        val player = mediaSession?.player ?: return
+        player.volume = 0f
+        volumeApplier.release()
+        equalizerApplier.release()
+        seekEffectsPending = true
+        Log.i(TAG, "seek audio guard ($from) — muted, effects released")
+    }
+
     /** When sticky pin matches a live sink, restore preferred id (device ids churn). */
     private fun restorePinnedPreferredIfPresent() {
         val resolved = AudioRoute.resolvePreferredId(this, preferredDeviceId)
@@ -533,7 +573,13 @@ class PlaybackService : MediaSessionService() {
             preferredDeviceId = AudioRoute.DEFAULT_DEVICE_ID
             AudioRoute.savePreferredId(this, preferredDeviceId)
         }
-        // Don't stomp an in-progress soft fade-in / sleep fade.
+        // Don't stomp an in-progress soft fade-in / sleep fade / seek mute.
+        if (seekEffectsPending) {
+            player.volume = 0f
+            routeApplier.apply(player, preferredDeviceId)
+            applySkipSilence()
+            return
+        }
         if (!crossfadeApplier.isActive() && sleepEndEpochMs <= 0L) {
             volumeApplier.apply(player, volumePercent, volumeMuted)
         } else if (!crossfadeApplier.isActive()) {

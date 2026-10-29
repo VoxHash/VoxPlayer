@@ -113,8 +113,10 @@ fun VideoGestureSurface(
                                     val spanMs = maxOf(60_000L, (dur * 0.25f).toLong())
                                     val delta = (accumX / size.width.toFloat()) * spanMs
                                     val target = (startPosMs + delta.toLong()).coerceIn(0L, dur)
+                                    // Preview only while dragging — seek on release.
+                                    // Per-frame seekTo floods Quest HAS deep-buffer / spatialize
+                                    // and can leave a continuous hiss after scrubbing.
                                     hud = "Seek  ${fmtGestureMs(target)} / ${fmtGestureMs(dur)}"
-                                    onSeekState.value(target)
                                 }
                                 VideoGestureKind.Volume -> {
                                     // Full height ≈ ±100 volume points.
@@ -133,6 +135,15 @@ fun VideoGestureSurface(
                             }
                         },
                         onDragEnd = {
+                            if (kind == VideoGestureKind.Seek) {
+                                val dur = durationState.value.coerceAtLeast(0L)
+                                if (dur > 0L) {
+                                    val spanMs = maxOf(60_000L, (dur * 0.25f).toLong())
+                                    val delta = (accumX / size.width.toFloat()) * spanMs
+                                    val target = (startPosMs + delta.toLong()).coerceIn(0L, dur)
+                                    onSeekState.value(target)
+                                }
+                            }
                             kind = VideoGestureKind.None
                             hud = null
                         },

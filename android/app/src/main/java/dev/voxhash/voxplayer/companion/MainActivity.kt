@@ -234,6 +234,37 @@ class MainActivity : ComponentActivity() {
                 vm.setPrimaryDest(mapped)
             }
         }
+        val transport = extras.getString("transport").orEmpty().lowercase()
+        when (transport) {
+            "next" -> {
+                android.util.Log.i("VoxPlayerBT", "transport=next")
+                vm.localNext()
+            }
+            "prev", "previous" -> {
+                android.util.Log.i("VoxPlayerBT", "transport=prev")
+                vm.localPrev()
+            }
+            "play_pause", "playpause" -> {
+                android.util.Log.i("VoxPlayerBT", "transport=play_pause")
+                vm.localPlayPause()
+            }
+            "seek_fwd", "forward" -> {
+                android.util.Log.i("VoxPlayerBT", "transport=seek_fwd")
+                vm.seekLocal(vm.state.value.localPositionMs + 15_000L)
+            }
+            "seek_back", "back" -> {
+                android.util.Log.i("VoxPlayerBT", "transport=seek_back")
+                vm.seekLocal((vm.state.value.localPositionMs - 15_000L).coerceAtLeast(0L))
+            }
+        }
+        if (extras.containsKey("seek_ms")) {
+            val ms = extras.getLong("seek_ms", -1L).takeIf { it >= 0L }
+                ?: extras.getInt("seek_ms", -1).toLong().takeIf { it >= 0L }
+            if (ms != null) {
+                android.util.Log.i("VoxPlayerBT", "seek_ms=$ms")
+                vm.seekLocal(ms)
+            }
+        }
     }
 
     private fun handleViewIntent(intent: Intent?) {

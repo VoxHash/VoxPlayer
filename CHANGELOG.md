@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.111.0] - 2026-10-28
+
+### Fixed
+- Android / Quest: continuous hiss after seek / next / previous — mute + release LoudnessEnhancer/Equalizer across seek discontinuities, re-chain only on `STATE_READY`; disable volumetric spatialize on Quest-like devices; scrub gestures seek once on release (not every drag frame)
+
+### Added
+- `DeviceAudio` Quest detection + non-spatial media attributes; `transport` / `seek_ms` intent extras for panel e2e
+
 ## [1.110.0] - 2026-10-27
 
 ### Changed

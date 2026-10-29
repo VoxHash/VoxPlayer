@@ -49,6 +49,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Devices
@@ -56,10 +58,12 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Forward5
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
@@ -70,11 +74,15 @@ import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
@@ -237,8 +245,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         ) {
             if (player != null && state.localIsVideo) {
                 AndroidView(
-                    factory = { ctx -> PlayerSurfaces.attachPlayerView(ctx, player) },
-                    update = { it.player = player },
+                    factory = { ctx -> PlayerSurfaces.attachPlayerHost(ctx, player) },
+                    update = { host -> host.bind(player) },
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -273,8 +281,9 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
             maxWidth > maxHeight * 1.15f
         val foldPad = if (windowLayout.foldSeparating) 28.dp else 0.dp
         // Phone: bottom nav only. Tablet/wide: left rail only. Never both (FOSS player pattern).
+        // Compact panel chrome already hosts destinations — don't stack a second bottom bar.
         val useRail = wide && !panelCompact
-        val useBottomDest = !useRail && !carMode
+        val useBottomDest = !useRail && !carMode && !panelCompact
         val showShellHeader = !carMode && !panelCompact && !panelLean && !useRail
         val showSideNowPlaying = wide && !carMode && !panelCompact && !panelLean
         val showTransportBar = useRail && !panelLean
@@ -604,7 +613,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                     vm.openAddToListFromQueueRow(row)
                 }
             },
-            onCast = vm::castNowPlayingToDlna,
+            onCast = vm::castFromNowPlaying,
+            onBookmark = vm::bookmarkNow,
             onOpenQueue = {
                 vm.dismissNowPlayingStage()
                 if (state.localIsVideo) vm.setPrimaryDest(PrimaryDest.Video)
@@ -1172,98 +1182,8 @@ private fun LocalLibraryPane(
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        // Inline video surface only while actively playing on the Video destination.
-        // Paused / idle use mini-player + Now Playing stage instead of a black hero.
-        if (state.localFilter == "video" &&
-            player != null && state.localIsVideo && state.qualityMode != "audio" &&
-            state.localPlaying
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(if (wide) 21f / 9f else 16f / 9f)
-                    .clip(VoxShapes.art)
-                    .background(
-                        if (state.ambientMode && state.qualityMode != "saver") {
-                            VoxColors.AccentSoft
-                        } else {
-                            androidx.compose.ui.graphics.Color.Black
-                        },
-                    ),
-            ) {
-                if (!state.screenLocked) {
-                    VideoGestureSurface(
-                        positionMs = state.localPositionMs,
-                        durationMs = state.localDurationMs,
-                        volumePercent = state.localVolume,
-                        onSeek = onSeekLocal,
-                        onVolumePercent = onSetVolume,
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        AndroidView(
-                            factory = { ctx ->
-                                PlayerSurfaces.attachPlayerView(ctx, player)
-                            },
-                            update = { it.player = player },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                } else {
-                    AndroidView(
-                        factory = { ctx ->
-                            PlayerSurfaces.attachPlayerView(ctx, player)
-                        },
-                        update = { it.player = player },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                VideoTopChrome(
-                    captionsOn = state.captionsMode != CaptionsMode.Off,
-                    onCaptions = onOpenCaptions,
-                    onSettings = onOpenPlayerSettings,
-                    locked = state.screenLocked,
-                )
-                if (state.captionsMode == CaptionsMode.Lyrics &&
-                    state.lyricsLines.isNotEmpty() &&
-                    (state.localVolume > 0 || state.captionsShowWhenMuted)
-                ) {
-                    val line = state.lyricsLines.getOrNull(state.lyricsActiveIndex.coerceAtLeast(0))
-                        ?: state.lyricsLines.firstOrNull().orEmpty()
-                    if (line.isNotBlank()) {
-                        Text(
-                            line,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(12.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.65f))
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            color = VoxColors.Text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-
-        // Open file lives on the rail when present; phone keeps a single Open affordance.
-        if (!railChrome &&
-            (state.localFilter == "video" || state.localFilter == "audio" ||
-                state.localFilter == "all" || state.localFilter == "recent" ||
-                state.localFilter == "top" || state.localFilter == "week" ||
-                state.localFilter == "month")
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                QuietButton("Open", onOpenFile)
-            }
-        }
+        // Video / Audio / Home: library-first — playback lives in mini-player + Now Playing stage
+        // (no inline hero surface or redundant Open row; Open file stays on Browse / rail).
 
         if (state.localFilter == "browse") {
             BrowsePane(
@@ -2662,15 +2582,19 @@ private fun NowPlayingPane(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text("Now playing", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
+        val sideVideo = player != null && !desktop && state.localIsVideo && title != "(nothing loaded)"
         Box(
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                .then(
+                    if (sideVideo) Modifier.aspectRatio(16f / 9f)
+                    else Modifier.aspectRatio(1f),
+                )
                 .clip(VoxShapes.panel)
                 .background(VoxColors.BgElevated),
             contentAlignment = Alignment.Center,
         ) {
-            if (player != null && !desktop && state.localIsVideo && title != "(nothing loaded)") {
+            if (sideVideo) {
                 VideoGestureSurface(
                     positionMs = state.localPositionMs,
                     durationMs = state.localDurationMs,
@@ -2680,10 +2604,8 @@ private fun NowPlayingPane(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     AndroidView(
-                        factory = { ctx ->
-                            PlayerSurfaces.attachPlayerView(ctx, player)
-                        },
-                        update = { it.player = player },
+                        factory = { ctx -> PlayerSurfaces.attachPlayerHost(ctx, player) },
+                        update = { host -> host.bind(player) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -4264,153 +4186,305 @@ private fun DesktopRemotePane(state: PlayerUiState, vm: PlayerViewModel, wide: B
     }
     var showCodecMatrix by remember { mutableStateOf(false) }
     val codecReport = remember { CodecFixtureMatrix.probe() }
-    Column(
+    LazyColumn(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp)
-            .padding(top = 8.dp),
+            .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
     ) {
-        Text("More", style = MaterialTheme.typography.titleLarge, color = VoxColors.Accent)
-        Text(
-            if (state.remoteConnected) {
-                "Desktop · $linkLabel · v${state.remoteVersion.ifBlank { "?" }}"
-            } else {
-                "Desktop remote · tap Link on the rail (or Connect) to pair"
-            },
-            color = if (state.remoteConnected) VoxColors.Success else VoxColors.TextSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        item {
+            Text("More", style = MaterialTheme.typography.titleLarge, color = VoxColors.Accent)
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Devices,
+                title = if (state.remoteConnected) {
+                    "Desktop · $linkLabel"
+                } else {
+                    "Connect desktop"
+                },
+                subtitle = if (state.remoteConnected) {
+                    "v${state.remoteVersion.ifBlank { "?" }} · ${state.remoteTitle.ifBlank { "idle" }}"
+                } else {
+                    "Pair Wi‑Fi or Bluetooth — no cloud"
+                },
+                accent = state.remoteConnected,
+                onClick = { vm.openConnect(true) },
+            )
+        }
         if (state.remoteConnected) {
-            Text(
-                state.remoteTitle,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                "${state.remotePositionLabel} · vol ${state.remoteVolume}%",
-                style = MaterialTheme.typography.bodySmall,
-                color = VoxColors.TextMuted,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                AccentButton("Prev", vm::remotePrev, Modifier.weight(1f))
-                AccentButton(if (state.remotePlaying) "Pause" else "Play", vm::remotePlayPause, Modifier.weight(1f))
-                AccentButton("Next", vm::remoteNext, Modifier.weight(1f))
+            item {
+                Text(
+                    "${state.remotePositionLabel} · vol ${state.remoteVolume}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.TextMuted,
+                )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                QuietButton("Stop", vm::remoteStop, Modifier.weight(1f))
-                QuietButton("−5s", vm::remoteSeekBack, Modifier.weight(1f))
-                QuietButton("+5s", vm::remoteSeekFwd, Modifier.weight(1f))
-                QuietButton("Vol −", vm::remoteVolDown, Modifier.weight(1f))
-                QuietButton("Vol +", vm::remoteVolUp, Modifier.weight(1f))
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MoreIconChip(Icons.Default.SkipPrevious, "Prev", vm::remotePrev, Modifier.weight(1f))
+                    MoreIconChip(
+                        if (state.remotePlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        if (state.remotePlaying) "Pause" else "Play",
+                        vm::remotePlayPause,
+                        Modifier.weight(1f),
+                        filled = true,
+                    )
+                    MoreIconChip(Icons.Default.SkipNext, "Next", vm::remoteNext, Modifier.weight(1f))
+                }
             }
-            AccentButton(
-                if (state.syncBusy) "Syncing…" else "Sync playlists & podcasts",
-                vm::syncFromDesktop,
-                Modifier.fillMaxWidth(),
-                enabled = !state.syncBusy,
-            )
-        } else {
-            AccentButton("Connect desktop", { vm.openConnect(true) }, Modifier.fillMaxWidth())
-        }
-        if (state.syncMessage.isNotBlank()) {
-            Text(state.syncMessage, style = MaterialTheme.typography.bodySmall)
-        }
-        Text("Appearance", style = MaterialTheme.typography.titleSmall, color = VoxColors.Accent)
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            listOf(
-                ThemeMode.Dark to "Dark",
-                ThemeMode.Light to "Light",
-                ThemeMode.System to "System",
-            ).forEach { (mode, label) ->
-                ThemeModeChip(
-                    label = label,
-                    selected = state.themeMode == mode,
-                    preferred = state.themePreferred == mode,
-                    onSelect = { vm.setThemeMode(mode) },
-                    onPin = { vm.setPreferredThemeMode(mode) },
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MoreIconChip(Icons.Default.Stop, "Stop", vm::remoteStop, Modifier.weight(1f))
+                    MoreIconChip(Icons.Default.Replay, "−5s", vm::remoteSeekBack, Modifier.weight(1f))
+                    MoreIconChip(Icons.Default.Forward5, "+5s", vm::remoteSeekFwd, Modifier.weight(1f))
+                    MoreIconChip(Icons.Default.VolumeOff, "Vol −", vm::remoteVolDown, Modifier.weight(1f))
+                    MoreIconChip(Icons.Default.VolumeUp, "Vol +", vm::remoteVolUp, Modifier.weight(1f))
+                }
+            }
+            item {
+                MoreIconRow(
+                    icon = Icons.Default.Sync,
+                    title = if (state.syncBusy) "Syncing…" else "Sync playlists & podcasts",
+                    subtitle = state.syncMessage.ifBlank { "Pull from connected desktop" },
+                    onClick = vm::syncFromDesktop,
+                    enabled = !state.syncBusy,
                 )
             }
         }
-        Text("Player", style = MaterialTheme.typography.titleSmall, color = VoxColors.Accent)
-        QuietButton(
-            "Player settings",
-            { vm.openPlayerSheet(PlayerSheet.Settings) },
-            Modifier.fillMaxWidth(),
-        )
-        QuietButton(
-            "Playback speed",
-            { vm.openPlayerSheet(PlayerSheet.Speed) },
-            Modifier.fillMaxWidth(),
-        )
-        QuietButton(
-            "Downloads and storage",
-            { vm.openPlayerSheet(PlayerSheet.Storage) },
-            Modifier.fillMaxWidth(),
-        )
-        QuietButton(
-            if (showCodecMatrix) "Hide codec matrix" else "Codec fixture matrix",
-            { showCodecMatrix = !showCodecMatrix },
-            Modifier.fillMaxWidth(),
-        )
-
-        LazyColumn(
-            Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            contentPadding = PaddingValues(bottom = 12.dp),
-        ) {
-            if (showCodecMatrix) {
-                item {
-                    Text("On-device MediaCodec", style = MaterialTheme.typography.titleMedium, color = VoxColors.Accent)
-                }
-                item {
-                    Text(
-                        codecReport.asText(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = VoxColors.TextSecondary,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(VoxShapes.card)
-                            .background(VoxColors.BgElevated)
-                            .padding(10.dp),
+        item {
+            Text("Appearance", style = MaterialTheme.typography.titleSmall, color = VoxColors.Accent)
+        }
+        item {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                listOf(
+                    ThemeMode.Dark to "Dark",
+                    ThemeMode.Light to "Light",
+                    ThemeMode.System to "System",
+                ).forEach { (mode, label) ->
+                    ThemeModeChip(
+                        label = label,
+                        selected = state.themeMode == mode,
+                        preferred = state.themePreferred == mode,
+                        onSelect = { vm.setThemeMode(mode) },
+                        onPin = { vm.setPreferredThemeMode(mode) },
                     )
                 }
             }
-            if (state.syncedPlaylists.isNotEmpty()) {
-                item { Text("Synced playlists", style = MaterialTheme.typography.titleMedium) }
-                state.syncedPlaylists.forEach { pl ->
-                    item {
-                        Text("${pl.name} (${pl.items.size})", color = VoxColors.TextSecondary)
-                    }
-                    items(pl.items.take(if (wide) 60 else 30)) { item ->
-                        LibraryRow(item.title) { vm.remoteOpen(item.path) }
-                    }
-                }
+        }
+        item {
+            Text("Player", style = MaterialTheme.typography.titleSmall, color = VoxColors.Accent)
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Settings,
+                title = "Player settings",
+                subtitle = "Quality, captions, sleep, lock",
+                onClick = { vm.openPlayerSheet(PlayerSheet.Settings) },
+            )
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Speed,
+                title = "Playback speed",
+                subtitle = "0.25× – 3.0×",
+                onClick = { vm.openPlayerSheet(PlayerSheet.Speed) },
+            )
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Storage,
+                title = "Downloads and storage",
+                subtitle = "Cache and on-device files",
+                onClick = { vm.openPlayerSheet(PlayerSheet.Storage) },
+            )
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Cast,
+                title = if (state.dlnaEnabled) "Cast (DLNA)" else "Cast to TV",
+                subtitle = state.dlnaMessage.ifBlank {
+                    if (state.dlnaEnabled) "Scan LAN MediaRenderers" else "FOSS DLNA — no Google Cast"
+                },
+                accent = state.dlnaEnabled,
+                onClick = vm::castFromNowPlaying,
+            )
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Bookmark,
+                title = "Favorites",
+                subtitle = if (state.bookmarks.isEmpty()) {
+                    "Bookmark the current position"
+                } else {
+                    "${state.bookmarks.size} saved"
+                },
+                onClick = vm::bookmarkNow,
+            )
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Memory,
+                title = if (showCodecMatrix) "Hide codec matrix" else "Codec fixture matrix",
+                subtitle = "On-device MediaCodec probe",
+                onClick = { showCodecMatrix = !showCodecMatrix },
+            )
+        }
+        if (showCodecMatrix) {
+            item {
+                Text(
+                    codecReport.asText(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.TextSecondary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(VoxShapes.card)
+                        .background(VoxColors.BgElevated)
+                        .padding(10.dp),
+                )
             }
-            if (state.syncedFeeds.isNotEmpty()) {
-                item { Text("Synced podcasts", style = MaterialTheme.typography.titleMedium) }
-                state.syncedFeeds.forEach { feed ->
-                    item {
-                        Text("${feed.title} (${feed.episodes.size})", color = VoxColors.TextSecondary)
-                    }
-                    items(feed.episodes.take(20)) { ep ->
-                        LibraryRow(ep.title) { vm.playSyncedEpisode(ep) }
-                    }
+        }
+        if (state.syncedPlaylists.isNotEmpty()) {
+            item { Text("Synced playlists", style = MaterialTheme.typography.titleMedium) }
+            state.syncedPlaylists.forEach { pl ->
+                item {
+                    Text("${pl.name} (${pl.items.size})", color = VoxColors.TextSecondary)
                 }
-            }
-            if (state.remoteConnected && state.remoteLibrary.isNotEmpty()) {
-                item { Text("Desktop library", style = MaterialTheme.typography.titleMedium) }
-                items(state.remoteLibrary.take(if (wide) 120 else 60)) { item ->
+                items(pl.items.take(if (wide) 60 else 30)) { item ->
                     LibraryRow(item.title) { vm.remoteOpen(item.path) }
                 }
             }
         }
+        if (state.syncedFeeds.isNotEmpty()) {
+            item { Text("Synced podcasts", style = MaterialTheme.typography.titleMedium) }
+            state.syncedFeeds.forEach { feed ->
+                item {
+                    Text("${feed.title} (${feed.episodes.size})", color = VoxColors.TextSecondary)
+                }
+                items(feed.episodes.take(20)) { ep ->
+                    LibraryRow(ep.title) { vm.playSyncedEpisode(ep) }
+                }
+            }
+        }
+        if (state.remoteConnected && state.remoteLibrary.isNotEmpty()) {
+            item { Text("Desktop library", style = MaterialTheme.typography.titleMedium) }
+            items(state.remoteLibrary.take(if (wide) 120 else 60)) { item ->
+                LibraryRow(item.title) { vm.remoteOpen(item.path) }
+            }
+        }
+        if (state.dlnaEnabled && state.dlnaRenderers.isNotEmpty()) {
+            item {
+                Text("Cast targets", style = MaterialTheme.typography.titleSmall, color = VoxColors.Accent)
+            }
+            items(state.dlnaRenderers, key = { it.id }) { r ->
+                DlnaRendererRow(
+                    renderer = r,
+                    selected = state.dlnaSelectedId == r.id,
+                    isDefault = state.dlnaDefaultId == r.id,
+                    onSelect = { vm.selectDlnaRenderer(r.id) },
+                    onSetDefault = { vm.setDlnaDefaultRenderer(r.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoreIconRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    accent: Boolean = false,
+    enabled: Boolean = true,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(VoxShapes.card)
+            .background(if (accent) VoxColors.AccentSoft else VoxColors.BgElevated)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(if (accent) VoxColors.Accent.copy(alpha = 0.2f) else VoxColors.BgHover),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = title,
+                tint = if (accent) VoxColors.Accent else VoxColors.TextSecondary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (enabled) VoxColors.Text else VoxColors.TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = VoxColors.TextMuted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoreIconChip(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    filled: Boolean = false,
+) {
+    Column(
+        modifier
+            .clip(VoxShapes.pill)
+            .background(if (filled) VoxColors.Accent else VoxColors.BgElevated)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = if (filled) VoxColors.BgApp else VoxColors.Text,
+            modifier = Modifier.size(22.dp),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (filled) VoxColors.BgApp else VoxColors.TextSecondary,
+            maxLines = 1,
+        )
     }
 }
 

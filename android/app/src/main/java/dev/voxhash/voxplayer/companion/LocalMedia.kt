@@ -99,6 +99,7 @@ object LocalMediaStore {
         val projection = mutableListOf(
             MediaStore.Video.Media._ID,
             MediaStore.Video.Media.TITLE,
+            MediaStore.Video.Media.DISPLAY_NAME,
             MediaStore.Video.Media.DURATION,
         ).apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -119,6 +120,7 @@ object LocalMediaStore {
         )?.use { c ->
             val idCol = c.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val titleCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.TITLE)
+            val nameCol = c.getColumnIndex(MediaStore.Video.Media.DISPLAY_NAME)
             val artistCol = c.getColumnIndex(MediaStore.Video.Media.ARTIST)
             val albumCol = c.getColumnIndex(MediaStore.Video.Media.ALBUM)
             val durCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
@@ -129,11 +131,20 @@ object LocalMediaStore {
             }
             while (c.moveToNext() && out.size < limit) {
                 val id = c.getLong(idCol)
+                val rawTitle = c.getString(titleCol).orEmpty()
+                val displayName = if (nameCol >= 0) c.getString(nameCol).orEmpty() else ""
+                // Social downloads often store a numeric MediaStore TITLE; prefer file name.
+                val title = when {
+                    rawTitle.isNotBlank() && !rawTitle.all { it.isDigit() } -> rawTitle
+                    displayName.isNotBlank() -> displayName.substringBeforeLast('.').ifBlank { displayName }
+                    rawTitle.isNotBlank() -> rawTitle
+                    else -> "Video"
+                }
                 out.add(
                     LocalMediaItem(
                         id = id,
                         uri = ContentUris.withAppendedId(collection, id),
-                        title = c.getString(titleCol) ?: "Video",
+                        title = title,
                         artist = if (artistCol >= 0) {
                             c.getString(artistCol)?.takeIf { it.isNotBlank() && it != "<unknown>" } ?: ""
                         } else {

@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.111.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets + Quest panel-lean shell + seek audio guard. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
+Status as of October 2026 (**v1.112.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets + Quest panel-lean shell + seek audio guard + TextureView ZOOM fill. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
 
 ## Shipped in 1.3.0
 
@@ -200,6 +200,7 @@ A **separate Android app phase** (not a thin WebView wrapper):
 85. **Shell declutter (Home / rail / menu)**: Phone bottom-nav XOR tablet rail (never both); drop duplicate transport on phone; slim header + Connect; theme moved to More; remove redundant home filter chips (**Done 1.109.0** — Pixel e2e)
 86. **Quest panel Home / sidebar / menu**: Content-first lean shell on multi-window wide panels (labeled rail + mini only); restore Home dest + facets; accurate dest selection; slim More when unpaired (**Done 1.110.0** — Quest 3 e2e intents + activity state; REA: on-device 2D panel streaming layout)
 87. **Quest seek / next / prev hiss**: Mute + release audio effects across seek discontinuities; re-apply on READY; non-spatial media attributes on Quest-like devices; scrub seeks on gesture release only (**Done 1.111.0** — Quest 3 playback e2e)
+88. **Phone GUI / Now Playing fill**: Remove Video/Audio home inline player + Open; TextureView ZOOM Now Playing fill (portrait + landscape); More icon rows; Cast (DLNA) + Favorite notification/stage wiring; MediaStore display titles (**Done 1.112.0** — Pixel 7 Pro portrait/landscape e2e)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

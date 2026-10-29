@@ -2,9 +2,14 @@ package dev.voxhash.voxplayer.companion
 
 import android.content.Context
 import android.os.Build
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 
 /**
@@ -47,15 +52,73 @@ object PlayerSurfaces {
         }
     }
 
-    fun attachPlayerView(context: Context, player: Player?): PlayerView =
-        PlayerView(context).apply {
+    fun attachPlayerView(context: Context, player: Player?): PlayerView {
+        val view = android.view.LayoutInflater.from(context)
+            .inflate(dev.voxhash.voxplayer.companion.R.layout.player_view_fill, null, false)
+            as PlayerView
+        return view.apply {
             this.player = player
             useController = false
             setKeepContentOnPlayerReset(true)
             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-            // Prefer texture_view via layout inflater attrs when an XML host is used;
-            // programmatic PlayerView defaults remain valid for Compose AndroidView.
+            // ZOOM fills the Compose host (crop edges). TextureView (XML surface_type)
+            // avoids SurfaceView postage-stamp compositing inside AndroidView.
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            setArtworkDisplayMode(PlayerView.ARTWORK_DISPLAY_MODE_OFF)
+            setShutterBackgroundColor(android.graphics.Color.BLACK)
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
+            )
         }
+    }
+
+    /**
+     * Compose [androidx.compose.ui.viewinterop.AndroidView] host that forces EXACTLY
+     * width/height on the [PlayerView]. Without this, AspectRatioFrameLayout measures
+     * to the video aspect (AT_MOST) and leaves a postage-stamp frame in the stage.
+     */
+    fun attachPlayerHost(context: Context, player: Player?): PlayerHost =
+        PlayerHost(context, player)
+}
+
+/** Forces EXACTLY measure specs onto Media3 [PlayerView] for Compose interop. */
+class PlayerHost(context: Context, player: Player?) : FrameLayout(context) {
+    private val playerView = PlayerSurfaces.attachPlayerView(context, player)
+
+    init {
+        addView(
+            playerView,
+            LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER,
+            ),
+        )
+    }
+
+    fun bind(p: Player?) {
+        playerView.player = p
+        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = View.MeasureSpec.getSize(widthMeasureSpec).coerceAtLeast(1)
+        val h = View.MeasureSpec.getSize(heightMeasureSpec).coerceAtLeast(1)
+        setMeasuredDimension(w, h)
+        val childSpecW = View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY)
+        val childSpecH = View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY)
+        for (i in 0 until childCount) {
+            getChildAt(i).measure(childSpecW, childSpecH)
+        }
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        for (i in 0 until childCount) {
+            getChildAt(i).layout(0, 0, right - left, bottom - top)
+        }
+    }
 }
 
 fun ExoPlayer.Builder.applyVoxLoadControl(context: Context): ExoPlayer.Builder =

@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Planned
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.112.0] - 2026-10-28
+
+### Fixed
+- Android / GrapheneOS: Now Playing video postage-stamp scaling — TextureView + ZOOM host (`PlayerHost`) fills the device window in portrait and landscape; video stage no longer opens on the audio/artwork surface when quality mode was `audio`
+- Cast (FOSS DLNA) and Favorite/bookmark from Now Playing + system media notification custom actions (`NOTIF_CAST` / `NOTIF_BOOKMARK`)
+- Video library titles that were numeric MediaStore `TITLE` values now prefer `DISPLAY_NAME`
+
+### Changed
+- Video / Audio home: removed inline hero player and redundant Open chrome (library grid + mini-player only)
+- More: icon rows for Connect, transport chips, Player settings, Cast, Favorites, codec matrix — cleaner vertical layout
+- Immersive Now Playing: edge-to-edge video with overlay chrome; landscape splits video | controls
+
 ## [1.111.0] - 2026-10-28
 
 ### Fixed

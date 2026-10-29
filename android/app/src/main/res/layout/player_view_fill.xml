@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TextureView + zoom: Compose AndroidView hosts measure SurfaceView poorly and
+     leave postage-stamp frames; TextureView paints into the View hierarchy. -->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/vox_player_view"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    app:artwork_display_mode="off"
+    app:keep_content_on_player_reset="true"
+    app:resize_mode="zoom"
+    app:show_buffering="never"
+    app:surface_type="texture_view"
+    app:use_controller="false" />

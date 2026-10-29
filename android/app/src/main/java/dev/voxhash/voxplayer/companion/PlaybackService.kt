@@ -173,6 +173,7 @@ class PlaybackService : MediaSessionService() {
                 .add(PlaybackSpeed.CMD_SET)
                 .add(NotificationActions.CMD_BOOKMARK)
                 .add(NotificationActions.CMD_CYCLE_SPEED)
+                .add(NotificationActions.CMD_CAST)
                 .build()
             val playerCmds = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
                 .add(Player.COMMAND_SEEK_BACK)
@@ -315,6 +316,10 @@ class PlaybackService : MediaSessionService() {
                 }
                 NotificationActions.ACTION_CYCLE_SPEED -> {
                     cycleSpeedFromNotification()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                NotificationActions.ACTION_CAST -> {
+                    castFromNotification()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
             }
@@ -642,10 +647,18 @@ class PlaybackService : MediaSessionService() {
             .setSlots(CommandButton.SLOT_OVERFLOW)
             .setDisplayName("Next")
             .build(),
+        // Favorite / bookmark — overflow so System UI always exposes it next to sleep/speed.
         CommandButton.Builder(CommandButton.ICON_BOOKMARK_UNFILLED)
             .setSessionCommand(NotificationActions.CMD_BOOKMARK)
             .setSlots(CommandButton.SLOT_OVERFLOW)
-            .setDisplayName("Bookmark")
+            .setDisplayName("Favorite")
+            .build(),
+        // FOSS DLNA cast — replaces dead GMS Cast affordance on GrapheneOS.
+        CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+            .setCustomIconResId(android.R.drawable.ic_menu_share)
+            .setSessionCommand(NotificationActions.CMD_CAST)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setDisplayName("Cast")
             .build(),
         CommandButton.Builder(CommandButton.ICON_UNDEFINED)
             .setCustomIconResId(android.R.drawable.ic_menu_recent_history)
@@ -661,9 +674,14 @@ class PlaybackService : MediaSessionService() {
         val uri = item.localConfiguration?.uri?.toString()
             ?: item.requestMetadata.mediaUri?.toString()
             ?: return
-        val title = item.mediaMetadata.title?.toString()
-            ?: Uri.parse(uri).lastPathSegment
-            ?: "Bookmark"
+        val rawTitle = item.mediaMetadata.title?.toString()
+            ?: item.mediaMetadata.displayTitle?.toString()
+            ?: ""
+        val title = when {
+            rawTitle.isNotBlank() && !(rawTitle.all { it.isDigit() }) -> rawTitle
+            else -> Uri.parse(uri).lastPathSegment?.takeIf { it.isNotBlank() && !it.all(Char::isDigit) }
+                ?: rawTitle.ifBlank { "Favorite" }
+        }
         val isVideo = item.mediaMetadata.mediaType ==
             androidx.media3.common.MediaMetadata.MEDIA_TYPE_VIDEO
         BookmarkStore(this).upsert(
@@ -672,7 +690,17 @@ class PlaybackService : MediaSessionService() {
             player.currentPosition.coerceAtLeast(0L),
             isVideo,
         )
+        sendBroadcast(
+            Intent(NotificationActions.ACTION_BOOKMARK_SAVED).setPackage(packageName),
+        )
         Log.i(TAG, "notification bookmark uri=$uri pos=${player.currentPosition}")
+    }
+
+    private fun castFromNotification() {
+        sendBroadcast(
+            Intent(NotificationActions.ACTION_CAST_REQUESTED).setPackage(packageName),
+        )
+        Log.i(TAG, "notification cast requested")
     }
 
     private fun cycleSpeedFromNotification() {

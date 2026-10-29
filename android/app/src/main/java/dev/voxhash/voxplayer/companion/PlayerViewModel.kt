@@ -330,6 +330,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         it.copy(sleepEndEpochMs = 0L, sleepRemainingLabel = "Off", localPlaying = false)
                     }
                 }
+                NotificationActions.ACTION_BOOKMARK_SAVED -> {
+                    _state.update {
+                        it.copy(
+                            bookmarks = bookmarkStore.load(),
+                            statusToast = "Favorite saved",
+                        )
+                    }
+                    clearStatusToastLater()
+                }
+                NotificationActions.ACTION_CAST_REQUESTED -> {
+                    castFromNowPlaying()
+                }
             }
         }
     }
@@ -383,6 +395,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val filter = IntentFilter().apply {
             addAction(AudioRoute.ACTION_DEVICES_CHANGED)
             addAction(SleepTimer.ACTION_FIRED)
+            addAction(NotificationActions.ACTION_BOOKMARK_SAVED)
+            addAction(NotificationActions.ACTION_CAST_REQUESTED)
         }
         try {
             if (Build.VERSION.SDK_INT >= 33) {
@@ -452,6 +466,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Bottom / rail primary destinations (GrapheneOS-friendly Material nav; no GMS). */
     fun setPrimaryDest(dest: PrimaryDest) {
+        // Leaving Now Playing stage when switching shell destinations (phone/Quest).
+        if (_state.value.nowPlayingStage) {
+            dismissNowPlayingStage()
+        }
         when (dest) {
             PrimaryDest.Home -> {
                 setTab(AppTab.Local)
@@ -958,18 +976,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun playUri(uri: Uri, title: String = uri.lastPathSegment ?: "Media", isVideo: Boolean = true) {
         val match = _state.value.localItems.find { it.uri == uri }
+        val display = match?.title?.takeIf { it.isNotBlank() } ?: resolveDisplayTitle(uri, title)
         val resumeMs = resumeStore.resumePositionMs(uri.toString(), match?.durationMs ?: 0L)
         withPlayer { p ->
-            p.setMediaItems(listOf(mediaItem(uri, title, isVideo = isVideo)), 0, resumeMs)
+            p.setMediaItems(listOf(mediaItem(uri, display, isVideo = isVideo)), 0, resumeMs)
             p.prepare()
             p.play()
-            queueStore.save(uri.toString(), title, resumeMs, isVideo)
+            queueStore.save(uri.toString(), display, resumeMs, isVideo)
         }
         _state.update {
             it.copy(
-                localTitle = title,
-                localArtist = "",
-                localAlbum = "",
+                localTitle = display,
+                localArtist = match?.artist.orEmpty(),
+                localAlbum = match?.album.orEmpty(),
                 localQueueIndex = 0,
                 localQueueSize = 1,
                 localIsVideo = isVideo,
@@ -977,6 +996,34 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 activeOutput = "This device",
                 resumeHint = if (resumeMs > 0L) "Resumed from ${fmt(resumeMs)}" else "",
             )
+        }
+    }
+
+    /** Prefer MediaStore display name over raw content id path segments. */
+    private fun resolveDisplayTitle(uri: Uri, fallback: String): String {
+        val raw = fallback.ifBlank { uri.lastPathSegment.orEmpty() }
+        val looksLikeId = raw.isNotBlank() && raw.all { it.isDigit() } && uri.scheme == "content"
+        if (!looksLikeId && raw.isNotBlank()) return raw
+        val app = getApplication<Application>()
+        return try {
+            app.contentResolver.query(
+                uri,
+                arrayOf(
+                    android.provider.OpenableColumns.DISPLAY_NAME,
+                    android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+                ),
+                null,
+                null,
+                null,
+            )?.use { c ->
+                if (!c.moveToFirst()) return@use null
+                val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    .takeIf { it >= 0 }
+                    ?: c.getColumnIndex(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                if (idx >= 0) c.getString(idx)?.takeIf { it.isNotBlank() } else null
+            } ?: raw.ifBlank { "Media" }
+        } catch (_: Exception) {
+            raw.ifBlank { "Media" }
         }
     }
 
@@ -1831,13 +1878,26 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val item = p.currentMediaItem
         if (item != null) {
             val md = item.mediaMetadata
-            val title = md.title?.toString()
-                ?: item.localConfiguration?.uri?.lastPathSegment
+            val uri = item.localConfiguration?.uri
+                ?: item.requestMetadata.mediaUri
+            val rawTitle = md.title?.toString()
+                ?: md.displayTitle?.toString()
+                ?: uri?.lastPathSegment
                 ?: "(resumed)"
-            val artist = md.artist?.toString().orEmpty().let { if (it == "VoxPlayer") "" else it }
-            val album = md.albumTitle?.toString().orEmpty()
+            val match = uri?.let { u -> _state.value.localItems.find { it.uri == u } }
+            val title = when {
+                match?.title?.isNotBlank() == true &&
+                    (rawTitle.isBlank() || rawTitle.all { it.isDigit() }) -> match!!.title
+                else -> rawTitle
+            }
+            val artist = (match?.artist?.takeIf { it.isNotBlank() }
+                ?: md.artist?.toString().orEmpty())
+                .let { if (it == "VoxPlayer") "" else it }
+            val album = match?.album?.takeIf { it.isNotBlank() }
+                ?: md.albumTitle?.toString().orEmpty()
             val isVideo = md.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO
                 || md.mediaType == MediaMetadata.MEDIA_TYPE_MOVIE
+                || match?.isVideo == true
                 || queueStore.load()?.current?.isVideo == true
             _state.update {
                 it.copy(
@@ -2067,7 +2127,83 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun bookmarkNow() {
         val p = player ?: return
+        if (currentPlayerUri(p).isNullOrBlank()) {
+            _state.update { it.copy(statusToast = "Nothing to favorite") }
+            clearStatusToastLater()
+            return
+        }
         autosaveBookmark(p)
+        _state.update {
+            it.copy(
+                bookmarks = bookmarkStore.load(),
+                statusToast = "Favorite saved",
+            )
+        }
+        clearStatusToastLater()
+    }
+
+    /**
+     * Now Playing Cast button — FOSS DLNA only (no GMS Cast).
+     * Enables DLNA if needed, scans the LAN, casts when a target is known.
+     */
+    fun castFromNowPlaying() {
+        viewModelScope.launch {
+            if (!_state.value.dlnaEnabled) {
+                setDlnaEnabled(true)
+            }
+            _state.update {
+                it.copy(
+                    dlnaBusy = true,
+                    dlnaMessage = "Looking for TVs…",
+                    statusToast = "Cast · scanning Wi‑Fi",
+                )
+            }
+            try {
+                val list = DlnaCastControl.search(getApplication())
+                val defaultId = DlnaCastControl.loadDefaultId(getApplication())
+                val curSel = _state.value.dlnaSelectedId
+                val selected = when {
+                    curSel.isNotBlank() && list.any { it.id == curSel } -> curSel
+                    defaultId.isNotBlank() && list.any { it.id == defaultId } -> defaultId
+                    list.size == 1 -> list.first().id
+                    else -> ""
+                }
+                _state.update {
+                    it.copy(
+                        dlnaRenderers = list,
+                        dlnaSelectedId = selected.ifBlank { it.dlnaSelectedId },
+                        dlnaDefaultId = defaultId,
+                        dlnaBusy = false,
+                        dlnaMessage = when {
+                            list.isEmpty() -> "No DLNA TV on this Wi‑Fi"
+                            selected.isBlank() -> "Select a TV below, then Cast"
+                            else -> "Casting to ${list.find { r -> r.id == selected }?.name ?: "TV"}…"
+                        },
+                        statusToast = when {
+                            list.isEmpty() -> "Cast · no TV found"
+                            selected.isBlank() -> "Cast · pick a TV in More"
+                            else -> "Cast · ${list.find { r -> r.id == selected }?.name}"
+                        },
+                    )
+                }
+                if (selected.isNotBlank()) {
+                    castNowPlayingToDlna()
+                } else if (list.isNotEmpty()) {
+                    // Surface the renderer picker under More.
+                    dismissNowPlayingStage()
+                    setPrimaryDest(PrimaryDest.More)
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        dlnaBusy = false,
+                        dlnaMessage = e.message ?: "Cast failed",
+                        statusToast = "Cast failed",
+                    )
+                }
+            }
+            clearStatusToastLater()
+        }
     }
 
     fun playBookmark(bm: BookmarkStore.Bookmark) {
@@ -2914,7 +3050,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update {
             it.copy(
                 nowPlayingStage = true,
-                stageAudioSurface = !it.localIsVideo || it.qualityMode == "audio",
+                // Video items always open on the video surface. qualityMode "audio" is a
+                // decode preference — it must not force the postage-stamp artwork stage.
+                stageAudioSurface = !it.localIsVideo,
             )
         }
     }

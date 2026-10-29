@@ -174,6 +174,7 @@ class PlaybackService : MediaSessionService() {
                 .add(NotificationActions.CMD_BOOKMARK)
                 .add(NotificationActions.CMD_CYCLE_SPEED)
                 .add(NotificationActions.CMD_CAST)
+                .add(NotificationActions.CMD_SHARE)
                 .build()
             val playerCmds = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
                 .add(Player.COMMAND_SEEK_BACK)
@@ -322,6 +323,10 @@ class PlaybackService : MediaSessionService() {
                     castFromNotification()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
+                NotificationActions.ACTION_SHARE -> {
+                    shareFromNotification()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
             }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
         }
@@ -408,6 +413,12 @@ class PlaybackService : MediaSessionService() {
             .setCallback(sessionCallback)
             .setMediaButtonPreferences(mediaButtons)
             .setSessionActivity(openApp)
+            // Offline content:// / file thumbnails for System UI media card (no network).
+            .setBitmapLoader(
+                androidx.media3.session.CacheBitmapLoader(
+                    androidx.media3.datasource.DataSourceBitmapLoader(this),
+                ),
+            )
             .build()
         applyAudioChain()
         val pendingSleep = SleepTimer.loadEndEpochMs(this)
@@ -653,9 +664,16 @@ class PlaybackService : MediaSessionService() {
             .setSlots(CommandButton.SLOT_OVERFLOW)
             .setDisplayName("Favorite")
             .build(),
-        // FOSS DLNA cast — replaces dead GMS Cast affordance on GrapheneOS.
+        // Offline share card (was wrongly bound to Cast via ic_menu_share).
         CommandButton.Builder(CommandButton.ICON_UNDEFINED)
             .setCustomIconResId(android.R.drawable.ic_menu_share)
+            .setSessionCommand(NotificationActions.CMD_SHARE)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .setDisplayName("Share")
+            .build(),
+        // FOSS DLNA cast — GrapheneOS-honest (no GMS Cast).
+        CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+            .setCustomIconResId(android.R.drawable.ic_menu_view)
             .setSessionCommand(NotificationActions.CMD_CAST)
             .setSlots(CommandButton.SLOT_OVERFLOW)
             .setDisplayName("Cast")
@@ -701,6 +719,43 @@ class PlaybackService : MediaSessionService() {
             Intent(NotificationActions.ACTION_CAST_REQUESTED).setPackage(packageName),
         )
         Log.i(TAG, "notification cast requested")
+    }
+
+    private fun shareFromNotification() {
+        // Prefer service-side offline card so Share works when only MediaSession is alive
+        // (notification shade / lock screen). Same FileProvider path as in-app Share.
+        val player = mediaSession?.player
+        val item = player?.currentMediaItem
+        if (item != null) {
+            val title = item.mediaMetadata.title?.toString()
+                ?: item.mediaMetadata.displayTitle?.toString()
+                ?: item.localConfiguration?.uri?.lastPathSegment
+                ?: "VoxPlayer"
+            val artist = item.mediaMetadata.artist?.toString().orEmpty()
+            val album = item.mediaMetadata.albumTitle?.toString().orEmpty()
+            val artUri = item.mediaMetadata.artworkUri
+                ?: item.localConfiguration?.uri
+                ?: item.requestMetadata.mediaUri
+            try {
+                val intent = NowPlayingShare.shareCard(
+                    applicationContext,
+                    title = title,
+                    artist = artist,
+                    album = album,
+                    artworkUri = artUri,
+                )
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                Log.i(TAG, "notification share started (offline card)")
+                return
+            } catch (e: Exception) {
+                Log.w(TAG, "notification share card failed; broadcasting to UI", e)
+            }
+        }
+        sendBroadcast(
+            Intent(NotificationActions.ACTION_SHARE_REQUESTED).setPackage(packageName),
+        )
+        Log.i(TAG, "notification share requested (broadcast fallback)")
     }
 
     private fun cycleSpeedFromNotification() {

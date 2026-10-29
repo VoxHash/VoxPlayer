@@ -342,6 +342,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 NotificationActions.ACTION_CAST_REQUESTED -> {
                     castFromNowPlaying()
                 }
+                NotificationActions.ACTION_SHARE_REQUESTED -> {
+                    shareNowPlayingCard(getApplication())
+                }
             }
         }
     }
@@ -359,6 +362,13 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             player?.let { syncUiFromPlayer(it) }
             player?.let { queueStore.saveFromPlayer(it) }
+            player?.let { enrichNotificationArtwork(it) }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_READY) {
+                player?.let { enrichNotificationArtwork(it) }
+            }
         }
 
         override fun onRepeatModeChanged(repeatMode: Int) {
@@ -397,6 +407,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             addAction(SleepTimer.ACTION_FIRED)
             addAction(NotificationActions.ACTION_BOOKMARK_SAVED)
             addAction(NotificationActions.ACTION_CAST_REQUESTED)
+            addAction(NotificationActions.ACTION_SHARE_REQUESTED)
         }
         try {
             if (Build.VERSION.SDK_INT >= 33) {
@@ -438,6 +449,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     _player.value = controller
                     syncUiFromPlayer(controller)
+                    enrichNotificationArtwork(controller)
                     pushLocalVolumeToService()
                     setPreferredAudioDevice(_state.value.preferredAudioDeviceId)
                     setEqPreset(_state.value.eqPreset)
@@ -578,14 +590,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             .apply {
                 if (item.album.isNotBlank()) setAlbumTitle(item.album)
                 if (item.durationMs > 0L) setDurationMs(item.durationMs)
-                if (!item.isVideo && item.albumId > 0L) {
-                    setArtworkUri(
-                        ContentUris.withAppendedId(
-                            Uri.parse("content://media/external/audio/albumart"),
-                            item.albumId,
-                        ),
-                    )
-                }
+                // Album art or video frame URI — Media3 notification BitmapLoader (offline).
+                setArtworkUri(item.artworkContentUri())
                 setMediaType(
                     if (item.isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
                     else MediaMetadata.MEDIA_TYPE_MUSIC,
@@ -593,6 +599,94 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
             .setIsPlayable(true)
             .build()
+    }
+
+    /**
+     * Embed JPEG artwork bytes on the current MediaItem so System UI media cards show a
+     * thumbnail (GrapheneOS / AOSP often skip content:// artworkUri alone). Offline only.
+     */
+    private fun enrichNotificationArtwork(p: Player) {
+        val idx = p.currentMediaItemIndex
+        val item = p.currentMediaItem ?: return
+        if (item.mediaMetadata.artworkData != null) return
+        val uri = item.localConfiguration?.uri
+            ?: item.requestMetadata.mediaUri
+            ?: return
+        val artUri = _state.value.localItems.find { it.uri == uri }?.artworkContentUri() ?: uri
+        viewModelScope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                loadArtworkJpegBytes(getApplication(), artUri, 512)
+            } ?: return@launch
+            val controller = player ?: return@launch
+            if (controller.currentMediaItemIndex != idx) return@launch
+            val cur = controller.currentMediaItem ?: return@launch
+            if (cur.mediaMetadata.artworkData != null) return@launch
+            val md = cur.mediaMetadata.buildUpon()
+                .setArtworkData(bytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                .setArtworkUri(artUri)
+                .build()
+            val updated = cur.buildUpon().setMediaMetadata(md).build()
+            try {
+                controller.replaceMediaItem(idx, updated)
+            } catch (e: Exception) {
+                Log.w(TAG, "enrichNotificationArtwork failed", e)
+            }
+        }
+    }
+
+    private fun loadArtworkJpegBytes(context: Context, uri: Uri, sizePx: Int): ByteArray? {
+        val bmp = loadArtworkBitmap(context, uri, sizePx) ?: return null
+        return try {
+            val out = java.io.ByteArrayOutputStream()
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            if (!bmp.isRecycled) bmp.recycle()
+            out.toByteArray()
+        } catch (_: Exception) {
+            if (!bmp.isRecycled) bmp.recycle()
+            null
+        }
+    }
+
+    /** MediaStore thumb first; MediaMetadataRetriever frame for video/TS when thumb missing. Offline only. */
+    private fun loadArtworkBitmap(context: Context, uri: Uri, sizePx: Int): android.graphics.Bitmap? {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                context.contentResolver.loadThumbnail(
+                    uri,
+                    android.util.Size(sizePx, sizePx),
+                    null,
+                )?.let { return it }
+            } else {
+                @Suppress("DEPRECATION")
+                android.provider.MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                    ?.let { return it }
+            }
+        } catch (_: Exception) {
+            // fall through to frame extract
+        }
+        return try {
+            val retriever = android.media.MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, uri)
+                val frame = retriever.getFrameAtTime(1_000_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    ?: retriever.frameAtTime
+                    ?: return null
+                if (frame.width <= sizePx && frame.height <= sizePx) return frame
+                val scale = sizePx.toFloat() / maxOf(frame.width, frame.height).toFloat()
+                val w = (frame.width * scale).toInt().coerceAtLeast(1)
+                val h = (frame.height * scale).toInt().coerceAtLeast(1)
+                val scaled = android.graphics.Bitmap.createScaledBitmap(frame, w, h, true)
+                if (scaled !== frame && !frame.isRecycled) frame.recycle()
+                scaled
+            } finally {
+                try {
+                    retriever.release()
+                } catch (_: Exception) {
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun mediaItem(
@@ -613,6 +707,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     .apply {
                         if (album.isNotBlank()) setAlbumTitle(album)
                         if (durationMs > 0L) setDurationMs(durationMs)
+                        setArtworkUri(uri)
                         setMediaType(
                             if (isVideo) MediaMetadata.MEDIA_TYPE_VIDEO
                             else MediaMetadata.MEDIA_TYPE_MUSIC,

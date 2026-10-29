@@ -312,6 +312,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
                             },
                             onOpenNowPlaying = vm::openNowPlayingTab,
                             onOpenSettings = { vm.openPlayerSheet(PlayerSheet.Settings) },
+                            onShare = { vm.shareNowPlayingCard(context) },
                         )
                         if (useBottomDest) {
                             PrimaryDestBar(
@@ -838,7 +839,13 @@ private fun CompactPanelChrome(
             style = MaterialTheme.typography.labelSmall,
             color = VoxColors.TextMuted,
         )
-        QuietButton("Connect", onConnect)
+        IconButton(onClick = onConnect) {
+            Icon(
+                Icons.Default.Devices,
+                contentDescription = "Connect desktop",
+                tint = if (state.activeOutput.startsWith("Desktop")) VoxColors.Success else VoxColors.Accent,
+            )
+        }
     }
 }
 
@@ -1148,7 +1155,13 @@ private fun ShellHeader(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = 96.dp),
         )
-        QuietButton("Connect", onConnect)
+        IconButton(onClick = onConnect) {
+            Icon(
+                Icons.Default.Devices,
+                contentDescription = "Connect desktop",
+                tint = if (state.activeOutput.startsWith("Desktop")) VoxColors.Success else VoxColors.Accent,
+            )
+        }
     }
 }
 
@@ -4703,17 +4716,12 @@ private fun TransportBar(
                 Icon(Icons.Default.Stop, null, tint = VoxColors.TextSecondary)
             }
         }
-        Button(
-            onClick = onConnect,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (state.activeOutput.startsWith("Desktop")) VoxColors.Success else VoxColors.Accent,
-                contentColor = VoxColors.BgApp,
-            ),
-            shape = VoxShapes.pill,
-        ) {
-            Icon(Icons.Default.Devices, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.size(6.dp))
-            Text("Connect")
+        IconButton(onClick = onConnect) {
+            Icon(
+                Icons.Default.Devices,
+                contentDescription = "Connect desktop",
+                tint = if (state.activeOutput.startsWith("Desktop")) VoxColors.Success else VoxColors.Accent,
+            )
         }
     }
 }

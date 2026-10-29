@@ -10,6 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Static FOSS project website (ROADMAP #91)
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.114.0] - 2026-10-28
+
+### Added
+- Media notification artwork: embed JPEG `artworkData` on the current item (MediaStore thumb or video frame via `MediaMetadataRetriever`) so GrapheneOS/AOSP System UI shows the card art offline; Media3 `BitmapLoader` + `artworkUri` retained
+- Notification **Share** runs offline PNG card from `PlaybackService` (FileProvider; works from shade when UI is not foreground); Cast no longer hijacks the share icon
+
+### Changed
+- Header **Connect** is an icon (Devices) instead of a text button
+- Playback speed sheet: slider +/− only — preset chips removed
+- Now Playing top bar: overflow three-dots removed; mini-player shows artwork + Share instead of ⋯
+
 ## [1.113.0] - 2026-10-28
 
 ### Added

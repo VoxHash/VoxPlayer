@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -304,38 +304,6 @@ private fun PlaybackSpeedSheet(
                         .background(VoxColors.BgHover),
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Faster", tint = VoxColors.Text)
-                }
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                PlaybackSpeed.PRESETS.forEach { preset ->
-                    val selected = kotlin.math.abs(speed - preset) < 0.03f
-                    Column(
-                        Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(40.dp)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(if (selected) VoxColors.Text else VoxColors.BgHover)
-                                .clickable { onSpeed(preset) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                if (preset == 1.0f) "1.0" else preset.toString(),
-                                color = if (selected) VoxColors.BgApp else VoxColors.Text,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 14.sp,
-                            )
-                        }
-                        if (preset == 1.0f) {
-                            Text("Normal", color = VoxColors.TextMuted, fontSize = 11.sp)
-                        }
-                    }
                 }
             }
     }
@@ -705,8 +673,12 @@ fun MiniPlayerBar(
     onPlayPause: () -> Unit,
     onOpenNowPlaying: () -> Unit,
     onOpenSettings: () -> Unit,
+    onShare: (() -> Unit)? = null,
 ) {
     if (state.localTitle.isBlank() && !state.localPlaying && state.localPositionMs <= 0L) return
+    val artUri = state.localQueue.firstOrNull { it.isCurrent }?.uri
+        ?.takeIf { it.isNotBlank() }
+        ?.let { android.net.Uri.parse(it) }
     Row(
         Modifier
             .fillMaxWidth()
@@ -724,11 +696,20 @@ fun MiniPlayerBar(
                 .background(VoxColors.AccentSoft),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                if (state.localIsVideo) Icons.Default.Videocam else Icons.Default.MusicNote,
-                contentDescription = null,
-                tint = VoxColors.Accent,
-            )
+            if (artUri != null) {
+                ArtworkThumb(
+                    contentUri = artUri,
+                    isVideo = state.localIsVideo,
+                    modifier = Modifier.fillMaxSize(),
+                    sizePx = 128,
+                )
+            } else {
+                Icon(
+                    if (state.localIsVideo) Icons.Default.Videocam else Icons.Default.MusicNote,
+                    contentDescription = null,
+                    tint = VoxColors.Accent,
+                )
+            }
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
@@ -747,8 +728,10 @@ fun MiniPlayerBar(
                 style = MaterialTheme.typography.labelSmall,
             )
         }
-        IconButton(onClick = onOpenSettings) {
-            Icon(Icons.Default.MoreHoriz, contentDescription = "Player settings", tint = VoxColors.TextSecondary)
+        if (onShare != null) {
+            IconButton(onClick = onShare) {
+                Icon(Icons.Default.Share, contentDescription = "Share", tint = VoxColors.TextSecondary)
+            }
         }
         IconButton(onClick = onPlayPause) {
             Icon(

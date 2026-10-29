@@ -431,9 +431,10 @@ private fun StageTopBar(
     onAudioSurface: (Boolean) -> Unit,
     onBookmark: () -> Unit,
     onCast: () -> Unit,
-    onOpenSettings: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     compact: Boolean = false,
 ) {
+    // onOpenSettings kept for call-site compatibility; overflow removed from top bar.
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -474,9 +475,7 @@ private fun StageTopBar(
                 },
             )
         }
-        IconButton(onClick = onOpenSettings) {
-            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = VoxColors.TextSecondary)
-        }
+        // Settings / More remain under Player settings sheet & More tab — no top overflow.
     }
 }
 

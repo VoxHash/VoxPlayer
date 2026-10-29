@@ -279,6 +279,7 @@ class PlaybackEngine(QObject):
         self._duration_ms = 0
         self._muted = False
         self._volume_pct = 100  # 0..200 logical
+        self._playback_rate = 1.0
         self._poll = None
         self._video_bound = False
         self._bound_wid = 0
@@ -1195,6 +1196,25 @@ class PlaybackEngine(QObject):
 
     def is_muted(self) -> bool:
         return bool(self._muted)
+
+    def set_playback_rate(self, rate: float) -> float:
+        """LibVLC media_player_set_rate — clamp to Android-aligned 0.25×–3.0×."""
+        rate = max(0.25, min(3.0, float(rate)))
+        self._playback_rate = rate
+        if self._player is None:
+            return rate
+        try:
+            self._player.set_rate(rate)
+        except Exception:
+            try:
+                # Older python-vlc naming
+                self._player.setRate(rate)
+            except Exception:
+                pass
+        return rate
+
+    def playback_rate(self) -> float:
+        return float(getattr(self, "_playback_rate", 1.0) or 1.0)
 
     def source_path(self) -> str:
         return self._source_path

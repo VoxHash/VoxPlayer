@@ -10,6 +10,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Static FOSS project website (ROADMAP #91)
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.115.0] - 2026-10-28
+
+### Added
+- Desktop: offline **Share** now-playing PNG card (clipboard + cache folder; no cloud) — Android/Quest Share parity
+- Desktop control daemon `POST /share` queues the same offline card (companion / e2e; loopback)
+- Desktop: playback **speed** slider with +/− only on the transport bar (0.25×–3.0×; no preset chips)
+- Desktop MPRIS `mpris:artUrl` from offline thumbnail cache (notification / media-key artwork parity)
+- Desktop MPRIS Rate / MinimumRate / MaximumRate wired to engine rate
+
+### Changed
+- Desktop Connect is a **Devices icon** (⧉) instead of a text button
+- Desktop Now Playing: top overflow **⋯ removed**; Share / Expand / Minimize pills remain
+
 ## [1.114.1] - 2026-10-28
 
 ### Fixed

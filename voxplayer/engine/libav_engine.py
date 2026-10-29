@@ -146,6 +146,7 @@ class LibavPlaybackEngine(QObject):
         self._sink = None
         self._sample_rate = 48000
         self._channels = 2
+        self._playback_rate = 1.0
 
         configure_embed_surface(video_widget)
         if video_widget is not None:
@@ -288,6 +289,15 @@ class LibavPlaybackEngine(QObject):
 
     def set_volume_percent(self, volume: int) -> None:
         self._volume_pct = max(0, min(200, int(volume)))
+
+    def set_playback_rate(self, rate: float) -> float:
+        """Libav sink has no time-stretch; accept and store for UI/MPRIS parity."""
+        rate = max(0.25, min(3.0, float(rate)))
+        self._playback_rate = rate
+        return rate
+
+    def playback_rate(self) -> float:
+        return float(getattr(self, "_playback_rate", 1.0) or 1.0)
 
     def set_muted(self, muted: bool) -> None:
         self._muted = bool(muted)

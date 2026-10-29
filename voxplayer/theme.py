@@ -509,6 +509,24 @@ def app_stylesheet() -> str:
         color: {c['text']};
         background: {c['bg_hover']};
     }}
+    QPushButton#TransportConnect {{
+        background: transparent;
+        border: 1px solid {c['border']};
+        border-radius: 10px;
+        color: {c['accent']};
+        font-size: 16px;
+        font-weight: 700;
+        padding: 0px;
+    }}
+    QPushButton#TransportConnect:hover {{
+        background: {c['bg_hover']};
+        border-color: {c['accent']};
+    }}
+    QPushButton#TransportConnect[active="true"] {{
+        background: {c['accent_soft']};
+        border-color: {c['accent']};
+        color: {c['accent']};
+    }}
     QPushButton#NpIconBtn {{
         background: transparent;
         border: none;

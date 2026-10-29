@@ -97,6 +97,7 @@ class ControlDaemon:
             "volume": "volume",
             "seek": "seek",
             "open": "open",
+            "share": "share",
         }
         key = key_map.get((cmd or "").strip().lower())
         if not key:
@@ -285,6 +286,7 @@ class ControlDaemon:
                     "/volume": "volume",
                     "/seek": "seek",
                     "/open": "open",
+                    "/share": "share",
                 }
                 cmd = mapping.get(path)
                 if not cmd:

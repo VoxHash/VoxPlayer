@@ -104,7 +104,17 @@ class _PlayerAdaptor(QDBusAbstractAdaptor):
 
     @pyqtProperty(float)
     def Rate(self) -> float:
-        return 1.0
+        fn = self._host._callbacks.get("rate") if hasattr(self._host, "_callbacks") else None
+        try:
+            return float(fn()) if callable(fn) else 1.0
+        except Exception:
+            return 1.0
+
+    @Rate.setter
+    def Rate(self, value: float) -> None:
+        fn = self._host._callbacks.get("set_rate") if hasattr(self._host, "_callbacks") else None
+        if callable(fn):
+            fn(float(value))
 
     @pyqtProperty(bool)
     def Shuffle(self) -> bool:
@@ -132,11 +142,11 @@ class _PlayerAdaptor(QDBusAbstractAdaptor):
 
     @pyqtProperty(float)
     def MinimumRate(self) -> float:
-        return 1.0
+        return 0.25
 
     @pyqtProperty(float)
     def MaximumRate(self) -> float:
-        return 1.0
+        return 3.0
 
     @pyqtProperty(bool)
     def CanGoNext(self) -> bool:

@@ -23,8 +23,20 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                             QMenuBar, QMenu, QStatusBar, QMessageBox, QInputDialog,
                             QLineEdit, QStackedWidget, QSizePolicy, QSystemTrayIcon,
                             QStyle, QDialog)
-from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal, QFileSystemWatcher
-from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QActionGroup, QIcon, QPixmap
+from PyQt6.QtCore import Qt, QTimer, QSettings, QUrl, QThread, pyqtSignal, QFileSystemWatcher, QRectF
+from PyQt6.QtGui import (
+    QKeySequence,
+    QShortcut,
+    QAction,
+    QActionGroup,
+    QIcon,
+    QPixmap,
+    QPainter,
+    QColor,
+    QFont,
+    QGuiApplication,
+    QDesktopServices,
+)
 
 from . import __version__ as PACKAGE_VERSION
 from .theme import (
@@ -147,6 +159,7 @@ class AppState:
     gapless_queue_enabled: bool = True
     spectrum_meter_enabled: bool = False
     high_contrast: bool = False
+    playback_speed: float = 1.0
 
     def __post_init__(self):
         if self.resume_positions is None:
@@ -155,6 +168,10 @@ class AppState:
             self.library_roots = []
         if self.repeat_mode not in ("off", "one", "all"):
             self.repeat_mode = "off"
+        try:
+            self.playback_speed = max(0.25, min(3.0, float(self.playback_speed)))
+        except (TypeError, ValueError):
+            self.playback_speed = 1.0
 
 def qbittorrent_webui_setup_text() -> str:
     """First-run / error copy for enabling the Web UI — never embeds secrets."""
@@ -921,6 +938,11 @@ class Settings:
             "spectrum_meter_enabled", bool(state.spectrum_meter_enabled)
         )
         self.settings.setValue("high_contrast", bool(state.high_contrast))
+        try:
+            speed = max(0.25, min(3.0, float(state.playback_speed)))
+        except (TypeError, ValueError):
+            speed = 1.0
+        self.settings.setValue("playback_speed", speed)
 
     def load_state(self) -> AppState:
         """Load application state"""
@@ -969,6 +991,10 @@ class Settings:
             hc = hc.strip().lower() in {"1", "true", "yes"}
         else:
             hc = bool(hc)
+        try:
+            speed = max(0.25, min(3.0, float(self.settings.value("playback_speed", 1.0))))
+        except (TypeError, ValueError):
+            speed = 1.0
         return AppState(
             window_geometry=self.settings.value("window_geometry"),
             theme=raw_theme,
@@ -982,6 +1008,7 @@ class Settings:
             repeat_mode=repeat,
             resume_bookmarks_enabled=resume_bm,
             gapless_queue_enabled=gapless,
+            playback_speed=speed,
             spectrum_meter_enabled=spectrum,
             high_contrast=hc,
         )
@@ -1428,6 +1455,7 @@ class VoxPlayerMainWindow(QMainWindow):
         self.now_playing.expand_requested.connect(self.expand_now_playing_view)
         self.now_playing.minimize_requested.connect(self.minimize_now_playing_view)
         self.now_playing.more_requested.connect(self.show_now_playing_more_menu)
+        self.now_playing.share_requested.connect(self.share_now_playing_card)
         self.now_playing.queue_play_requested.connect(self.load_and_play_media)
         self.now_playing.queue_remove_requested.connect(self.remove_from_up_next)
         self.now_playing.queue_clear_requested.connect(self.clear_up_next_and_stop)
@@ -1480,6 +1508,7 @@ class VoxPlayerMainWindow(QMainWindow):
                 str(self.app_state.repeat_mode or "off"),
             )
             self.controls.set_viz_enabled(bool(self.app_state.spectrum_meter_enabled))
+            self.controls.sync_playback_speed(float(self.app_state.playback_speed or 1.0))
         self._setup_mpris_and_daemon()
         self._setup_plugins()
 
@@ -2499,6 +2528,10 @@ class VoxPlayerMainWindow(QMainWindow):
         self.controls.volume_label.setText(f"{vol}%")
         self._apply_output_gain_from_state()
         self._on_backend_ready(self.engine.backend_name)
+        try:
+            self.set_playback_speed(float(self.app_state.playback_speed or 1.0))
+        except Exception:
+            pass
 
     def _on_backend_ready(self, name: str):
         if hasattr(self, "engine") and self.engine is not None:
@@ -3731,6 +3764,16 @@ For more information, visit the project repository.
                 self.controls.set_track_meta(filename, os.path.dirname(file_path))
                 if thumb:
                     self.controls.set_track_art(thumb)
+            # Re-apply rate after media open (libvlc rate resets on new media).
+            QTimer.singleShot(
+                120,
+                lambda: self.set_playback_speed(float(self.app_state.playback_speed or 1.0)),
+            )
+            if hasattr(self, "mpris") and self.mpris:
+                try:
+                    self.mpris.notify_properties()
+                except Exception:
+                    pass
 
             # Get file info for status display
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
@@ -4638,6 +4681,8 @@ Position: {position // 1000}s
             shuffle=lambda: bool(self.app_state.shuffle_enabled),
             set_shuffle=_set_shuffle,
             metadata=self._mpris_metadata,
+            rate=lambda: float(self.app_state.playback_speed or 1.0),
+            set_rate=self.set_playback_speed,
             volume=lambda: (self.engine.volume_percent() / 100.0)
             if hasattr(self, "engine") and self.engine
             else 1.0,
@@ -4681,6 +4726,7 @@ Position: {position // 1000}s
             open=lambda body: self._with_multiroom_inbound(
                 lambda: self._daemon_open(body)
             ),
+            share=lambda: self._daemon_share(),
         )
         if self.control_daemon.start():
             msg = f"Control daemon http://{self.control_daemon.host}:{self.control_daemon.port}/"
@@ -4750,6 +4796,157 @@ Position: {position // 1000}s
             out["xesam:album"] = album
         if path:
             out["xesam:url"] = QUrl.fromLocalFile(os.path.abspath(path)).toString()
+        # Offline art for desktop media controls / notification cards (Android artworkData parity).
+        art = self._thumb_map.get(path) if hasattr(self, "_thumb_map") else None
+        if not art and path:
+            try:
+                art = get_thumbnail_path(path)
+            except Exception:
+                art = None
+        if art and os.path.isfile(art):
+            out["mpris:artUrl"] = QUrl.fromLocalFile(os.path.abspath(art)).toString()
+        return out
+
+    def set_playback_speed(self, rate: float) -> None:
+        """Apply rate (0.25–3.0) — slider/+/− only; no preset chips (mobile parity)."""
+        rate = max(0.25, min(3.0, float(rate)))
+        self.app_state.playback_speed = rate
+        if hasattr(self, "engine") and self.engine is not None:
+            try:
+                rate = self.engine.set_playback_rate(rate)
+            except Exception:
+                pass
+        self.settings.save_state(self.app_state)
+        if hasattr(self, "controls"):
+            self.controls.sync_playback_speed(rate)
+        if hasattr(self, "mpris") and self.mpris:
+            try:
+                self.mpris.notify_properties({"Rate": float(rate)})
+            except Exception:
+                pass
+        self.status_bar.showMessage(f"Speed {rate:.2f}×", 2000)
+
+    def _daemon_share(self) -> dict:
+        """Companion / e2e: queue offline Share card on the Qt UI thread."""
+        from PyQt6.QtCore import QTimer
+
+        QTimer.singleShot(0, self.share_now_playing_card)
+        return {"ok": True, "queued": True}
+
+    def share_now_playing_card(self) -> None:
+        """Offline now-playing PNG → clipboard + open folder (no cloud; mobile Share parity)."""
+        path = getattr(self.app_state, "last_file", "") or ""
+        if not path:
+            self.status_bar.showMessage("Nothing playing to share", 3000)
+            return
+        meta = self._meta_cache.get(path) if hasattr(self, "_meta_cache") else None
+        title = (meta.title if meta and getattr(meta, "title", None) else None) or os.path.basename(path)
+        artist = (meta.artist if meta and getattr(meta, "artist", None) else "") or ""
+        album = (meta.album if meta and getattr(meta, "album", None) else "") or ""
+        art = self._thumb_map.get(path) if hasattr(self, "_thumb_map") else None
+        if not art:
+            try:
+                art = get_thumbnail_path(path)
+            except Exception:
+                art = None
+        try:
+            out_path = self._render_now_playing_share_card(title, artist, album, art)
+        except Exception as exc:
+            self.status_bar.showMessage(f"Share card failed: {exc}", 4000)
+            return
+        clip = QGuiApplication.clipboard()
+        if clip is not None:
+            pix = QPixmap(out_path)
+            if not pix.isNull():
+                clip.setPixmap(pix)
+            text = f"{title}"
+            if artist:
+                text += f" — {artist}"
+            if album:
+                text += f" · {album}"
+            text += "\nvia VoxPlayer (offline)"
+            clip.setText(text)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(out_path)))
+        self.status_bar.showMessage(
+            f"Offline share card ready · {os.path.basename(out_path)} (image on clipboard)",
+            5000,
+        )
+
+    def _render_now_playing_share_card(
+        self, title: str, artist: str, album: str, artwork_path: Optional[str]
+    ) -> str:
+        w = h = 1080
+        pix = QPixmap(w, h)
+        pix.fill(QColor("#0B0F14"))
+        painter = QPainter(pix)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        art_size = 640
+        art_left = (w - art_size) / 2
+        art_top = 120.0
+        art_rect = QRectF(art_left, art_top, art_size, art_size)
+        painter.setBrush(QColor("#151C26"))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(art_rect, 28, 28)
+        if artwork_path and os.path.isfile(artwork_path):
+            art = QPixmap(artwork_path)
+            if not art.isNull():
+                scaled = art.scaled(
+                    art_size,
+                    art_size,
+                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                painter.drawPixmap(art_rect.toRect(), scaled)
+        else:
+            painter.setPen(QColor("#FF8A3D"))
+            font = QFont()
+            font.setBold(True)
+            font.setPixelSize(64)
+            painter.setFont(font)
+            painter.drawText(art_rect, int(Qt.AlignmentFlag.AlignCenter), "VoxPlayer")
+        painter.setPen(QColor("#FFFFFF"))
+        title_font = QFont()
+        title_font.setBold(True)
+        title_font.setPixelSize(48)
+        painter.setFont(title_font)
+        y = art_top + art_size + 80
+        painter.drawText(
+            QRectF(60, y, w - 120, 60),
+            int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
+            title[:80] or "VoxPlayer",
+        )
+        y += 64
+        painter.setPen(QColor("#9AA4B2"))
+        sub_font = QFont()
+        sub_font.setPixelSize(32)
+        painter.setFont(sub_font)
+        if artist:
+            painter.drawText(
+                QRectF(60, y, w - 120, 40),
+                int(Qt.AlignmentFlag.AlignHCenter),
+                artist[:80],
+            )
+            y += 44
+        if album:
+            painter.drawText(
+                QRectF(60, y, w - 120, 40),
+                int(Qt.AlignmentFlag.AlignHCenter),
+                album[:80],
+            )
+        painter.setPen(QColor("#FF8A3D"))
+        foot = QFont()
+        foot.setPixelSize(26)
+        painter.setFont(foot)
+        painter.drawText(
+            QRectF(60, h - 80, w - 120, 40),
+            int(Qt.AlignmentFlag.AlignHCenter),
+            "VoxPlayer · offline share",
+        )
+        painter.end()
+        cache = os.path.join(tempfile.gettempdir(), "voxplayer-share")
+        os.makedirs(cache, exist_ok=True)
+        out = os.path.join(cache, f"now_playing_{int(time.time() * 1000)}.png")
+        pix.save(out, "PNG")
         return out
 
     def _daemon_status(self) -> dict:

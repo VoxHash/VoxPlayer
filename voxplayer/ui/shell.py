@@ -689,6 +689,8 @@ class NowPlayingPanel(_MediaDropMixin, QWidget):
     art_clicked = pyqtSignal()
     expand_requested = pyqtSignal()
     minimize_requested = pyqtSignal()
+    share_requested = pyqtSignal()
+    # Kept for call-site compatibility; top overflow ⋯ removed (Android/Quest 1.114.x parity).
     more_requested = pyqtSignal(object)  # QPoint
     queue_play_requested = pyqtSignal(str)
     queue_remove_requested = pyqtSignal(str)
@@ -708,7 +710,7 @@ class NowPlayingPanel(_MediaDropMixin, QWidget):
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(10)
 
-        # Header: title + more (Expand / Minimize live in the ⋯ menu only)
+        # Header only — no top ⋯ (parity with Android Now Playing top bar).
         header = QHBoxLayout()
         header.setSpacing(4)
         icon = QLabel("◉")
@@ -717,15 +719,6 @@ class NowPlayingPanel(_MediaDropMixin, QWidget):
         head = QLabel("Now playing")
         head.setObjectName("SectionLink")
         header.addWidget(head, 1)
-
-        self.btn_more = QPushButton("⋯")
-        self.btn_more.setObjectName("NpIconBtn")
-        self.btn_more.setToolTip("More options")
-        self.btn_more.setFixedSize(28, 28)
-        self.btn_more.clicked.connect(
-            lambda: self.more_requested.emit(self.btn_more.mapToGlobal(self.btn_more.rect().bottomLeft()))
-        )
-        header.addWidget(self.btn_more)
         layout.addLayout(header)
 
         self.art = ClickableArt("VoxPlayer")
@@ -746,18 +739,24 @@ class NowPlayingPanel(_MediaDropMixin, QWidget):
         self.art.clicked.connect(self.art_clicked.emit)
         layout.addWidget(self.art)
 
-        # Compact action pills under art (share / expand / more) — modern stage chrome
+        # Pills: Share (offline card) + Expand / Minimize — no overflow ⋯
         pills = QHBoxLayout()
         pills.setSpacing(6)
+        self.btn_share_pill = QPushButton("Share")
+        self.btn_share_pill.setObjectName("NpPillBtn")
+        self.btn_share_pill.setToolTip("Share now-playing card (offline PNG — no cloud)")
+        # clicked(bool) → 0-arg signal (do not bind .emit directly; signature mismatch drops the slot)
+        self.btn_share_pill.clicked.connect(lambda _checked=False: self.share_requested.emit())
+        pills.addWidget(self.btn_share_pill)
         self.btn_expand_pill = QPushButton("Expand")
         self.btn_expand_pill.setObjectName("NpPillBtn")
         self.btn_expand_pill.setToolTip("Expand Now Playing")
-        self.btn_expand_pill.clicked.connect(self.expand_requested.emit)
+        self.btn_expand_pill.clicked.connect(lambda _checked=False: self.expand_requested.emit())
         pills.addWidget(self.btn_expand_pill)
         self.btn_minimize_pill = QPushButton("Minimize")
         self.btn_minimize_pill.setObjectName("NpPillBtn")
         self.btn_minimize_pill.setToolTip("Minimize Now Playing")
-        self.btn_minimize_pill.clicked.connect(self.minimize_requested.emit)
+        self.btn_minimize_pill.clicked.connect(lambda _checked=False: self.minimize_requested.emit())
         pills.addWidget(self.btn_minimize_pill)
         pills.addStretch(1)
         layout.addLayout(pills)
@@ -1090,14 +1089,40 @@ class TransportBar(_MediaDropMixin, QWidget):
         self.volume_label.setStyleSheet(f"color:{COLORS['text_muted']}; font-size:11px; min-width:36px;")
         right.addWidget(self.volume_slider)
         right.addWidget(self.volume_label)
-        # Far bottom-right: companion Connect (Wi‑Fi discovery + Bluetooth RFCOMM)
-        self.btn_connect = QPushButton("Connect")
-        self.btn_connect.setObjectName("TransportGhost")
+        # Far bottom-right: companion Connect as Devices icon (Android/Quest 1.114.x parity)
+        self.btn_connect = QPushButton("⧉")
+        self.btn_connect.setObjectName("TransportConnect")
         self.btn_connect.setToolTip(
-            "Phone / Quest companion — Wi‑Fi discovery and Bluetooth RFCOMM control"
+            "Connect desktop — phone / Quest companion (Wi‑Fi + Bluetooth, no cloud)"
         )
-        self.btn_connect.setMinimumWidth(72)
+        self.btn_connect.setFixedSize(36, 36)
+        self.btn_connect.setAccessibleName("Connect desktop")
         right.addWidget(self.btn_connect)
+
+        # Playback speed: slider +/− only (no preset chips — Android/Quest parity)
+        speed_box = QHBoxLayout()
+        speed_box.setSpacing(2)
+        self.btn_speed_slower = QPushButton("−")
+        self.btn_speed_slower.setObjectName("TransportGhost")
+        self.btn_speed_slower.setFixedSize(28, 28)
+        self.btn_speed_slower.setToolTip("Slower (−0.05×)")
+        self.speed_slider = QSlider(Qt.Orientation.Horizontal)
+        self.speed_slider.setRange(25, 300)  # 0.25× – 3.00× in hundredths
+        self.speed_slider.setValue(100)
+        self.speed_slider.setFixedWidth(72)
+        self.speed_slider.setToolTip("Playback speed")
+        self.btn_speed_faster = QPushButton("+")
+        self.btn_speed_faster.setObjectName("TransportGhost")
+        self.btn_speed_faster.setFixedSize(28, 28)
+        self.btn_speed_faster.setToolTip("Faster (+0.05×)")
+        self.speed_label = QLabel("1.00×")
+        self.speed_label.setObjectName("volumeLabel")
+        self.speed_label.setStyleSheet(f"color:{COLORS['text_muted']}; font-size:11px; min-width:40px;")
+        speed_box.addWidget(self.btn_speed_slower)
+        speed_box.addWidget(self.speed_slider)
+        speed_box.addWidget(self.btn_speed_faster)
+        speed_box.addWidget(self.speed_label)
+        right.addLayout(speed_box)
         root.addLayout(right, 2)
 
         self.seek_slider.setMouseTracking(True)
@@ -1112,6 +1137,9 @@ class TransportBar(_MediaDropMixin, QWidget):
         self.btn_shuffle.clicked.connect(self.toggle_shuffle)
         self.btn_repeat.clicked.connect(self.cycle_repeat)
         self.btn_connect.clicked.connect(self._on_connect_clicked)
+        self.btn_speed_slower.clicked.connect(lambda: self._nudge_speed(-5))
+        self.btn_speed_faster.clicked.connect(lambda: self._nudge_speed(5))
+        self.speed_slider.valueChanged.connect(self._on_speed_slider)
         # Do not seek on every valueChanged (playback poll updates the slider).
         self.seek_slider.sliderPressed.connect(self._seek_pressed)
         self.seek_slider.sliderMoved.connect(self._seek_moved)
@@ -1177,12 +1205,31 @@ class TransportBar(_MediaDropMixin, QWidget):
     def set_connect_status(self, active: bool, detail: str = "") -> None:
         """Highlight Connect when a companion path (LAN / Bluetooth) is live."""
         tip = detail or (
-            "Phone / Quest companion — Wi‑Fi discovery and Bluetooth RFCOMM control"
+            "Connect desktop — phone / Quest companion (Wi‑Fi + Bluetooth, no cloud)"
         )
         self.btn_connect.setToolTip(tip)
         self.btn_connect.setProperty("active", "true" if active else "false")
         self.btn_connect.style().unpolish(self.btn_connect)
         self.btn_connect.style().polish(self.btn_connect)
+
+    def _nudge_speed(self, delta_hundredths: int) -> None:
+        self.speed_slider.setValue(
+            max(25, min(300, self.speed_slider.value() + int(delta_hundredths)))
+        )
+
+    def _on_speed_slider(self, value: int) -> None:
+        rate = max(0.25, min(3.0, int(value) / 100.0))
+        self.speed_label.setText(f"{rate:.2f}×")
+        if hasattr(self.parent_window, "set_playback_speed"):
+            self.parent_window.set_playback_speed(rate)
+
+    def sync_playback_speed(self, rate: float) -> None:
+        """Reflect engine / persisted rate on the transport chrome (no preset chips)."""
+        hundredths = int(round(max(0.25, min(3.0, float(rate))) * 100))
+        self.speed_slider.blockSignals(True)
+        self.speed_slider.setValue(hundredths)
+        self.speed_slider.blockSignals(False)
+        self.speed_label.setText(f"{hundredths / 100.0:.2f}×")
 
     def sync_playback_modes(self, shuffle: bool, repeat_mode: str) -> None:
         """Reflect persisted shuffle / repeat on the transport chrome."""

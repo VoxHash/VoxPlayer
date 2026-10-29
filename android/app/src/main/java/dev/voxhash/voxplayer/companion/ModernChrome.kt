@@ -18,14 +18,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Headset
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.RepeatOne
@@ -36,6 +39,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.WbTwilight
@@ -75,6 +79,11 @@ enum class PlayerSheet {
     Quality,
     TrackActions,
     Storage,
+    Queue,
+    Favorites,
+    Sleep,
+    About,
+    CodecPolicy,
 }
 
 @Composable
@@ -118,6 +127,16 @@ fun ModernPlayerSheets(
     onOpenStorage: () -> Unit,
     onClearCache: () -> Unit,
     onShowDeviceFiles: (Boolean) -> Unit,
+    onPlayQueueIndex: (Int) -> Unit = {},
+    onRemoveQueueIndex: (Int) -> Unit = {},
+    onPlayBookmark: (BookmarkStore.Bookmark) -> Unit = {},
+    onRemoveBookmark: (String) -> Unit = {},
+    onBookmarkNow: () -> Unit = {},
+    onSleepMinutes: (Int) -> Unit = {},
+    onClearSleep: () -> Unit = {},
+    onOpenDocs: () -> Unit = {},
+    onOpenReleases: () -> Unit = {},
+    appVersionLabel: String = "",
 ) {
     // One ModalBottomSheet for all player menus. Swapping nested composables (Settings → Speed)
     // must not dispose the sheet — disposal fires onDismissRequest and clears the next sheet.
@@ -170,6 +189,29 @@ fun ModernPlayerSheets(
                 onQualityAudio = { onQualityMode("audio") },
                 onQualityAuto = { onQualityMode("auto") },
             )
+            PlayerSheet.Queue -> QueueSheet(
+                state = state,
+                onPlayIndex = onPlayQueueIndex,
+                onRemoveIndex = onRemoveQueueIndex,
+            )
+            PlayerSheet.Favorites -> FavoritesSheet(
+                state = state,
+                onPlay = onPlayBookmark,
+                onRemove = onRemoveBookmark,
+                onSaveNow = onBookmarkNow,
+            )
+            PlayerSheet.Sleep -> SleepSheet(
+                state = state,
+                onMinutes = onSleepMinutes,
+                onClear = onClearSleep,
+            )
+            PlayerSheet.About -> AboutSheet(
+                versionLabel = appVersionLabel,
+                onOpenDocs = onOpenDocs,
+                onOpenReleases = onOpenReleases,
+                onCodecPolicy = { onOpenSheet(PlayerSheet.CodecPolicy) },
+            )
+            PlayerSheet.CodecPolicy -> CodecPolicySheet()
         }
     }
 }
@@ -203,7 +245,7 @@ private fun PlayerSettingsSheet(
         SheetRow(Icons.Default.ClosedCaption, "Captions", state.captionsLabel()) { onCaptions() }
         SheetRow(
             Icons.Default.Lock,
-            "Lock screen",
+            "Lock player controls",
             if (state.screenLocked) "On" else "Off",
         ) { onLock() }
         SheetRow(Icons.Default.Settings, "More", "") { onMore() }
@@ -306,8 +348,13 @@ private fun CaptionsSheet(
     onLyrics: () -> Unit,
     onShowWhenMuted: (Boolean) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-            Text("Captions", style = MaterialTheme.typography.titleLarge, color = VoxColors.Text)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+            Text("Captions / lyrics", style = MaterialTheme.typography.titleLarge, color = VoxColors.Text)
             Spacer(Modifier.height(12.dp))
             SelectRow("Turn off captions", state.captionsMode == CaptionsMode.Off, onClick = onOff)
             SelectRow(
@@ -333,11 +380,38 @@ private fun CaptionsSheet(
                 )
             }
             Text(
-                "Uses local .lrc / .srt / .vtt beside the file. No cloud captions. GrapheneOS: system caption prefs remain separate.",
+                "Place a .lrc / .srt / .vtt / .txt next to the media file (same folder + base name). No cloud captions. GrapheneOS system caption prefs stay separate.",
                 style = MaterialTheme.typography.bodySmall,
                 color = VoxColors.TextMuted,
                 modifier = Modifier.padding(top = 12.dp),
             )
+            if (state.captionsMode == CaptionsMode.Lyrics) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    if (state.lyricsSource.isNotBlank()) "Loaded · ${state.lyricsSource}" else "No sidecar found for this file",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = VoxColors.Accent,
+                )
+                Spacer(Modifier.height(8.dp))
+                if (state.lyricsLines.isEmpty()) {
+                    Text(
+                        "Expected e.g. Song.mp3 + Song.lrc, or Video.mp4 + Video.srt on the same path / SAF folder.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = VoxColors.TextSecondary,
+                    )
+                } else {
+                    state.lyricsLines.forEachIndexed { i, line ->
+                        val active = i == state.lyricsActiveIndex
+                        Text(
+                            line,
+                            color = if (active) VoxColors.Accent else VoxColors.TextSecondary,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            fontSize = if (active) 16.sp else 14.sp,
+                            modifier = Modifier.padding(vertical = 3.dp),
+                        )
+                    }
+                }
+            }
     }
 }
 
@@ -726,6 +800,224 @@ fun VideoTopChrome(
             Icon(Icons.Default.Settings, contentDescription = "Settings", tint = VoxColors.Text)
         }
     }
+}
+
+@Composable
+private fun QueueSheet(
+    state: PlayerUiState,
+    onPlayIndex: (Int) -> Unit,
+    onRemoveIndex: (Int) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Text("Up next", style = MaterialTheme.typography.titleLarge, color = VoxColors.Text)
+        Text(
+            if (state.localQueue.isEmpty()) "Queue is empty — play from Video or Audio"
+            else "${state.localQueueIndex + 1} / ${state.localQueue.size}",
+            style = MaterialTheme.typography.bodySmall,
+            color = VoxColors.TextMuted,
+            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+        )
+        state.localQueue.take(80).forEach { row ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (row.isCurrent) VoxColors.AccentSoft else VoxColors.BgHover)
+                    .clickable { onPlayIndex(row.index) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        row.title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = VoxColors.Text,
+                        fontWeight = if (row.isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                    if (row.artist.isNotBlank()) {
+                        Text(row.artist, maxLines = 1, color = VoxColors.TextMuted, fontSize = 12.sp)
+                    }
+                }
+                if (!row.isCurrent) {
+                    IconButton(onClick = { onRemoveIndex(row.index) }) {
+                        Icon(Icons.Default.Close, "Remove from queue", tint = VoxColors.TextMuted)
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+    }
+}
+
+@Composable
+private fun FavoritesSheet(
+    state: PlayerUiState,
+    onPlay: (BookmarkStore.Bookmark) -> Unit,
+    onRemove: (String) -> Unit,
+    onSaveNow: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Text("Favorites", style = MaterialTheme.typography.titleLarge, color = VoxColors.Text)
+        Text(
+            "Saved positions from Now Playing, notification Favorite, or Save here. Also under Lists → Favorites.",
+            style = MaterialTheme.typography.bodySmall,
+            color = VoxColors.TextMuted,
+            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+        )
+        SheetRow(Icons.Default.Bookmark, "Save current position", state.localTitle.ifBlank { "Nothing playing" }) {
+            onSaveNow()
+        }
+        Spacer(Modifier.height(8.dp))
+        if (state.bookmarks.isEmpty()) {
+            Text(
+                "No favorites yet — tap the bookmark on Now Playing or Save current position.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = VoxColors.TextSecondary,
+            )
+        } else {
+            state.bookmarks.forEach { bm ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(VoxColors.BgHover)
+                        .clickable { onPlay(bm) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(bm.title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = VoxColors.Text)
+                        Text(
+                            formatBookmarkPos(bm.positionMs) + if (bm.isVideo) " · video" else " · audio",
+                            color = VoxColors.TextMuted,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    IconButton(onClick = { onRemove(bm.uri) }) {
+                        Icon(Icons.Default.Close, "Remove favorite", tint = VoxColors.TextMuted)
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SleepSheet(
+    state: PlayerUiState,
+    onMinutes: (Int) -> Unit,
+    onClear: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Text("Sleep timer", style = MaterialTheme.typography.titleLarge, color = VoxColors.Text)
+        Text(
+            state.sleepRemainingLabel.ifBlank { "Off — fades out then pauses" },
+            style = MaterialTheme.typography.bodySmall,
+            color = VoxColors.TextMuted,
+            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SleepTimer.DURATIONS_MIN.take(3).forEach { m ->
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(VoxColors.BgHover)
+                        .clickable { onMinutes(m) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("${m}m", color = VoxColors.Text, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SleepTimer.DURATIONS_MIN.drop(3).forEach { m ->
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(VoxColors.BgHover)
+                        .clickable { onMinutes(m) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("${m}m", color = VoxColors.Text, fontWeight = FontWeight.Medium)
+                }
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(VoxColors.BgHover)
+                    .clickable(onClick = onClear),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Off", color = VoxColors.Text, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutSheet(
+    versionLabel: String,
+    onOpenDocs: () -> Unit,
+    onOpenReleases: () -> Unit,
+    onCodecPolicy: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        Text(
+            "About VoxPlayer",
+            style = MaterialTheme.typography.titleLarge,
+            color = VoxColors.Text,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Text(
+            "v$versionLabel · FOSS Media3 · no GMS\nGrapheneOS-honest local playback · contact@voxhash.dev",
+            style = MaterialTheme.typography.bodySmall,
+            color = VoxColors.TextMuted,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        SheetRow(Icons.Default.Info, "Help / docs (browser)", "GitHub README") { onOpenDocs() }
+        SheetRow(Icons.Default.Update, "Check for updates (browser)", "GitHub Releases") { onOpenReleases() }
+        SheetRow(Icons.Default.Policy, "Codec policy", "Wrap FOSS / MediaCodec only") { onCodecPolicy() }
+        Text(
+            "Prefer Obtainium or verified APKs from GitHub Releases. No silent auto-install.",
+            style = MaterialTheme.typography.bodySmall,
+            color = VoxColors.TextMuted,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun CodecPolicySheet() {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        Text("Codec policy", style = MaterialTheme.typography.titleLarge, color = VoxColors.Text)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "VoxPlayer does not vendor in-tree H.264/x264 or H.265/x265 source. Android / Quest / GrapheneOS decode goes through Media3 → MediaCodec (device firmware). Desktop wraps system FOSS (libav / libvlc). Probe this device under More → Codec fixture matrix.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = VoxColors.TextSecondary,
+        )
+    }
+}
+
+private fun formatBookmarkPos(ms: Long): String {
+    val totalSec = (ms / 1000L).coerceAtLeast(0L)
+    val m = totalSec / 60L
+    val s = totalSec % 60L
+    return "%d:%02d".format(m, s)
 }
 
 enum class CaptionsMode { Off, Lyrics }

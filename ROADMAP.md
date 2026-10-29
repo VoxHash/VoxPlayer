@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.112.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets + Quest panel-lean shell + seek audio guard + TextureView ZOOM fill. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
+Status as of October 2026 (**v1.113.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets + Quest panel-lean shell + seek audio guard + TextureView ZOOM fill + About/Help. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
 
 ## Shipped in 1.3.0
 
@@ -201,6 +201,9 @@ A **separate Android app phase** (not a thin WebView wrapper):
 86. **Quest panel Home / sidebar / menu**: Content-first lean shell on multi-window wide panels (labeled rail + mini only); restore Home dest + facets; accurate dest selection; slim More when unpaired (**Done 1.110.0** — Quest 3 e2e intents + activity state; REA: on-device 2D panel streaming layout)
 87. **Quest seek / next / prev hiss**: Mute + release audio effects across seek discontinuities; re-apply on READY; non-spatial media attributes on Quest-like devices; scrub seeks on gesture release only (**Done 1.111.0** — Quest 3 playback e2e)
 88. **Phone GUI / Now Playing fill**: Remove Video/Audio home inline player + Open; TextureView ZOOM Now Playing fill (portrait + landscape); More icon rows; Cast (DLNA) + Favorite notification/stage wiring; MediaStore display titles (**Done 1.112.0** — Pixel 7 Pro portrait/landscape e2e)
+89. **Phone ops sheets + Favorites discoverability**: More → About / Codec policy; Captions sheet shows sidecar lyrics + stage overlay; Favorites list sheet + Lists → Favorites smart folder; Queue / Up next sheet; Sleep timer sheet; Ambient glow; Lock player controls (honest rename) (**Done 1.113.0** — Pixel e2e)
+90. **Help / updates (browser, FOSS)**: In-app **Help / docs** and **Check for updates** open the system browser to GitHub README / Releases only — no Play Core, no silent auto-install; Obtainium remains the preferred GrapheneOS update path (**Done 1.113.0** — More → About)
+91. **Project website (static FOSS)**: Publish a tracker-free static site for VoxPlayer (downloads, APK fingerprint, docs links, privacy: no analytics) that complements GitHub Releases — not a login wall and not a replacement for signed-release provenance (**Planned**)
 
 
 GrapheneOS constraints: Prefer FOSS dependencies, avoid proprietary push/analytics SDKs, document battery and background playback limits honestly.

@@ -165,5 +165,7 @@ class LocalPlaylistStore(context: Context) {
         const val SMART_RECENT = "smart:recent"
         const val SMART_TOP = "smart:top"
         const val SMART_SHORT = "smart:short"
+        /** Position bookmarks saved from Now Playing / notification (Favorite). */
+        const val SMART_FAVORITES = "smart:favorites"
     }
 }

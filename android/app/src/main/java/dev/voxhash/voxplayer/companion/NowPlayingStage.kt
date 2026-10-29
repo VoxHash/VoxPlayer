@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -49,6 +51,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +81,7 @@ fun NowPlayingStage(
     onCast: () -> Unit,
     onBookmark: () -> Unit,
     onOpenQueue: () -> Unit,
+    onUnlock: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val title = state.localTitle.ifBlank { "Nothing playing" }
@@ -86,18 +90,42 @@ fun NowPlayingStage(
         ?.let { Uri.parse(it) }
     val showVideo = !audioSurface && state.localIsVideo && player != null &&
         title != "(nothing loaded)"
+    val showLyrics = state.captionsMode == CaptionsMode.Lyrics &&
+        state.lyricsLines.isNotEmpty() &&
+        (!state.localMuted || state.captionsShowWhenMuted)
+    val ambient =
+        state.ambientMode && state.qualityMode != "saver"
+
+    if (state.screenLocked) {
+        LockedNowPlayingStage(
+            title = title,
+            showVideo = showVideo,
+            player = player,
+            artUri = artUri,
+            isVideo = state.localIsVideo,
+            onUnlock = onUnlock,
+            modifier = modifier,
+        )
+        return
+    }
 
     Box(
         modifier
             .fillMaxSize()
             .background(
-                Brush.verticalGradient(
-                    listOf(
-                        VoxColors.BgElevated,
-                        VoxColors.BgApp,
-                        Color(0xFF1A0F0C),
-                    ),
-                ),
+                if (ambient) {
+                    Brush.radialGradient(
+                        colors = listOf(Color(0xFF3D2418), VoxColors.BgApp, Color(0xFF0A0706)),
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(
+                            VoxColors.BgElevated,
+                            VoxColors.BgApp,
+                            Color(0xFF1A0F0C),
+                        ),
+                    )
+                },
             ),
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -145,6 +173,78 @@ fun NowPlayingStage(
                     onOpenQueue = onOpenQueue,
                 )
             }
+        }
+        if (showLyrics) {
+            LyricsOverlay(
+                lines = state.lyricsLines,
+                activeIndex = state.lyricsActiveIndex,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LockedNowPlayingStage(
+    title: String,
+    showVideo: Boolean,
+    player: Player?,
+    artUri: Uri?,
+    isVideo: Boolean,
+    onUnlock: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.fillMaxSize().background(Color.Black)) {
+        StageSurface(showVideo, player, artUri, isVideo)
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(Color(0xCC0A0706))
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(Icons.Default.Lock, contentDescription = null, tint = VoxColors.TextSecondary)
+            Spacer(Modifier.height(8.dp))
+            Text(title, color = VoxColors.Text, maxLines = 2, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(12.dp))
+            IconButton(onClick = onUnlock) {
+                Icon(Icons.Default.LockOpen, contentDescription = "Unlock player controls", tint = VoxColors.Accent)
+            }
+            Text("Unlock controls", color = VoxColors.TextMuted, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun LyricsOverlay(
+    lines: List<String>,
+    activeIndex: Int,
+    modifier: Modifier = Modifier,
+) {
+    val start = (activeIndex - 1).coerceAtLeast(0)
+    val end = (activeIndex + 2).coerceAtMost(lines.lastIndex)
+    if (start > end) return
+    Column(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0x990A0706))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        for (i in start..end) {
+            val active = i == activeIndex
+            Text(
+                lines[i],
+                color = if (active) Color.White else VoxColors.TextMuted,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                fontSize = if (active) 18.sp else 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(vertical = 2.dp),
+            )
         }
     }
 }

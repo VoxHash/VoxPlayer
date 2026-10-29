@@ -210,6 +210,11 @@ class MainActivity : ComponentActivity() {
                 "quality" -> PlayerSheet.Quality
                 "storage" -> PlayerSheet.Storage
                 "track", "track_actions" -> PlayerSheet.TrackActions
+                "queue", "up_next" -> PlayerSheet.Queue
+                "favorites", "favourite", "bookmarks" -> PlayerSheet.Favorites
+                "sleep" -> PlayerSheet.Sleep
+                "about", "help" -> PlayerSheet.About
+                "codec_policy", "policy" -> PlayerSheet.CodecPolicy
                 else -> null
             }
             if (mapped != null) vm.openPlayerSheet(mapped)

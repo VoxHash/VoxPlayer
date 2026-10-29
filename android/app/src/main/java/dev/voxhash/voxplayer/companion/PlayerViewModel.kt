@@ -2752,6 +2752,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun playSmartList(kind: String) {
+        if (kind == LocalPlaylistStore.SMART_FAVORITES) {
+            val first = _state.value.bookmarks.firstOrNull()
+            if (first == null) {
+                _state.update { it.copy(error = "Favorites is empty") }
+                return
+            }
+            playBookmark(first)
+            return
+        }
         val queue = smartListTracks(kind)
         if (queue.isEmpty()) {
             _state.update { it.copy(error = "Smart list is empty") }
@@ -2772,6 +2781,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun playListsBrowseTrack(uri: String) {
         val browse = _state.value.listsBrowseId ?: return
         when {
+            browse == LocalPlaylistStore.SMART_FAVORITES -> {
+                val bm = _state.value.bookmarks.find { it.uri == uri } ?: return
+                playBookmark(bm)
+            }
             browse.startsWith("smart:") -> {
                 val q = smartListTracks(browse)
                 val idx = q.indexOfFirst { it.uri == uri }.coerceAtLeast(0)
@@ -2799,8 +2812,22 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 .filter { !it.isVideo && it.durationMs in 1L..180_000L }
                 .take(40)
                 .map { it.toPlaylistTrack() }
+            LocalPlaylistStore.SMART_FAVORITES -> s.bookmarks.map { bm ->
+                LocalPlaylistStore.Track(
+                    uri = bm.uri,
+                    title = bm.title,
+                    artist = formatBookmarkArtist(bm.positionMs),
+                    album = "",
+                    isVideo = bm.isVideo,
+                )
+            }
             else -> emptyList()
         }
+    }
+
+    private fun formatBookmarkArtist(positionMs: Long): String {
+        val totalSec = (positionMs / 1000L).coerceAtLeast(0L)
+        return "Favorite · %d:%02d".format(totalSec / 60L, totalSec % 60L)
     }
 
     private fun LocalMediaItem.toPlaylistTrack() = LocalPlaylistStore.Track(
@@ -2913,6 +2940,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun openPlayerSheet(sheet: PlayerSheet) {
         Log.i(TAG, "openPlayerSheet=$sheet")
         if (sheet == PlayerSheet.Storage) refreshCacheUsage()
+        if (sheet == PlayerSheet.Captions || sheet == PlayerSheet.Favorites) {
+            player?.let { refreshLyricsFor(currentPlayerUri(it), it.currentPosition) }
+            _state.update { it.copy(bookmarks = bookmarkStore.load()) }
+        }
         _state.update {
             it.copy(
                 playerSheet = sheet,
@@ -2920,11 +2951,16 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     PlayerSheet.None -> it.statusToast
                     PlayerSheet.Settings -> "Player settings"
                     PlayerSheet.Speed -> "Playback speed"
-                    PlayerSheet.Captions -> "Captions"
+                    PlayerSheet.Captions -> "Captions / lyrics"
                     PlayerSheet.More -> "More player options"
                     PlayerSheet.Quality -> "Quality"
                     PlayerSheet.TrackActions -> "Track actions"
                     PlayerSheet.Storage -> "Storage"
+                    PlayerSheet.Queue -> "Up next"
+                    PlayerSheet.Favorites -> "Favorites"
+                    PlayerSheet.Sleep -> "Sleep timer"
+                    PlayerSheet.About -> "About"
+                    PlayerSheet.CodecPolicy -> "Codec policy"
                 },
             )
         }
@@ -2941,7 +2977,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 screenLocked = locked,
                 playerSheet = PlayerSheet.None,
-                statusToast = if (locked) "Screen locked — tap lock again in settings" else "Screen unlocked",
+                statusToast = if (locked) {
+                    "Player controls locked — unlock in Player settings"
+                } else {
+                    "Player controls unlocked"
+                },
             )
         }
         clearStatusToastLater()
@@ -2957,6 +2997,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     CaptionsMode.Lyrics -> "Sidecar captions / lyrics"
                 },
             )
+        }
+        if (mode == CaptionsMode.Lyrics) {
+            player?.let { refreshLyricsFor(currentPlayerUri(it), it.currentPosition) }
         }
         clearStatusToastLater()
     }

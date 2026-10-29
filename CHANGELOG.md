@@ -7,7 +7,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 
 ### Planned
+- Static FOSS project website (ROADMAP #91)
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
+
+## [1.113.0] - 2026-10-28
+
+### Added
+- Android / GrapheneOS: More → **About / Help** (version, FOSS note) with browser links to GitHub docs and Releases; **Codec policy** sheet
+- **Favorites** list sheet + Lists → Favorites smart folder (saved bookmarks were previously save-only on phone)
+- **Up next / Queue** sheet from Now Playing; **Sleep timer** sheet with duration chips
+- Captions sheet shows loaded sidecar lyrics; Now Playing lyric overlay when captions mode is on
+
+### Fixed
+- Queue / Up next no longer navigates away to the library grid
+- Sleep timer no longer opens an empty Now Playing stage
+- Ambient mode applies a soft stage glow (skipped in data-saver quality)
+- Lock player controls actually locks the stage chrome (system MediaSession lock-screen transport unchanged)
+
+### Changed
+- Player settings “Lock screen” renamed to **Lock player controls** (honest vs Android lock-screen MediaSession)
 
 ## [1.112.0] - 2026-10-28
 

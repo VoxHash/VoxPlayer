@@ -60,6 +60,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Forward5
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
@@ -70,6 +71,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
+import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
@@ -83,9 +85,11 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
+import dev.voxhash.voxplayer.companion.BuildConfig
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -570,10 +574,7 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
         onLoopVideo = vm::setLoopVideo,
         onAmbient = vm::setAmbientMode,
         onLockScreen = vm::setScreenLocked,
-        onOpenSleep = {
-            vm.dismissPlayerSheet()
-            vm.openNowPlayingTab()
-        },
+        onOpenSleep = { vm.openPlayerSheet(PlayerSheet.Sleep) },
         onQualityMode = vm::setQualityMode,
         onPlayNext = {
             vm.localNext()
@@ -586,10 +587,41 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
             vm.shareNowPlayingCard(context)
             vm.dismissPlayerSheet()
         },
-        onAddQueue = { vm.dismissPlayerSheet() },
+        onAddQueue = {
+            vm.openPlayerSheet(PlayerSheet.Queue)
+        },
         onOpenStorage = { vm.openPlayerSheet(PlayerSheet.Storage) },
         onClearCache = vm::clearArtworkCache,
         onShowDeviceFiles = vm::setShowDeviceFiles,
+        onPlayQueueIndex = { idx ->
+            vm.playQueueIndex(idx)
+            vm.dismissPlayerSheet()
+        },
+        onRemoveQueueIndex = vm::removeQueueItem,
+        onPlayBookmark = { bm ->
+            vm.playBookmark(bm)
+            vm.dismissPlayerSheet()
+            vm.openNowPlayingTab()
+        },
+        onRemoveBookmark = vm::removeBookmark,
+        onBookmarkNow = vm::bookmarkNow,
+        onSleepMinutes = vm::setSleepTimerMinutes,
+        onClearSleep = vm::clearSleepTimer,
+        onOpenDocs = {
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/VoxHash/VoxPlayer#readme")),
+                )
+            }
+        },
+        onOpenReleases = {
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/VoxHash/VoxPlayer/releases")),
+                )
+            }
+        },
+        appVersionLabel = BuildConfig.VERSION_NAME,
     )
 
     if (state.nowPlayingStage && !state.pipActive) {
@@ -604,7 +636,10 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
             onNext = vm::localNext,
             onShuffle = vm::toggleLocalShuffle,
             onSeek = vm::seekLocal,
-            onOpenCaptions = { vm.openPlayerSheet(PlayerSheet.Captions) },
+            onOpenCaptions = {
+                vm.setCaptionsMode(CaptionsMode.Lyrics)
+                vm.openPlayerSheet(PlayerSheet.Captions)
+            },
             onOpenSettings = { vm.openPlayerSheet(PlayerSheet.Settings) },
             onShare = { vm.shareNowPlayingCard(context) },
             onSaveList = {
@@ -615,11 +650,8 @@ fun VoxPlayerApp(vm: PlayerViewModel) {
             },
             onCast = vm::castFromNowPlaying,
             onBookmark = vm::bookmarkNow,
-            onOpenQueue = {
-                vm.dismissNowPlayingStage()
-                if (state.localIsVideo) vm.setPrimaryDest(PrimaryDest.Video)
-                else vm.setPrimaryDest(PrimaryDest.Audio)
-            },
+            onOpenQueue = { vm.openPlayerSheet(PlayerSheet.Queue) },
+            onUnlock = { vm.setScreenLocked(false) },
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(8f),
@@ -2179,6 +2211,7 @@ private fun ListsPane(
             )
             Text("Smart lists", style = MaterialTheme.typography.labelLarge, color = VoxColors.TextMuted)
             listOf(
+                LocalPlaylistStore.SMART_FAVORITES to "Favorites",
                 LocalPlaylistStore.SMART_NEW to "New on device",
                 LocalPlaylistStore.SMART_RECENT to "Recently played",
                 LocalPlaylistStore.SMART_TOP to "Most played",
@@ -2220,6 +2253,15 @@ private fun ListsPane(
     }
 
     val tracks: List<LocalPlaylistStore.Track> = when {
+        browse == LocalPlaylistStore.SMART_FAVORITES -> state.bookmarks.map { bm ->
+            LocalPlaylistStore.Track(
+                bm.uri,
+                bm.title,
+                "at ${fmtBookmarkPos(bm.positionMs)}",
+                "",
+                bm.isVideo,
+            )
+        }
         browse == LocalPlaylistStore.SMART_NEW -> state.localItems.take(40).map {
             LocalPlaylistStore.Track(it.uri.toString(), it.title, it.artist, it.album, it.isVideo)
         }
@@ -4327,11 +4369,19 @@ private fun DesktopRemotePane(state: PlayerUiState, vm: PlayerViewModel, wide: B
                 icon = Icons.Default.Bookmark,
                 title = "Favorites",
                 subtitle = if (state.bookmarks.isEmpty()) {
-                    "Bookmark the current position"
+                    "Open list · save from Now Playing"
                 } else {
-                    "${state.bookmarks.size} saved"
+                    "${state.bookmarks.size} saved · tap to open"
                 },
-                onClick = vm::bookmarkNow,
+                onClick = { vm.openPlayerSheet(PlayerSheet.Favorites) },
+            )
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Timer,
+                title = "Sleep timer",
+                subtitle = state.sleepRemainingLabel.ifBlank { "Fade out then pause" },
+                onClick = { vm.openPlayerSheet(PlayerSheet.Sleep) },
             )
         }
         item {
@@ -4355,6 +4405,25 @@ private fun DesktopRemotePane(state: PlayerUiState, vm: PlayerViewModel, wide: B
                         .padding(10.dp),
                 )
             }
+        }
+        item {
+            Text("Help", style = MaterialTheme.typography.titleSmall, color = VoxColors.Accent)
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Info,
+                title = "About / Help",
+                subtitle = "v${BuildConfig.VERSION_NAME} · docs & updates",
+                onClick = { vm.openPlayerSheet(PlayerSheet.About) },
+            )
+        }
+        item {
+            MoreIconRow(
+                icon = Icons.Default.Policy,
+                title = "Codec policy",
+                subtitle = "FOSS / MediaCodec only — no in-tree x264/x265",
+                onClick = { vm.openPlayerSheet(PlayerSheet.CodecPolicy) },
+            )
         }
         if (state.syncedPlaylists.isNotEmpty()) {
             item { Text("Synced playlists", style = MaterialTheme.typography.titleMedium) }

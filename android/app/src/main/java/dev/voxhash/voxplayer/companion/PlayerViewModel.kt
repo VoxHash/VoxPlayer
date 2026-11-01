@@ -579,7 +579,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             .setMediaMetadata(richMetadata(item))
             .build()
 
-    /** Richer session metadata for Bluetooth AVRCP / System UI / car head units (no GMS Auto). */
+    /** Richer session metadata for Bluetooth AVRCP / System UI / Android Auto. */
     private fun richMetadata(item: LocalMediaItem): MediaMetadata {
         val artist = item.artist.ifBlank { "VoxPlayer" }
         return MediaMetadata.Builder()

@@ -66,3 +66,15 @@ python test.py
 set PYTHONIOENCODING=utf-8
 python test.py
 ```
+
+## Android Auto: VoxPlayer missing from the car apps / media menu
+
+Requires companion **1.116.0+** (MediaLibraryService + Auto media declaration). Then:
+
+1. Phone must run **Android 9+** with the **Android Auto** app (USB or wireless to a compatible head unit).
+2. Install VoxPlayer, open it once, grant **music / audio** (and notifications) permissions, then force-stop Android Auto or unplug/replug USB.
+3. **Sideloaded / self-signed APK** (not from Play): on the phone open Android Auto → tap **Version and permission info** ~10× → Developer settings → enable **Unknown sources**. Without that, Auto hides non-Play media apps.
+4. In Android Auto customize / launcher, enable **VoxPlayer** under media apps if it is listed but toggled off.
+5. GrapheneOS / de-Googled builds: Android Auto needs a working Auto stack (often sandboxed Play services). Pure AOSP without Auto will never show phone apps on the car display — use Bluetooth AVRCP transport controls instead.
+
+Browse on the car is **audio-focused** (Recent / Favorites / Playlists / Music). Video stays on the phone UI.

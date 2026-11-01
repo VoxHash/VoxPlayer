@@ -12,31 +12,38 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.annotation.OptIn
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.CommandButton
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.LibraryParams
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionResult
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 
 /**
- * Hosts ExoPlayer + MediaSession so local audio/video can continue when the
- * activity is backgrounded (lock screen / other apps / Quest panel unfocused).
+ * Hosts ExoPlayer + [MediaLibrarySession] so local audio/video can continue when the
+ * activity is backgrounded (lock screen / other apps / Quest panel unfocused) and so
+ * Android Auto can browse/play the offline library over USB / wireless projection.
  *
- * Headset / Car (no GMS Auto): Media3 maps headset media keys; we advertise
- * ±15s seek media-button preferences for Bluetooth AVRCP / System UI, plus
- * overflow Previous / Next / Bookmark / Speed for richer notifications.
+ * Headset / car: Media3 maps headset media keys; we advertise ±15s seek media-button
+ * preferences for Bluetooth AVRCP / System UI, plus overflow Previous / Next /
+ * Bookmark / Speed for richer notifications. Android Auto uses the library browse
+ * tree ([CarMediaBrowser]) — no GMS Cast SDK; sideloaded APKs need Auto “Unknown sources”.
  *
  * Quest / route edge cases: [AudioDeviceCallback] re-applies the preferred
  * sink (or falls back to system default when it disconnects) and re-attaches
  * volume/EQ after session or device changes.
  */
-class PlaybackService : MediaSessionService() {
-    private var mediaSession: MediaSession? = null
+class PlaybackService : MediaLibraryService() {
+    private var mediaSession: MediaLibrarySession? = null
     private lateinit var queueStore: PlaybackQueueStore
     private val volumeApplier = LocalVolumeApplier()
     private lateinit var routeApplier: AudioRouteApplier
@@ -157,7 +164,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     @OptIn(UnstableApi::class)
-    private val sessionCallback = object : MediaSession.Callback {
+    private val sessionCallback = object : MediaLibrarySession.Callback {
         override fun onConnect(
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -344,6 +351,69 @@ class PlaybackService : MediaSessionService() {
                 Futures.immediateFailedFuture(IllegalStateException("No resumable media"))
             }
         }
+
+        override fun onGetLibraryRoot(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            Log.i(TAG, "Android Auto / browser root from ${browser.packageName}")
+            return Futures.immediateFuture(LibraryResult.ofItem(CarMediaBrowser.rootItem(), params))
+        }
+
+        override fun onGetChildren(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            page: Int,
+            pageSize: Int,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+            val kids = CarMediaBrowser.children(this@PlaybackService, parentId, page, pageSize)
+            Log.i(TAG, "browse parent=$parentId page=$page size=${kids.size}")
+            return Futures.immediateFuture(LibraryResult.ofItemList(kids, params))
+        }
+
+        override fun onGetItem(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            mediaId: String,
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            val item = CarMediaBrowser.resolvePlayable(this@PlaybackService, mediaId)
+                ?: CarMediaBrowser.children(this@PlaybackService, CarMediaBrowser.ROOT_ID, 0, 50)
+                    .firstOrNull { it.mediaId == mediaId }
+            return if (item != null) {
+                Futures.immediateFuture(LibraryResult.ofItem(item, null))
+            } else {
+                Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
+            }
+        }
+
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+        ): ListenableFuture<MutableList<MediaItem>> {
+            val resolved = mediaItems.map {
+                CarMediaBrowser.resolveMediaItem(this@PlaybackService, it)
+            }.toMutableList()
+            return Futures.immediateFuture(resolved)
+        }
+
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long,
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val resolved = mediaItems.map {
+                CarMediaBrowser.resolveMediaItem(this@PlaybackService, it)
+            }
+            return Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(resolved, startIndex, startPositionMs),
+            )
+        }
     }
 
     @OptIn(UnstableApi::class)
@@ -408,12 +478,11 @@ class PlaybackService : MediaSessionService() {
                 if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0,
         )
 
-        mediaSession = MediaSession.Builder(this, player)
+        mediaSession = MediaLibrarySession.Builder(this, player, sessionCallback)
             .setId("voxplayer-local")
-            .setCallback(sessionCallback)
             .setMediaButtonPreferences(mediaButtons)
             .setSessionActivity(openApp)
-            // Offline content:// / file thumbnails for System UI media card (no network).
+            // Offline content:// / file thumbnails for System UI / Android Auto (no network).
             .setBitmapLoader(
                 androidx.media3.session.CacheBitmapLoader(
                     androidx.media3.datasource.DataSourceBitmapLoader(this),
@@ -453,7 +522,7 @@ class PlaybackService : MediaSessionService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         mediaSession
 
     override fun onTaskRemoved(rootIntent: Intent?) {

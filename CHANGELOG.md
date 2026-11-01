@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Static FOSS project website (ROADMAP #91)
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.116.0] - 2026-11-01
+
+### Added
+- Android Auto: declare media capability (`automotive_app_desc`) so VoxPlayer can appear on the car apps / media list over USB or wireless Android Auto
+- Android Auto browse tree via Media3 `MediaLibraryService` — Recent, Favorites, Playlists, Music (offline MediaStore / local lists; audio-focused for driving)
+
+### Fixed
+- Car head unit never listed VoxPlayer because the companion only exposed `MediaSessionService` (no Auto metadata / `MediaBrowserService` browse)
+
 ## [1.115.0] - 2026-10-28
 
 ### Added

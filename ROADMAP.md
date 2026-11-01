@@ -1,6 +1,6 @@
 # Roadmap — VoxPlayer
 
-Status as of October 2026 (**v1.115.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets + Quest panel-lean shell + seek audio guard + TextureView ZOOM fill + About/Help + notification artwork (Quest-safe video thumbs). Desktop shell matches Connect-icon / Share-card / speed-slider / no-NP-overflow chrome. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
+Status as of November 2026 (**v1.116.0**). Stack: **PyQt6 shell** + decode via **native C media core when present** or **FOSS libav (PyAV)** auto-fallback — distro media packages not required if libav works. Meta/thumbs/viz prefer linked libav (ffmpeg CLI optional). Codec fixture matrix + standing wrap-FOSS-only policy (no in-tree x264/x265). Android companion uses Kotlin + Media3 (no GMS) with immersive Now Playing stage + modern sheets + Quest panel-lean shell + seek audio guard + TextureView ZOOM fill + About/Help + notification artwork (Quest-safe video thumbs) + **Android Auto** media browse (USB/wireless). Desktop shell matches Connect-icon / Share-card / speed-slider / no-NP-overflow chrome. No Qt Multimedia *player* path (libav may use Qt `QAudioSink` for PCM out only).
 
 ## Shipped in 1.3.0
 

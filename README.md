@@ -80,7 +80,9 @@ Package page: [https://pypi.org/project/voxplayer/](https://pypi.org/project/vox
 2. Run `VoxPlayer.exe` to start
 3. Run `register_file_associations.bat` as Administrator for file associations
 
-**macOS / Linux:** download the matching asset from [Releases](https://github.com/VoxHash/VoxPlayer/releases) when published for your platform.
+**macOS:** download the `.dmg` or `VoxPlayer-macOS-App.zip` from [Releases](https://github.com/VoxHash/VoxPlayer/releases), open it, and drag **VoxPlayer.app** into Applications (same as any other Mac app). Uninstall with Trash or `./packaging/uninstall_macos_app.sh`. Local build: `./build_macos.sh`.
+
+**Linux:** download the matching asset from [Releases](https://github.com/VoxHash/VoxPlayer/releases) when published for your platform.
 
 ### Method 3: Python (source)
 

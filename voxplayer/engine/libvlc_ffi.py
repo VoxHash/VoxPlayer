@@ -13,6 +13,7 @@ import ctypes.util
 import os
 import sys
 from enum import IntEnum
+from pathlib import Path
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 c_void_p = ctypes.c_void_p
@@ -89,9 +90,11 @@ def _candidate_lib_paths() -> List[str]:
             ]
         )
     elif sys.platform == "darwin":
+        home = os.path.expanduser("~")
         paths.extend(
             [
                 "libvlc.dylib",
+                os.path.join(home, "Applications/VLC.app/Contents/MacOS/lib/libvlc.dylib"),
                 "/Applications/VLC.app/Contents/MacOS/lib/libvlc.dylib",
                 "/opt/homebrew/lib/libvlc.dylib",
                 "/usr/local/lib/libvlc.dylib",
@@ -233,6 +236,37 @@ def _bind(lib: ctypes.CDLL) -> None:
     lib.libvlc_event_attach.restype = c_int
 
 
+def _preload_libvlccore(libvlc_path: str) -> None:
+    """Load libvlccore from the same directory before libvlc (macOS plugin deps)."""
+    if sys.platform != "darwin":
+        return
+    directory = os.path.dirname(os.path.abspath(libvlc_path))
+    for name in ("libvlccore.dylib", "libvlccore.9.dylib"):
+        candidate = os.path.join(directory, name)
+        if os.path.isfile(candidate):
+            try:
+                ctypes.CDLL(candidate)
+            except OSError:
+                pass
+            return
+
+
+def _path_arch_ok(path: str) -> bool:
+    """Skip wrong-CPU VLC dylibs on macOS (Intel app on Apple Silicon, etc.)."""
+    if sys.platform != "darwin" or not os.path.isfile(path):
+        return True
+    try:
+        from ..native_core_paths import _host_macho_arch, _macho_file_arch
+
+        host = _host_macho_arch()
+        arch = _macho_file_arch(Path(path))
+        if host and arch and arch != host:
+            return False
+    except Exception:
+        return True
+    return True
+
+
 def load_libvlc(force: bool = False) -> ctypes.CDLL:
     """Load libvlc from bundled path / system. Raises OSError on failure."""
     global _LIB, _LOAD_ERROR
@@ -246,7 +280,11 @@ def load_libvlc(force: bool = False) -> ctypes.CDLL:
         pass
     last: Optional[BaseException] = None
     for path in _candidate_lib_paths():
+        if not _path_arch_ok(path):
+            continue
         try:
+            if os.path.isfile(path):
+                _preload_libvlccore(path)
             lib = ctypes.CDLL(path)
             _bind(lib)
             _LIB = lib
@@ -472,12 +510,23 @@ class Instance:
             flat = [str(a) for a in args[0]]
         else:
             flat = [str(a) for a in args]
-        argc = len(flat)
-        if argc == 0:
-            ptr = lib.libvlc_new(0, None)
-        else:
-            arr = (c_char_p * argc)(*[_b(a) for a in flat])
-            ptr = lib.libvlc_new(argc, arr)
+        ptr = self._libvlc_new(lib, flat)
+        # When plugins fail to load, libvlc surfaces bogus "unknown option --avcodec-hw=…"
+        # errors. Retry without hardware-decode flags, then with a minimal argv.
+        if not ptr and any(a.startswith("--avcodec-hw=") for a in flat):
+            libvlc_clearerr()
+            flat_no_hw = [a for a in flat if not a.startswith("--avcodec-hw=")]
+            ptr = self._libvlc_new(lib, flat_no_hw)
+            if ptr:
+                flat = flat_no_hw
+        if not ptr and flat:
+            libvlc_clearerr()
+            minimal = [a for a in flat if a in {"--intf=dummy", "--quiet", "--no-video-title-show", "--no-stats"}]
+            if not minimal:
+                minimal = ["--intf=dummy", "--quiet"]
+            ptr = self._libvlc_new(lib, minimal)
+            if ptr:
+                flat = minimal
         if not ptr:
             err = libvlc_errmsg()
             detail = err.decode("utf-8", "replace") if err else "libvlc_new failed"
@@ -487,6 +536,14 @@ class Instance:
         self._as_parameter_ = ptr
         # Keep argv alive for the lifetime of the instance (libvlc may read it).
         self._argv_keep = flat
+
+    @staticmethod
+    def _libvlc_new(lib: ctypes.CDLL, flat: List[str]) -> Optional[int]:
+        argc = len(flat)
+        if argc == 0:
+            return lib.libvlc_new(0, None)
+        arr = (c_char_p * argc)(*[_b(a) for a in flat])
+        return lib.libvlc_new(argc, arr)
 
     def media_player_new(self) -> MediaPlayer:
         ptr = self._lib.libvlc_media_player_new(self._ptr)

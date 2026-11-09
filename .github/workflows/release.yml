@@ -50,11 +50,12 @@ jobs:
           
           ### Downloads
           - Windows: VoxPlayer-Windows.zip (onedir; includes native_core when CI found libvlc)
-          - macOS: VoxPlayer-macOS.zip
+          - macOS: VoxPlayer-*-macOS.dmg / VoxPlayer-macOS-App.zip (Finder → Applications)
           - Linux: VoxPlayer-Linux.tar.gz
           - Python Package: *.whl
           
-          If a bundle lacks `native_core/`, run `packaging/install_native_core_*` on the target OS.
+          macOS uninstall: drag VoxPlayer.app to Trash, or run `packaging/uninstall_macos_app.sh`.
+          If a bundle lacks `native_core/`, FOSS libav is used when bundled; otherwise run `packaging/install_native_core_*`.
         files: |
           artifacts/**/*
         draft: false

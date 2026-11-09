@@ -50,9 +50,13 @@ def main() -> int:
     os.environ["PYTHON_VLC_LIB_PATH"] = str(lib)
     os.environ["VLC_PLUGIN_PATH"] = str(plugins)
     os.environ["PYTHON_VLC_MODULE_PATH"] = str(plugins)
-    # Prefer staged dir for libvlccore resolution
-    prev_ld = os.environ.get("LD_LIBRARY_PATH", "")
-    os.environ["LD_LIBRARY_PATH"] = str(dest) + (os.pathsep + prev_ld if prev_ld else "")
+    # Prefer staged dir for libvlccore resolution (Linux LD_*; macOS DYLD_*)
+    if sys.platform == "darwin":
+        prev_ld = os.environ.get("DYLD_LIBRARY_PATH", "")
+        os.environ["DYLD_LIBRARY_PATH"] = str(dest) + (os.pathsep + prev_ld if prev_ld else "")
+    else:
+        prev_ld = os.environ.get("LD_LIBRARY_PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = str(dest) + (os.pathsep + prev_ld if prev_ld else "")
 
     from voxplayer.engine import libvlc_ffi
 

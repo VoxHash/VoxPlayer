@@ -62,20 +62,36 @@ pip install -e ".[metadata]"
 
 Download platform archives from [Releases](https://github.com/VoxHash/VoxPlayer/releases) when published for your OS.
 
-CI builds an **onedir** bundle via `voxplayer.spec` / `packaging/build_desktop.sh`. When the build host has the native C media core installed, it is copied under `native_core/` inside the bundle so target machines do not need a separate media-suite install.
+CI builds desktop bundles via `voxplayer.spec` / `packaging/build_desktop.sh` (macOS uses `build_macos.sh`). When the build host has an **architecture-matching** native C media core, it is staged under `native_core/` inside the bundle. Desktop builds also include FOSS **libav** so the app can run without a separate VLC install.
 
 | Artifact | Contents |
 |----------|----------|
 | `VoxPlayer-Linux.tar.gz` | `VoxPlayer/` onedir (Linux) |
 | `VoxPlayer-Windows.zip` | `VoxPlayer/` onedir (Windows) |
-| `VoxPlayer-macOS.zip` | `VoxPlayer/` onedir (macOS) |
+| `VoxPlayer-*-macOS.dmg` / `VoxPlayer-macOS-App.zip` | **VoxPlayer.app** for Finder → Applications |
+| `VoxPlayer-*-macOS.zip` | Alternate `.app` zip |
 
-Local build:
+### macOS: install / uninstall like any other app
+
+```bash
+# From a release DMG: open it and drag VoxPlayer.app into Applications
+# Or from a local build:
+chmod +x build_macos.sh
+./build_macos.sh
+# → VoxPlayer.app + VoxPlayer-<version>-macOS.dmg
+open VoxPlayer-*-macOS.dmg   # drag to Applications (appears in Finder / Launchpad)
+
+# Uninstall
+./packaging/uninstall_macos_app.sh
+# or drag VoxPlayer.app from Applications to Trash
+```
+
+Local build (all platforms):
 
 ```bash
 chmod +x packaging/build_desktop.sh
 ./packaging/build_desktop.sh
-# → dist/VoxPlayer/VoxPlayer
+# macOS → VoxPlayer.app (+ DMG); Linux/Windows → dist/VoxPlayer/VoxPlayer
 ```
 
 ### Clear per-OS installers (native core only)
@@ -85,10 +101,12 @@ If you use a pip install or a bundle built without `native_core/`, install the p
 | Platform | Script |
 |----------|--------|
 | Linux | `packaging/install_native_core_linux.sh` |
-| macOS | `packaging/install_native_core_macos.sh` |
+| macOS | `packaging/install_native_core_macos.sh` (arch-matching VLC / `~/Applications`) |
 | Windows | `packaging/install_native_core_windows.ps1` |
 
 Debian/Ubuntu `.deb` builds (`build_debian.sh`) depend on `vlc | libvlc5` and wrap the onedir bundle.
+
+On Apple Silicon, an Intel-only `/Applications/VLC.app` is ignored; install a matching build (`brew install --cask vlc`) or keep arm64 VLC under `~/Applications`.
 
 ## Method 4: Python package build
 

@@ -382,7 +382,12 @@ class PlaybackEngine(QObject):
                 args.extend(plugin_path_args())
             except Exception:
                 pass
-            self._instance = vlc.Instance(*args)
+            try:
+                self._instance = vlc.Instance(*args)
+            except OSError:
+                # macOS / incomplete plugin trees often reject --avcodec-hw; retry soft.
+                soft = [a for a in args if not str(a).startswith("--avcodec-hw=")]
+                self._instance = vlc.Instance(*soft)
             self._apply_native_app_identity()
             self._player = self._instance.media_player_new()
             try:

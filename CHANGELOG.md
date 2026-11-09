@@ -10,6 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Static FOSS project website (ROADMAP #91)
 - Post–Phase 7 shell / companion polish as new ROADMAP items appear
 
+## [1.117.0] - 2026-11-09
+
+### Added
+- Proper Finder-installable **VoxPlayer.app** + DMG via `build_macos.sh` / PyInstaller `BUNDLE` (drag into Applications; no source tree required)
+- `packaging/uninstall_macos_app.sh` for clean removal from `/Applications` or `~/Applications`
+- macOS CI artifacts: `.app` zip + DMG alongside the onedir zip
+- Bundled FOSS **libav** (`voxplayer[libav]`) in desktop builds as decode fallback when libvlc cannot be staged
+
+### Fixed
+- macOS native-core discovery preferred Intel `/Applications/VLC.app` over arch-matching `~/Applications/VLC.app`, causing incomplete stage / `libvlc_new` failures (`unknown option --avcodec-hw=…`)
+- Plugin path resolution for VLC.app (`Contents/MacOS/lib` + sibling `plugins/`) and flat macOS plugin-tree validation
+- Staged macOS plugins now rewrite `@rpath/libvlccore` → `@loader_path/../…` so bundled cores load without the VLC binary’s rpaths
+- `libvlc_ffi.Instance` retries without `--avcodec-hw` (and with a minimal argv) when plugin load is incomplete
+- Wrong-CPU libvlc dylibs are skipped when probing on Apple Silicon / Intel
+
 ## [1.116.0] - 2026-11-01
 
 ### Added

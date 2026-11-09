@@ -58,6 +58,97 @@ def _stage_linux_symlink_aliases(dest_dir: Path, lib_basename: str) -> None:
             shutil.copy2(core9, core)
 
 
+def _stage_macos_dylib_aliases(dest_dir: Path) -> None:
+    """Ensure unversioned libvlc/libvlccore names exist for ctypes + plugin deps."""
+    mapping = (
+        ("libvlc.5.dylib", "libvlc.dylib"),
+        ("libvlccore.9.dylib", "libvlccore.dylib"),
+    )
+    for versioned, plain in mapping:
+        src = dest_dir / versioned
+        dest = dest_dir / plain
+        if src.is_file() and not dest.exists():
+            try:
+                dest.symlink_to(src.name)
+            except OSError:
+                shutil.copy2(src, dest)
+
+
+def _codesign_adhoc(path: Path) -> None:
+    """Re-sign a rewritten dylib (required on Apple Silicon after install_name_tool)."""
+    import subprocess
+
+    codesign = shutil.which("codesign")
+    if not codesign or not path.is_file():
+        return
+    try:
+        subprocess.run(
+            [codesign, "--force", "--sign", "-", str(path)],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        pass
+
+
+def _fix_macos_plugin_rpaths(dest_dir: Path) -> None:
+    """Rewrite ``@rpath/libvlccore.dylib`` so flat staged plugins resolve beside libs.
+
+    VLC.app plugins expect the VLC binary's ``@executable_path/lib`` rpath. When
+    staged under ``native_core/plugins``, point deps at ``@loader_path/..``.
+    Modified Mach-O files are ad-hoc re-signed so dyld accepts them on arm64.
+    """
+    import subprocess
+
+    plugins = dest_dir / "plugins"
+    if not plugins.is_dir():
+        return
+    install_name_tool = shutil.which("install_name_tool")
+    if not install_name_tool:
+        return
+    changes = (
+        ("@rpath/libvlccore.dylib", "@loader_path/../libvlccore.dylib"),
+        ("@rpath/libvlccore.9.dylib", "@loader_path/../libvlccore.9.dylib"),
+        ("@rpath/libvlc.dylib", "@loader_path/../libvlc.dylib"),
+        ("@rpath/libvlc.5.dylib", "@loader_path/../libvlc.5.dylib"),
+    )
+    touched: List[Path] = []
+    for plugin in plugins.rglob("*.dylib"):
+        for old, new in changes:
+            try:
+                subprocess.run(
+                    [install_name_tool, "-change", old, new, str(plugin)],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+            except Exception:
+                pass
+        touched.append(plugin)
+    # Also fix libvlc → libvlccore inside the staged lib dir
+    for lib_name in ("libvlc.dylib", "libvlc.5.dylib", "libvlccore.dylib", "libvlccore.9.dylib"):
+        lib = dest_dir / lib_name
+        if not lib.is_file():
+            continue
+        for old, new in (
+            ("@rpath/libvlccore.dylib", "@loader_path/libvlccore.dylib"),
+            ("@rpath/libvlccore.9.dylib", "@loader_path/libvlccore.9.dylib"),
+        ):
+            try:
+                subprocess.run(
+                    [install_name_tool, "-change", old, new, str(lib)],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+            except Exception:
+                pass
+        touched.append(lib)
+    for path in touched:
+        _codesign_adhoc(path)
+
+
 def stage_native_core(dest: Path, *, force: bool = False) -> Dict[str, Any]:
     """Populate ``dest`` from ``discover_system_native_core()``. Returns manifest dict."""
     info = discover_system_native_core()
@@ -133,6 +224,9 @@ def stage_native_core(dest: Path, *, force: bool = False) -> Dict[str, Any]:
         shutil.copytree(plugins_src, plugins_dest, symlinks=False)
 
     _stage_linux_symlink_aliases(dest, "libvlc.so.5")
+    if sys.platform == "darwin":
+        _stage_macos_dylib_aliases(dest)
+        _fix_macos_plugin_rpaths(dest)
 
     # Optional plugin cache (best-effort)
     cache_gen = Path("/usr/lib/vlc/vlc-cache-gen")

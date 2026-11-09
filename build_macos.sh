@@ -1,180 +1,140 @@
-#!/bin/bash
-# VoxPlayer macOS Build Script
-# Creates a .dmg installer for macOS
+#!/usr/bin/env bash
+# Build a Finder-installable VoxPlayer.app + DMG (no source tree required on target Mac).
+set -euo pipefail
 
-set -e
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+VERSION="$(python3 - <<'PY'
+from pathlib import Path
+text = Path("voxplayer/__init__.py").read_text(encoding="utf-8")
+for line in text.splitlines():
+    if line.startswith("__version__"):
+        print(line.split("=", 1)[1].strip().strip("\"'"))
+        break
+else:
+    print("0.0.0")
+PY
+)"
 
 echo "========================================"
-echo "VoxPlayer macOS Builder"
+echo "VoxPlayer macOS App Builder (${VERSION})"
 echo "========================================"
-echo ""
 
-# Check if we're on macOS
-if [[ "$OSTYPE" != "darwin"* ]]; then
-    echo "ERROR: This script must be run on macOS"
-    exit 1
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "ERROR: This script must be run on macOS"
+  exit 1
 fi
 
-# Check if Python is available
-if ! command -v python3 &> /dev/null; then
-    echo "ERROR: Python 3 is not installed or not in PATH"
-    echo "Please install Python 3.8+ and try again"
-    exit 1
+PYTHON="${PYTHON:-}"
+if [[ -z "$PYTHON" && -x "$ROOT/.venv/bin/python" ]]; then
+  PYTHON="$ROOT/.venv/bin/python"
+elif [[ -z "$PYTHON" ]]; then
+  PYTHON="python3"
 fi
 
-# Check if PyInstaller is installed
-if ! python3 -c "import PyInstaller" 2>/dev/null; then
-    echo "Installing PyInstaller..."
-    pip3 install pyinstaller
-fi
+echo "Using Python: $PYTHON ($("$PYTHON" --version 2>&1))"
 
-# Check if create-dmg is installed
-if ! command -v create-dmg &> /dev/null; then
-    echo "Installing create-dmg..."
-    if command -v brew &> /dev/null; then
-        brew install create-dmg
+"$PYTHON" -m pip install -q -U pip
+"$PYTHON" -m pip install -q -r requirements.txt "voxplayer[libav]" pyinstaller pillow
+
+# Ensure a macOS .icns exists for the Finder app icon
+if [[ ! -f "$ROOT/icon.icns" && -f "$ROOT/logo.png" ]]; then
+  echo "Generating icon.icns from logo.png…"
+  ICONSET="$(mktemp -d)/VoxPlayer.iconset"
+  mkdir -p "$ICONSET"
+  for pair in "16:16" "32:16" "32:32" "64:32" "128:128" "256:128" "256:256" "512:256" "512:512" "1024:512"; do
+    size="${pair%%:*}"; base="${pair##*:}"
+    if [[ "$size" == "$base" ]]; then
+      out="$ICONSET/icon_${base}x${base}.png"
     else
-        echo "ERROR: Homebrew not found. Please install create-dmg manually:"
-        echo "brew install create-dmg"
-        exit 1
+      out="$ICONSET/icon_${base}x${base}@2x.png"
     fi
+    sips -z "$size" "$size" "$ROOT/logo.png" --out "$out" >/dev/null
+  done
+  iconutil -c icns "$ICONSET" -o "$ROOT/icon.icns"
 fi
 
-echo "Installing dependencies..."
-pip3 install -r requirements.txt
-
-echo ""
-echo "Building VoxPlayer executable..."
-echo "This may take a few minutes..."
-echo ""
-
-# Clean previous builds
-rm -rf dist build VoxPlayer.app
-
-# Build the executable
-python3 -m PyInstaller \
-    --onefile \
-    --windowed \
-    --name VoxPlayer \
-    --icon=icon.ico \
-    --add-data "README.md:." \
-    --add-data "LICENSE:." \
-    --osx-bundle-identifier com.voxhash.voxplayer \
-    --target-arch universal2 \
-    app.py
-
-# Check if executable was created
-if [ ! -f "dist/VoxPlayer" ]; then
-    echo "ERROR: VoxPlayer executable not found in dist folder"
-    exit 1
-fi
-
-echo ""
-echo "Creating macOS application bundle..."
-
-# Create .app bundle structure
-mkdir -p VoxPlayer.app/Contents/MacOS
-mkdir -p VoxPlayer.app/Contents/Resources
-
-# Copy executable
-cp dist/VoxPlayer VoxPlayer.app/Contents/MacOS/
-
-# Create Info.plist
-cat > VoxPlayer.app/Contents/Info.plist << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>VoxPlayer</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.voxhash.voxplayer</string>
-    <key>CFBundleName</key>
-    <string>VoxPlayer</string>
-    <key>CFBundleVersion</key>
-    <string>1.0.0</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleSignature</key>
-    <string>????</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>10.15</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>CFBundleDocumentTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleTypeExtensions</key>
-            <array>
-                <string>mp4</string>
-                <string>avi</string>
-                <string>mkv</string>
-                <string>mov</string>
-                <string>wmv</string>
-                <string>flv</string>
-                <string>webm</string>
-                <string>m4v</string>
-                <string>mp3</string>
-                <string>flac</string>
-                <string>wav</string>
-                <string>ogg</string>
-                <string>m4a</string>
-                <string>aac</string>
-                <string>wma</string>
-            </array>
-            <key>CFBundleTypeName</key>
-            <string>Media File</string>
-            <key>CFBundleTypeRole</key>
-            <string>Viewer</string>
-        </dict>
-    </array>
-</dict>
-</plist>
-EOF
-
-# Copy icon
-cp icon.ico VoxPlayer.app/Contents/Resources/icon.icns 2>/dev/null || echo "Warning: Could not copy icon"
-
-# Copy documentation
-cp README.md VoxPlayer.app/Contents/Resources/
-cp LICENSE VoxPlayer.app/Contents/Resources/
-
-echo ""
-echo "Creating DMG installer..."
-
-# Create DMG
-create-dmg \
-    --volname "VoxPlayer" \
-    --volicon "icon.ico" \
-    --window-pos 200 120 \
-    --window-size 600 300 \
-    --icon-size 100 \
-    --icon "VoxPlayer.app" 175 120 \
-    --hide-extension "VoxPlayer.app" \
-    --app-drop-link 425 120 \
-    "VoxPlayer-1.0.0-macOS.dmg" \
-    "VoxPlayer.app"
-
-if [ -f "VoxPlayer-1.0.0-macOS.dmg" ]; then
-    echo ""
-    echo "========================================"
-    echo "macOS build completed successfully!"
-    echo "========================================"
-    echo ""
-    echo "Files created:"
-    echo "- VoxPlayer.app (Application bundle)"
-    echo "- VoxPlayer-1.0.0-macOS.dmg (Installer)"
-    echo ""
-    echo "Installation:"
-    echo "1. Double-click VoxPlayer-1.0.0-macOS.dmg"
-    echo "2. Drag VoxPlayer.app to Applications folder"
-    echo "3. VoxPlayer will be available in Applications"
-    echo ""
+# Stage arch-matching native_core when a usable VLC.app is present.
+if "$PYTHON" -c "from pathlib import Path; from voxplayer.native_core_paths import validate_native_core; import sys; sys.exit(0 if validate_native_core(Path('native_core')).get('ok') else 1)"; then
+  echo "Using existing staged native_core/"
+elif "$PYTHON" -c "from voxplayer.native_core_paths import discover_system_native_core; import sys; sys.exit(0 if discover_system_native_core().get('found') else 1)"; then
+  echo "Staging native_core from matching VLC install…"
+  "$PYTHON" "$ROOT/packaging/stage_native_core.py" --force
+  "$PYTHON" "$ROOT/scripts/e2e_native_core_bundle.py" || {
+    echo "WARNING: staged native_core e2e failed — continuing with libav fallback in bundle"
+  }
 else
-    echo "ERROR: DMG creation failed"
-    exit 1
+  echo "NOTE: no arch-matching VLC found — app will rely on bundled FOSS libav (PyAV)."
+  echo "      Optional: brew install --cask vlc  (matching CPU) then re-run."
 fi
+
+rm -rf build dist/VoxPlayer dist/VoxPlayer.app "VoxPlayer-${VERSION}-macOS.dmg" VoxPlayer.app
+
+echo "Building onedir + VoxPlayer.app via PyInstaller…"
+"$PYTHON" -m PyInstaller --clean --noconfirm voxplayer.spec
+
+APP_PATH=""
+if [[ -d "$ROOT/dist/VoxPlayer.app" ]]; then
+  APP_PATH="$ROOT/dist/VoxPlayer.app"
+elif [[ -d "$ROOT/dist/VoxPlayer/VoxPlayer.app" ]]; then
+  APP_PATH="$ROOT/dist/VoxPlayer/VoxPlayer.app"
+fi
+
+if [[ -z "$APP_PATH" ]]; then
+  echo "ERROR: VoxPlayer.app was not produced by PyInstaller"
+  ls -la "$ROOT/dist" || true
+  exit 1
+fi
+
+# Ensure a drag-target copy at repo root for create-dmg / local install.
+rm -rf "$ROOT/VoxPlayer.app"
+cp -R "$APP_PATH" "$ROOT/VoxPlayer.app"
+
+# Ad-hoc sign so Gatekeeper can open locally built apps more reliably.
+if command -v codesign >/dev/null 2>&1; then
+  codesign --force --deep --sign - "$ROOT/VoxPlayer.app" 2>/dev/null || true
+fi
+
+echo "App bundle: $ROOT/VoxPlayer.app"
+
+if ! command -v create-dmg >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
+    brew install create-dmg
+  else
+    echo "WARNING: create-dmg missing — producing zip only"
+  fi
+fi
+
+DMG_NAME="VoxPlayer-${VERSION}-macOS.dmg"
+if command -v create-dmg >/dev/null 2>&1; then
+  rm -f "$ROOT/$DMG_NAME"
+  create-dmg \
+    --volname "VoxPlayer" \
+    --window-pos 200 120 \
+    --window-size 640 360 \
+    --icon-size 100 \
+    --icon "VoxPlayer.app" 160 140 \
+    --hide-extension "VoxPlayer.app" \
+    --app-drop-link 460 140 \
+    "$ROOT/$DMG_NAME" \
+    "$ROOT/VoxPlayer.app" || {
+      echo "create-dmg failed; falling back to zip"
+      DMG_NAME=""
+    }
+fi
+
+ZIP_NAME="VoxPlayer-${VERSION}-macOS.zip"
+rm -f "$ROOT/dist/$ZIP_NAME"
+ditto -c -k --sequesterRsrc --keepParent "$ROOT/VoxPlayer.app" "$ROOT/dist/$ZIP_NAME"
+
+echo ""
+echo "========================================"
+echo "macOS build completed"
+echo "========================================"
+echo "Install (Finder): open the DMG and drag VoxPlayer to Applications"
+[[ -n "$DMG_NAME" && -f "$ROOT/$DMG_NAME" ]] && echo "  DMG: $ROOT/$DMG_NAME"
+echo "  APP: $ROOT/VoxPlayer.app"
+echo "  ZIP: $ROOT/dist/$ZIP_NAME"
+echo "Uninstall: drag VoxPlayer.app from Applications to Trash"
+echo "  or: ./packaging/uninstall_macos_app.sh"

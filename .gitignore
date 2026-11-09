@@ -449,3 +449,6 @@ native_core/*
 # Generated codec fixtures (regenerate via scripts/generate_codec_fixtures.py)
 fixtures/codecs/*
 !fixtures/codecs/.gitkeep
+
+# Local macOS app build output (DMG already ignored via *.dmg)
+VoxPlayer.app/

@@ -11,10 +11,19 @@ elif [[ -z "$PYTHON" ]]; then
   PYTHON="python3"
 fi
 
-"$PYTHON" -m pip install -q -r requirements.txt pyinstaller
+"$PYTHON" -m pip install -q -r requirements.txt "voxplayer[libav]" pyinstaller
 "$PYTHON" -c "from voxplayer.native_core_paths import discover_system_native_core; print(discover_system_native_core()['message'])"
-"$PYTHON" "$ROOT/packaging/stage_native_core.py" --force
-"$PYTHON" "$ROOT/scripts/e2e_native_core_bundle.py"
+if "$PYTHON" -c "from voxplayer.native_core_paths import discover_system_native_core; import sys; sys.exit(0 if discover_system_native_core().get('found') else 1)"; then
+  "$PYTHON" "$ROOT/packaging/stage_native_core.py" --force
+  "$PYTHON" "$ROOT/scripts/e2e_native_core_bundle.py"
+else
+  echo "NOTE: skipping native_core stage (not found); libav fallback will be bundled when available."
+fi
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  exec "$ROOT/build_macos.sh"
+fi
+
 "$PYTHON" -m PyInstaller --clean --noconfirm voxplayer.spec
 
 echo ""
